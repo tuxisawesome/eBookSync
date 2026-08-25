@@ -523,7 +523,7 @@ _map_chunk:                             ; @map_chunk
 	pop	hl
 	pop	hl
 	pop	hl
-	ld	hl, _.str.6.32
+	ld	hl, _.str.6.30
 	push	hl
 	ld	hl, (ix - 15)
 	push	hl
@@ -703,27 +703,61 @@ _csx_band:                              ; @csx_band
 	.type	_input_reset,@function
 _input_reset:                           ; @input_reset
 ; %bb.0:
-	ld	de, 0
-	ld.sis	bc, 0
+	ld	hl, -3
+	call	__frameset
+	ld	hl, -720878
+	ld	(ix - 3), hl
+	call	_kb_Scan
+	ld	bc, 1
+	ld	de, 8
+	.local	.LBB5_1
+.LBB5_1:                                ; =>This Inner Loop Header: Depth=1
+	push	bc
+	pop	hl
+	or	a, a
+	sbc	hl, de
+	jr	z, .LBB5_3
+; %bb.2:                                ;   in Loop: Header=BB5_1 Depth=1
+	ld	iy, (ix - 3)
+	ld	l, (iy)
+	ld	h, (iy + 1)
+	lea	de, iy + 0
+	ld	a, l
 	ld	iy, _current
-	ld	(_current), de
-	ld	(_current+3), de
+	add	iy, bc
+	ld	(iy), a
+	inc	bc
+	push	de
+	pop	iy
+	ld	de, 8
+	lea	iy, iy + 2
+	ld	(ix - 3), iy
+	jr	.LBB5_1
+	.local	.LBB5_3
+.LBB5_3:
+	ld	de, (_current)
+	ld	bc, (_current+3)
+	ld	iy, _current
 	lea	hl, iy + 6
-	ld	(hl), c
-	inc	hl
-	ld	(hl), b
+	ld	hl, (hl)
+	ld	(ix - 3), hl
 	ld	(_previous), de
-	ld	(_previous+3), de
+	ld	(_previous+3), bc
 	ld	iy, _previous
 	lea	hl, iy + 6
-	ld	(hl), c
+	ld	de, (ix - 3)
+	ld	(hl), e
 	inc	hl
-	ld	(hl), b
-	ld	hl, _repeat_key
-	ld	(hl), c
-	inc	hl
-	ld	(hl), b
-	ld	(_repeat_frames), de
+	ld	(hl), d
+	ld.sis	hl, 0
+	ld	iy, _repeat_key
+	ld	(iy), l
+	ld	(iy + 1), h
+	or	a, a
+	sbc	hl, hl
+	ld	(_repeat_frames), hl
+	pop	hl
+	pop	ix
 	ret
 	.local	.Lfunc_end5
 .Lfunc_end5:
@@ -1020,7 +1054,7 @@ _lib_open:                              ; @lib_open
 	call	__frameset
 	ld	hl, _strip_count
 	ld	iy, _book_count
-	ld	de, _.str.5.31
+	ld	de, _.str.5.29
 	ld	bc, 0
 	ld	(_index_data), bc
 	ld	(hl), c
@@ -1028,7 +1062,7 @@ _lib_open:                              ; @lib_open
 	ld	(hl), b
 	ld	(iy), c
 	ld	(iy + 1), b
-	ld	hl, _.str.6.32
+	ld	hl, _.str.6.30
 	push	hl
 	push	de
 	call	_ti_Open
@@ -1055,7 +1089,7 @@ _lib_open:                              ; @lib_open
 ; %bb.2:
 	ld	hl, 5
 	push	hl
-	ld	hl, _.str.5.31
+	ld	hl, _.str.5.29
 	push	hl
 	ld	hl, (ix - 3)
 	push	hl
@@ -1465,7 +1499,7 @@ _lib_save_strip:                        ; @lib_save_strip
 ; %bb.0:
 	ld	hl, -15
 	call	__frameset
-	ld	hl, _.str.5.31
+	ld	hl, _.str.5.29
 	ld	de, _.str.2.4
 	xor	a, a
 	ld	(ix - 12), a
@@ -1713,27 +1747,7 @@ _main:                                  ; @main
 	call	_gfx_SetDraw
 	pop	hl
 	call	_ui_set_chrome_palette
-	ld	de, 0
-	ld	(_current), de
-	ld	(_current+3), de
-	ld	iy, _current
-	lea	hl, iy + 6
-	ld.sis	bc, 0
-	ld	(hl), c
-	inc	hl
-	ld	(hl), b
-	ld	(_previous), de
-	ld	(_previous+3), de
-	ld	iy, _previous
-	lea	hl, iy + 6
-	ld	(hl), c
-	inc	hl
-	ld	(hl), b
-	ld	hl, _repeat_key
-	ld	(hl), c
-	inc	hl
-	ld	(hl), b
-	ld	(_repeat_frames), de
+	call	_input_reset
 	call	_render_init
 	or	a, a
 	jr	nz, .LBB20_2
@@ -1747,12 +1761,10 @@ _main:                                  ; @main
 	pop	hl
 	call	_gfx_End
 	ld	hl, 1
-	jp	.LBB20_14
+	jp	.LBB20_12
 	.local	.LBB20_2
 .LBB20_2:
 	call	_lib_open
-	bit	0, a
-	jr	z, .LBB20_11
 	.local	.LBB20_3
 .LBB20_3:                               ; =>This Loop Header: Depth=1
                                         ;     Child Loop BB20_4 Depth 2
@@ -1773,7 +1785,7 @@ _main:                                  ; @main
 	ld	bc, 1
 	or	a, a
 	sbc	hl, bc
-	jr	z, .LBB20_13
+	jr	z, .LBB20_11
 ; %bb.5:                                ;   in Loop: Header=BB20_4 Depth=2
 	ex	de, hl
 	ld	de, 2
@@ -1817,26 +1829,18 @@ _main:                                  ; @main
 	ld	hl, _.str.1.6
 	push	hl
 	ld	hl, _.str.5
-	jr	.LBB20_12
-	.local	.LBB20_11
-.LBB20_11:
-	ld	hl, _.str.2.7
-	ld	de, _.str.3
-	push	de
-	.local	.LBB20_12
-.LBB20_12:                              ; %.loopexit
 	push	hl
 	call	_ui_message
 	pop	hl
 	pop	hl
-	.local	.LBB20_13
-.LBB20_13:                              ; %.loopexit
+	.local	.LBB20_11
+.LBB20_11:                              ; %.loopexit
 	call	_render_free
 	call	_gfx_End
 	or	a, a
 	sbc	hl, hl
-	.local	.LBB20_14
-.LBB20_14:
+	.local	.LBB20_12
+.LBB20_12:
 	ld	sp, ix
 	pop	ix
 	ret
@@ -3375,41 +3379,28 @@ _ui_message:                            ; @ui_message
 	.local	.LBB32_2
 .LBB32_2:
 	call	_gfx_SwapDraw
-	ld	de, 0
-	ld	(_current), de
-	ld	(_current+3), de
-	ld	iy, _current
-	lea	hl, iy + 6
-	ld.sis	bc, 0
-	ld	(hl), c
-	inc	hl
-	ld	(hl), b
-	ld	(_previous), de
-	ld	(_previous+3), de
-	ld	iy, _previous
-	lea	hl, iy + 6
-	ld	(hl), c
-	inc	hl
-	ld	(hl), b
-	ld	hl, _repeat_key
-	ld	(hl), c
-	inc	hl
-	ld	(hl), b
-	ld	(_repeat_frames), de
+	call	_input_reset
 	.local	.LBB32_3
 .LBB32_3:                               ; =>This Inner Loop Header: Depth=1
 	call	_input_scan
 	call	_input_idle
 	bit	0, a
-	jr	nz, .LBB32_3
+	jr	z, .LBB32_3
 	.local	.LBB32_4
-.LBB32_4:                               ; %.preheader
+.LBB32_4:                               ; %.preheader1
                                         ; =>This Inner Loop Header: Depth=1
 	call	_input_scan
 	call	_input_idle
 	bit	0, a
-	jr	z, .LBB32_4
-; %bb.5:
+	jr	nz, .LBB32_4
+	.local	.LBB32_5
+.LBB32_5:                               ; %.preheader
+                                        ; =>This Inner Loop Header: Depth=1
+	call	_input_scan
+	call	_input_idle
+	bit	0, a
+	jr	z, .LBB32_5
+; %bb.6:
 	pop	ix
 	ret
 	.local	.Lfunc_end32
@@ -3450,35 +3441,70 @@ _ui_book_menu:                          ; @ui_book_menu
 	.local	.LBB33_1
 .LBB33_1:                               ; %.loopexit3
                                         ; =>This Loop Header: Depth=1
-                                        ;     Child Loop BB33_6 Depth 2
-                                        ;     Child Loop BB33_13 Depth 2
+                                        ;     Child Loop BB33_8 Depth 2
+                                        ;     Child Loop BB33_15 Depth 2
 	ld	hl, 248
 	push	hl
 	call	_gfx_FillScreen
 	pop	hl
-	ld	hl, _.str.18
+	ld	hl, _.str.17
 	push	hl
 	call	_ui_header
 	pop	hl
+	ld	bc, (ix - 7)
+	sbc.sis	hl, hl
+	adc.sis	hl, bc
+	jr	nz, .LBB33_3
+; %bb.2:                                ;   in Loop: Header=BB33_1 Depth=1
+	ld	hl, 251
+	push	hl
+	ld	(ix - 40), bc
+	call	_gfx_SetTextFGColor
+	pop	hl
+	ld	hl, 248
+	push	hl
+	call	_gfx_SetTextBGColor
+	pop	hl
+	ld	hl, 90
+	push	hl
+	ld	hl, 10
+	push	hl
+	ld	hl, _.str.1.18
+	push	hl
+	call	_gfx_PrintStringXY
+	pop	hl
+	pop	hl
+	pop	hl
+	ld	hl, 108
+	push	hl
+	ld	hl, 10
+	push	hl
+	ld	hl, _.str.2.19
+	push	hl
+	call	_gfx_PrintStringXY
+	ld	bc, (ix - 40)
+	pop	hl
+	pop	hl
+	pop	hl
+	.local	.LBB33_3
+.LBB33_3:                               ;   in Loop: Header=BB33_1 Depth=1
 	ld	hl, (ix - 3)
 	ld	(ix - 58), hl
 	ld	e, l
 	ld	d, h
-	ld	hl, (ix - 7)
-	ld	bc, (ix - 5)
-	ld	(ix - 46), bc
+	ld	hl, (ix - 5)
+	ld	(ix - 46), hl
 	or	a, a
-                                        ; kill: def $hl killed $hl killed $uhl
+	ld	l, c
+	ld	h, b
 	sbc.sis	hl, de
 	ld.sis	bc, 0
-	jr	c, .LBB33_3
-; %bb.2:                                ; %.loopexit3
-                                        ;   in Loop: Header=BB33_1 Depth=1
+	jr	c, .LBB33_5
+; %bb.4:                                ;   in Loop: Header=BB33_1 Depth=1
 	ld	c, l
 	ld	b, h
-	.local	.LBB33_3
-.LBB33_3:                               ; %.loopexit3
-                                        ;   in Loop: Header=BB33_1 Depth=1
+	.local	.LBB33_5
+.LBB33_5:                               ;   in Loop: Header=BB33_1 Depth=1
 	or	a, a
 	sbc	hl, hl
 	push	hl
@@ -3496,13 +3522,11 @@ _ui_book_menu:                          ; @ui_book_menu
 	ld	h, b
 	ld.sis	de, 10
 	sbc.sis	hl, de
-	jr	c, .LBB33_5
-; %bb.4:                                ; %.loopexit3
-                                        ;   in Loop: Header=BB33_1 Depth=1
+	jr	c, .LBB33_7
+; %bb.6:                                ;   in Loop: Header=BB33_1 Depth=1
 	ld.sis	bc, 10
-	.local	.LBB33_5
-.LBB33_5:                               ; %.loopexit3
-                                        ;   in Loop: Header=BB33_1 Depth=1
+	.local	.LBB33_7
+.LBB33_7:                               ;   in Loop: Header=BB33_1 Depth=1
 	or	a, a
 	sbc	hl, hl
 	ld	l, c
@@ -3522,15 +3546,15 @@ _ui_book_menu:                          ; @ui_book_menu
 	or	a, a
 	sbc	hl, hl
 	ld	(ix - 40), hl
-	.local	.LBB33_6
-.LBB33_6:                               ;   Parent Loop BB33_1 Depth=1
+	.local	.LBB33_8
+.LBB33_8:                               ;   Parent Loop BB33_1 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
 	lea	hl, iy + 0
 	ld	de, (ix - 40)
 	or	a, a
 	sbc	hl, de
-	jp	z, .LBB33_12
-; %bb.7:                                ;   in Loop: Header=BB33_6 Depth=2
+	jp	z, .LBB33_14
+; %bb.9:                                ;   in Loop: Header=BB33_8 Depth=2
 	ld	(ix - 61), iy
 	push	bc
 	ld	hl, (ix - 43)
@@ -3558,11 +3582,11 @@ _ui_book_menu:                          ; @ui_book_menu
 	or	a, a
 	sbc	hl, bc
 	ld	a, -1
-	jr	z, .LBB33_9
-; %bb.8:                                ;   in Loop: Header=BB33_6 Depth=2
+	jr	z, .LBB33_11
+; %bb.10:                               ;   in Loop: Header=BB33_8 Depth=2
 	ld	a, 0
-	.local	.LBB33_9
-.LBB33_9:                               ;   in Loop: Header=BB33_6 Depth=2
+	.local	.LBB33_11
+.LBB33_11:                              ;   in Loop: Header=BB33_8 Depth=2
 	ld	(ix - 62), a
 	ld	l, a
 	push	hl
@@ -3588,7 +3612,7 @@ _ui_book_menu:                          ; @ui_book_menu
 	ld	b, h
 	push	bc
 	push	de
-	ld	hl, _.str.1.19
+	ld	hl, _.str.3
 	push	hl
 	ld	hl, (ix - 49)
 	push	hl
@@ -3604,12 +3628,12 @@ _ui_book_menu:                          ; @ui_book_menu
 	bit	0, (ix - 62)                    ; 1-byte Folded Reload
 	ld	a, -4
 	ld	l, a
-	jr	nz, .LBB33_11
-; %bb.10:                               ;   in Loop: Header=BB33_6 Depth=2
+	jr	nz, .LBB33_13
+; %bb.12:                               ;   in Loop: Header=BB33_8 Depth=2
 	ld	a, -8
 	ld	l, a
-	.local	.LBB33_11
-.LBB33_11:                              ;   in Loop: Header=BB33_6 Depth=2
+	.local	.LBB33_13
+.LBB33_13:                              ;   in Loop: Header=BB33_8 Depth=2
 	push	hl
 	call	_gfx_SetTextBGColor
 	pop	hl
@@ -3645,20 +3669,20 @@ _ui_book_menu:                          ; @ui_book_menu
 	inc.sis	bc
 	ld	(ix - 40), iy
 	ld	iy, (ix - 61)
-	jp	.LBB33_6
-	.local	.LBB33_12
-.LBB33_12:                              ;   in Loop: Header=BB33_1 Depth=1
+	jp	.LBB33_8
+	.local	.LBB33_14
+.LBB33_14:                              ;   in Loop: Header=BB33_1 Depth=1
 	ld	hl, (ix - 43)
 	push	hl
 	call	_draw_scrollbar
 	pop	hl
-	ld	hl, _.str.2.20
+	ld	hl, _.str.4
 	push	hl
 	call	_ui_footer
 	pop	hl
 	call	_gfx_SwapDraw
-	.local	.LBB33_13
-.LBB33_13:                              ;   Parent Loop BB33_1 Depth=1
+	.local	.LBB33_15
+.LBB33_15:                              ;   Parent Loop BB33_1 Depth=1
                                         ; =>  This Inner Loop Header: Depth=2
 	call	_input_scan
 	ld	hl, (ix - 43)
@@ -3673,66 +3697,66 @@ _ui_book_menu:                          ; @ui_book_menu
 	and	a, h
 	ld	l, a
 	bit	0, l
-	jr	z, .LBB33_16
-; %bb.14:                               ; %input_pressed.exit
-                                        ;   in Loop: Header=BB33_13 Depth=2
+	jr	z, .LBB33_18
+; %bb.16:                               ; %input_pressed.exit
+                                        ;   in Loop: Header=BB33_15 Depth=2
 	ld	a, (_previous+6)
 	and	a, h
 	ld	l, a
 	bit	0, l
-	jr	nz, .LBB33_16
-; %bb.15:                               ; %input_pressed.exit
-                                        ;   in Loop: Header=BB33_13 Depth=2
+	jr	nz, .LBB33_18
+; %bb.17:                               ; %input_pressed.exit
+                                        ;   in Loop: Header=BB33_15 Depth=2
 	ld	hl, (ix - 7)
 	add.sis	hl, bc
 	or	a, a
 	sbc.sis	hl, bc
-	jr	nz, .LBB33_23
-	.local	.LBB33_16
-.LBB33_16:                              ; %input_pressed.exit.thread
-                                        ;   in Loop: Header=BB33_13 Depth=2
+	jr	nz, .LBB33_25
+	.local	.LBB33_18
+.LBB33_18:                              ; %input_pressed.exit.thread
+                                        ;   in Loop: Header=BB33_15 Depth=2
 	ld	a, (_current+1)
 	bit	5, a
-	jr	z, .LBB33_18
-; %bb.17:                               ; %input_pressed.exit1
-                                        ;   in Loop: Header=BB33_13 Depth=2
+	jr	z, .LBB33_20
+; %bb.19:                               ; %input_pressed.exit1
+                                        ;   in Loop: Header=BB33_15 Depth=2
 	ld	a, (_previous+1)
 	bit	5, a
-	jr	z, .LBB33_21
-	.local	.LBB33_18
-.LBB33_18:                              ; %input_pressed.exit1.thread
-                                        ;   in Loop: Header=BB33_13 Depth=2
+	jr	z, .LBB33_23
+	.local	.LBB33_20
+.LBB33_20:                              ; %input_pressed.exit1.thread
+                                        ;   in Loop: Header=BB33_15 Depth=2
 	bit	6, c
-	jr	z, .LBB33_20
-; %bb.19:                               ; %input_pressed.exit2
-                                        ;   in Loop: Header=BB33_13 Depth=2
+	jr	z, .LBB33_22
+; %bb.21:                               ; %input_pressed.exit2
+                                        ;   in Loop: Header=BB33_15 Depth=2
 	ld	a, (_previous+6)
 	bit	6, a
-	jr	z, .LBB33_22
-	.local	.LBB33_20
-.LBB33_20:                              ; %input_pressed.exit2.thread
-                                        ;   in Loop: Header=BB33_13 Depth=2
-	bit	0, e
-	jr	z, .LBB33_13
-	jp	.LBB33_1
-	.local	.LBB33_21
-.LBB33_21:
-	ld	hl, 2
-	jr	.LBB33_24
+	jr	z, .LBB33_24
 	.local	.LBB33_22
-.LBB33_22:
-	ld	hl, 1
-	jr	.LBB33_24
+.LBB33_22:                              ; %input_pressed.exit2.thread
+                                        ;   in Loop: Header=BB33_15 Depth=2
+	bit	0, e
+	jr	z, .LBB33_15
+	jp	.LBB33_1
 	.local	.LBB33_23
 .LBB33_23:
+	ld	hl, 2
+	jr	.LBB33_26
+	.local	.LBB33_24
+.LBB33_24:
+	ld	hl, 1
+	jr	.LBB33_26
+	.local	.LBB33_25
+.LBB33_25:
 	ld	hl, (ix - 5)
 	ld	iy, (ix + 6)
 	ld	(iy), l
 	ld	(iy + 1), h
 	or	a, a
 	sbc	hl, hl
-	.local	.LBB33_24
-.LBB33_24:                              ; %.loopexit
+	.local	.LBB33_26
+.LBB33_26:                              ; %.loopexit
 	ld	sp, ix
 	pop	ix
 	ret
@@ -4095,7 +4119,7 @@ _ui_strip_menu:                         ; @ui_strip_menu
 	ld	(ix - 56), bc
 	call	_gfx_FillScreen
 	pop	hl
-	ld	hl, _.str.3.23
+	ld	hl, _.str.5.22
 	push	hl
 	call	_ui_header
 	pop	hl
@@ -4242,7 +4266,7 @@ _ui_strip_menu:                         ; @ui_strip_menu
 	push	hl
 	ld	hl, 2
 	push	hl
-	ld	hl, _.str.4
+	ld	hl, _.str.6
 	push	hl
 	call	_gfx_PrintStringXY
 	ld	iy, (ix - 62)
@@ -4278,7 +4302,7 @@ _ui_strip_menu:                         ; @ui_strip_menu
 	ld	c, 10
 	call	__ishru
 	push	hl
-	ld	hl, _.str.5.24
+	ld	hl, _.str.7
 	push	hl
 	ld	hl, (ix - 68)
 	push	hl
@@ -4330,7 +4354,7 @@ _ui_strip_menu:                         ; @ui_strip_menu
 	push	hl
 	call	_draw_scrollbar
 	pop	hl
-	ld	hl, _.str.6
+	ld	hl, _.str.8
 	push	hl
 	call	_ui_footer
 	pop	hl
@@ -4415,32 +4439,11 @@ _ui_sync_screen:                        ; @ui_sync_screen
 ; %bb.0:
 	xor	a, a
 	ld	de, _sync_state
-	ld	hl, _.str.7
+	ld	hl, _.str.9
 	ld	bc, 12
-	ld	iy, 0
 	ld	(_sync_chunks_received), a
 	ldir
-	lea	bc, iy + 0
-	ld	(_current), bc
-	ld	(_current+3), bc
-	ld	iy, _current
-	lea	hl, iy + 6
-	ld.sis	de, 0
-	ld	(hl), e
-	inc	hl
-	ld	(hl), d
-	ld	(_previous), bc
-	ld	(_previous+3), bc
-	ld	iy, _previous
-	lea	hl, iy + 6
-	ld	(hl), e
-	inc	hl
-	ld	(hl), d
-	ld	hl, _repeat_key
-	ld	(hl), e
-	inc	hl
-	ld	(hl), d
-	ld	(_repeat_frames), bc
+	call	_input_reset
 	call	_sync_draw
 	ld	hl, _sync_progress
 	push	hl
@@ -4449,8 +4452,8 @@ _ui_sync_screen:                        ; @ui_sync_screen
 	bit	0, a
 	jr	nz, .LBB39_2
 ; %bb.1:
-	ld	hl, _.str.8
-	ld	de, _.str.9
+	ld	hl, _.str.10
+	ld	de, _.str.11
 	push	de
 	push	hl
 	call	_ui_message
@@ -4475,7 +4478,7 @@ _sync_draw:                             ; @sync_draw
 	push	hl
 	call	_gfx_FillScreen
 	pop	hl
-	ld	hl, _.str.10
+	ld	hl, _.str.12
 	push	hl
 	call	_ui_header
 	pop	hl
@@ -4502,7 +4505,7 @@ _sync_draw:                             ; @sync_draw
 	sbc	hl, hl
 	ld	l, a
 	push	hl
-	ld	hl, _.str.11
+	ld	hl, _.str.13
 	push	hl
 	ld	hl, (ix - 43)
 	push	hl
@@ -4524,7 +4527,7 @@ _sync_draw:                             ; @sync_draw
 	pop	hl
 	pop	hl
 	pop	hl
-	ld	hl, _.str.12
+	ld	hl, _.str.14
 	push	hl
 	call	_ui_footer
 	pop	hl
@@ -4556,7 +4559,7 @@ _sync_progress:                         ; @sync_progress
 	jr	z, .LBB41_2
 ; %bb.1:
 	ld	hl, 32
-	ld	de, _.str.13
+	ld	de, _.str.15
 	ld	bc, (ix + 6)
 	push	bc
 	push	de
@@ -4570,7 +4573,7 @@ _sync_progress:                         ; @sync_progress
 	pop	hl
 	.local	.LBB41_2
 .LBB41_2:
-	ld	hl, _.str.4.30
+	ld	hl, _.str.4.28
 	push	hl
 	ld	hl, (ix + 6)
 	push	hl
@@ -4801,10 +4804,10 @@ _proto_run:                             ; @proto_run
 ; %bb.13:                               ;   in Loop: Header=BB42_2 Depth=1
 	ld	a, (_configured)
 	bit	0, a
-	ld	hl, _.str.33
+	ld	hl, _.str.31
 	jr	nz, .LBB42_15
 ; %bb.14:                               ;   in Loop: Header=BB42_2 Depth=1
-	ld	hl, _.str.1.34
+	ld	hl, _.str.1.32
 	.local	.LBB42_15
 .LBB42_15:                              ;   in Loop: Header=BB42_2 Depth=1
 	ld	de, 0
@@ -4972,9 +4975,9 @@ _proto_run:                             ; @proto_run
 	call	_drain
 	pop	hl
 	pop	hl
-	ld	hl, _.str.6.32
+	ld	hl, _.str.6.30
 	push	hl
-	ld	hl, _.str.5.31
+	ld	hl, _.str.5.29
 	push	hl
 	call	_ti_Open
 	ld	e, a
@@ -5311,13 +5314,13 @@ _proto_run:                             ; @proto_run
 	.local	.LBB42_49
 .LBB42_49:                              ;   in Loop: Header=BB42_2 Depth=1
 	ld	(ix - 70), iy
-	ld	hl, _.str.5.31
+	ld	hl, _.str.5.29
 	push	hl
 	call	_ti_Delete
 	pop	hl
-	ld	hl, _.str.3.29
+	ld	hl, _.str.3.27
 	push	hl
-	ld	hl, _.str.5.31
+	ld	hl, _.str.5.29
 	push	hl
 	call	_ti_Open
 	ld	c, a
@@ -5473,7 +5476,7 @@ _proto_run:                             ; @proto_run
 	push	hl
 	call	_ti_Close
 	pop	hl
-	ld	hl, _.str.5.31
+	ld	hl, _.str.5.29
 	.local	.LBB42_68
 .LBB42_68:                              ;   in Loop: Header=BB42_2 Depth=1
 	push	hl
@@ -5496,7 +5499,7 @@ _proto_run:                             ; @proto_run
 	push	hl
 	call	_ti_Delete
 	pop	hl
-	ld	hl, _.str.3.29
+	ld	hl, _.str.3.27
 	push	hl
 	ld	hl, (ix - 58)
 	push	hl
@@ -5646,7 +5649,7 @@ _proto_run:                             ; @proto_run
 	push	hl
 	ld	l, (ix - 76)                    ; 1-byte Folded Reload
 	push	hl
-	ld	hl, _.str.4.30
+	ld	hl, _.str.4.28
 	push	hl
 	ld	hl, (ix + 6)
 	call	__indcallhl
@@ -6298,7 +6301,7 @@ _viewer_run:                            ; @viewer_run
 	lea	iy, iy - 128
 	lea	iy, iy - 92
 	ld	(iy + 0), bc
-	ld	bc, -380
+	ld	bc, -381
 	lea	iy, ix + 0
 	add	iy, bc
 	ld	(iy + 0), de
@@ -6380,39 +6383,20 @@ _viewer_run:                            ; @viewer_run
 	call	_clamp
 	pop	hl
 	ld	a, (ix - 42)
-	or	a, a
-	sbc	hl, hl
-	ex	de, hl
-	ld	(_current), de
-	ld	(_current+3), de
-	ld	iy, _current
-	lea	hl, iy + 6
-	ld.sis	bc, 0
-	ld	(hl), c
-	inc	hl
-	ld	(hl), b
-	ld	(_previous), de
-	ld	(_previous+3), de
-	ld	iy, _previous
-	lea	hl, iy + 6
-	ld	(hl), c
-	inc	hl
-	ld	(hl), b
-	ld	hl, _repeat_key
-	ld	(hl), c
-	inc	hl
-	ld	(hl), b
-	ld	hl, 0
-	ld	(_repeat_frames), hl
-	ld	de, -381
+	ld	de, -378
 	lea	iy, ix + 0
 	add	iy, de
-	ld	(iy + 0), a                     ; 1-byte Folded Spill
+	ld	(iy + 0), a
+	call	_input_reset
+	ld	de, -378
+	lea	iy, ix + 0
+	add	iy, de
+	ld	a, (iy + 0)
 	ld	de, -345
 	lea	iy, ix + 0
 	add	iy, de
 	ld	(iy + 0), a                     ; 1-byte Folded Spill
-	inc	l
+	ld	l, 1
 	ld	bc, 60
 	.local	.LBB50_4
 .LBB50_4:                               ; %input_pressed.exit7
@@ -6720,10 +6704,10 @@ _viewer_run:                            ; @viewer_run
 	add	iy, de
 	pop	af
 	bit	0, (iy + 0)                     ; 1-byte Folded Reload
-	ld	hl, _.str.3.39
+	ld	hl, _.str.3.37
 	jr	nz, .LBB50_14
 ; %bb.13:                               ;   in Loop: Header=BB50_4 Depth=1
-	ld	hl, _.str.4.40
+	ld	hl, _.str.4.38
 	.local	.LBB50_14
 .LBB50_14:                              ;   in Loop: Header=BB50_4 Depth=1
 	push	hl
@@ -6738,7 +6722,7 @@ _viewer_run:                            ; @viewer_run
 	ld	hl, (iy + 0)
 	push	hl
 	push	bc
-	ld	hl, _.str.2.41
+	ld	hl, _.str.2.39
 	push	hl
 	ld	de, -362
 	lea	iy, ix + 0
@@ -7494,7 +7478,7 @@ _viewer_run:                            ; @viewer_run
 	jr	z, .LBB50_71
 ; %bb.67:
 	ld	l, 1
-	ld	de, -381
+	ld	de, -378
 	lea	iy, ix + 0
 	add	iy, de
 	ld	a, (iy + 0)
@@ -7513,7 +7497,7 @@ _viewer_run:                            ; @viewer_run
 	.local	.LBB50_69
 .LBB50_69:
 	ld	l, 1
-	ld	de, -381
+	ld	de, -378
 	lea	iy, ix + 0
 	add	iy, de
 	ld	a, (iy + 0)
@@ -7521,8 +7505,8 @@ _viewer_run:                            ; @viewer_run
 	jr	.LBB50_72
 	.local	.LBB50_70
 .LBB50_70:
-	ld	hl, _.str.37
-	ld	de, _.str.1.38
+	ld	hl, _.str.35
+	ld	de, _.str.1.36
 	push	de
 	push	hl
 	call	_ui_message
@@ -7531,7 +7515,7 @@ _viewer_run:                            ; @viewer_run
 	jr	.LBB50_73
 	.local	.LBB50_71
 .LBB50_71:
-	ld	de, -381
+	ld	de, -378
 	lea	iy, ix + 0
 	add	iy, de
 	ld	a, (iy + 0)
@@ -7541,7 +7525,7 @@ _viewer_run:                            ; @viewer_run
 .LBB50_72:
 	ld	l, a
 	ld	(ix - 42), l
-	ld	de, -380
+	ld	de, -381
 	lea	iy, ix + 0
 	add	iy, de
 	ld	hl, (iy + 0)
@@ -7882,18 +7866,6 @@ _.str.5:
 _.str.1.6:
 	.asciz	"Archive or delete some files."
 
-	.section	.rodata._.str.2.7,"a",@progbits
-	.balign	1
-	.local	_.str.2.7
-_.str.2.7:
-	.asciz	"No comics on this calculator."
-
-	.section	.rodata._.str.3,"a",@progbits
-	.balign	1
-	.local	_.str.3
-_.str.3:
-	.asciz	"Sync some from the computer."
-
 	.section	.bss._expand,"aw",@nobits
 	.balign	2
 	.local	_expand
@@ -7930,46 +7902,58 @@ _cache_used:
 _cache_clock:
 	.zero	2
 
-	.section	.rodata._.str.18,"a",@progbits
+	.section	.rodata._.str.17,"a",@progbits
 	.balign	1
-	.local	_.str.18
-_.str.18:
+	.local	_.str.17
+_.str.17:
 	.asciz	"Books"
 
-	.section	.rodata._.str.1.19,"a",@progbits
+	.section	.rodata._.str.1.18,"a",@progbits
 	.balign	1
-	.local	_.str.1.19
-_.str.1.19:
+	.local	_.str.1.18
+_.str.1.18:
+	.asciz	"No comics yet."
+
+	.section	.rodata._.str.2.19,"a",@progbits
+	.balign	1
+	.local	_.str.2.19
+_.str.2.19:
+	.asciz	"Press 2nd to sync from a computer."
+
+	.section	.rodata._.str.3,"a",@progbits
+	.balign	1
+	.local	_.str.3
+_.str.3:
 	.asciz	"%u/%u"
-
-	.section	.rodata._.str.2.20,"a",@progbits
-	.balign	1
-	.local	_.str.2.20
-_.str.2.20:
-	.asciz	"enter open   2nd sync   clear quit"
-
-	.section	.rodata._.str.3.23,"a",@progbits
-	.balign	1
-	.local	_.str.3.23
-_.str.3.23:
-	.asciz	"Strips"
 
 	.section	.rodata._.str.4,"a",@progbits
 	.balign	1
 	.local	_.str.4
 _.str.4:
-	.asciz	"*"
+	.asciz	"enter open   2nd sync   clear quit"
 
-	.section	.rodata._.str.5.24,"a",@progbits
+	.section	.rodata._.str.5.22,"a",@progbits
 	.balign	1
-	.local	_.str.5.24
-_.str.5.24:
-	.asciz	"%uK"
+	.local	_.str.5.22
+_.str.5.22:
+	.asciz	"Strips"
 
 	.section	.rodata._.str.6,"a",@progbits
 	.balign	1
 	.local	_.str.6
 _.str.6:
+	.asciz	"*"
+
+	.section	.rodata._.str.7,"a",@progbits
+	.balign	1
+	.local	_.str.7
+_.str.7:
+	.asciz	"%uK"
+
+	.section	.rodata._.str.8,"a",@progbits
+	.balign	1
+	.local	_.str.8
+_.str.8:
 	.asciz	"enter read   clear back"
 
 	.section	.bss._sync_chunks_received,"aw",@nobits
@@ -7984,46 +7968,46 @@ _sync_chunks_received:
 _sync_state:
 	.zero	32
 
-	.section	.rodata._.str.7,"a",@progbits
-	.balign	1
-	.local	_.str.7
-_.str.7:
-	.asciz	"Starting..."
-
-	.section	.rodata._.str.8,"a",@progbits
-	.balign	1
-	.local	_.str.8
-_.str.8:
-	.asciz	"Could not take over USB."
-
 	.section	.rodata._.str.9,"a",@progbits
 	.balign	1
 	.local	_.str.9
 _.str.9:
-	.asciz	"Unplug the cable and retry."
+	.asciz	"Starting..."
 
 	.section	.rodata._.str.10,"a",@progbits
 	.balign	1
 	.local	_.str.10
 _.str.10:
-	.asciz	"Sync"
+	.asciz	"Could not take over USB."
 
 	.section	.rodata._.str.11,"a",@progbits
 	.balign	1
 	.local	_.str.11
 _.str.11:
-	.asciz	"%u chunks received"
+	.asciz	"Unplug the cable and retry."
 
 	.section	.rodata._.str.12,"a",@progbits
 	.balign	1
 	.local	_.str.12
 _.str.12:
-	.asciz	"clear  stop syncing"
+	.asciz	"Sync"
 
 	.section	.rodata._.str.13,"a",@progbits
 	.balign	1
 	.local	_.str.13
 _.str.13:
+	.asciz	"%u chunks received"
+
+	.section	.rodata._.str.14,"a",@progbits
+	.balign	1
+	.local	_.str.14
+_.str.14:
+	.asciz	"clear  stop syncing"
+
+	.section	.rodata._.str.15,"a",@progbits
+	.balign	1
+	.local	_.str.15
+_.str.15:
 	.asciz	"%s"
 
 	.section	.bss._host_device,"aw",@nobits
@@ -8066,16 +8050,16 @@ _descriptors:
 	db	2                               ; 0x2
 	d24	_strings
 
-	.section	.rodata._.str.33,"a",@progbits
+	.section	.rodata._.str.31,"a",@progbits
 	.balign	1
-	.local	_.str.33
-_.str.33:
+	.local	_.str.31
+_.str.31:
 	.asciz	"Connected"
 
-	.section	.rodata._.str.1.34,"a",@progbits
+	.section	.rodata._.str.1.32,"a",@progbits
 	.balign	1
-	.local	_.str.1.34
-_.str.1.34:
+	.local	_.str.1.32
+_.str.1.32:
 	.asciz	"Waiting for computer"
 
 	.section	.bss._stream,"aw",@nobits
@@ -8153,58 +8137,58 @@ _string_manufacturer:
 _string_product:
 	.asciz	"\034\003C\000o\000m\000i\000c\000 \000R\000e\000a\000d\000e\000r\000 "
 
-	.section	.rodata._.str.3.29,"a",@progbits
+	.section	.rodata._.str.3.27,"a",@progbits
 	.balign	1
-	.local	_.str.3.29
-_.str.3.29:
+	.local	_.str.3.27
+_.str.3.27:
 	.asciz	"w"
 
-	.section	.rodata._.str.4.30,"a",@progbits
+	.section	.rodata._.str.4.28,"a",@progbits
 	.balign	1
-	.local	_.str.4.30
-_.str.4.30:
+	.local	_.str.4.28
+_.str.4.28:
 	.asciz	"Receiving"
 
-	.section	.rodata._.str.5.31,"a",@progbits
+	.section	.rodata._.str.5.29,"a",@progbits
 	.balign	1
-	.local	_.str.5.31
-_.str.5.31:
+	.local	_.str.5.29
+_.str.5.29:
 	.asciz	"CSLIB"
 
-	.section	.rodata._.str.6.32,"a",@progbits
+	.section	.rodata._.str.6.30,"a",@progbits
 	.balign	1
-	.local	_.str.6.32
-_.str.6.32:
+	.local	_.str.6.30
+_.str.6.30:
 	.asciz	"r"
 
-	.section	.rodata._.str.37,"a",@progbits
+	.section	.rodata._.str.35,"a",@progbits
 	.balign	1
-	.local	_.str.37
-_.str.37:
+	.local	_.str.35
+_.str.35:
 	.asciz	"Cannot open this strip."
 
-	.section	.rodata._.str.1.38,"a",@progbits
+	.section	.rodata._.str.1.36,"a",@progbits
 	.balign	1
-	.local	_.str.1.38
-_.str.1.38:
+	.local	_.str.1.36
+_.str.1.36:
 	.asciz	"Re-sync it from the computer."
 
-	.section	.rodata._.str.2.41,"a",@progbits
+	.section	.rodata._.str.2.39,"a",@progbits
 	.balign	1
-	.local	_.str.2.41
-_.str.2.41:
+	.local	_.str.2.39
+_.str.2.39:
 	.asciz	"%u.%ux %u%%%s"
 
-	.section	.rodata._.str.3.39,"a",@progbits
+	.section	.rodata._.str.3.37,"a",@progbits
 	.balign	1
-	.local	_.str.3.39
-_.str.3.39:
+	.local	_.str.3.37
+_.str.3.37:
 	.asciz	" read"
 
-	.section	.rodata._.str.4.40,"a",@progbits
+	.section	.rodata._.str.4.38,"a",@progbits
 	.balign	1
-	.local	_.str.4.40
-_.str.4.40:
+	.local	_.str.4.38
+_.str.4.38:
 	.zero	1
 
 	.ident	"clang version 19.1.0 (https://github.com/CE-Programming/llvm-project ef28e9c54cd1333a6091ab2ffbd315b465fc5090)"
@@ -8228,18 +8212,18 @@ _.str.4.40:
 	.extern	__ishru
 	.extern	__sdivu
 	.extern	_llvm.umax.i24
+	.extern	__Unwind_SjLj_Unregister
 	.extern	__sor
 	.extern	_gfx_FillScreen
 	.extern	_llvm.usub.sat.i16
-	.extern	__Unwind_SjLj_Unregister
 	.extern	_gfx_FillRectangle_NoClip
 	.extern	__bshru
 	.extern	_kb_Scan
 	.extern	_usb_Init
 	.extern	_gfx_PrintStringXY
 	.extern	__ineg
-	.extern	_llvm.umax.i8
 	.extern	_ti_ArchiveHasRoom
+	.extern	_llvm.umax.i8
 	.extern	_llvm.memset.p0.i24
 	.extern	_gfx_SetColor
 	.extern	_llvm.memcpy.p0.p0.i24

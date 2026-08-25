@@ -30,6 +30,10 @@ echo "== library index: browser builder -> calculator parser =="
 "$node" "$dir/check_js_library.mjs"
 
 echo
+echo "== reader menus: which keys do what =="
+python3 "$dir/check_ui.py"
+
+echo
 echo "== library editing, and order reaching the calculator =="
 "$node" "$dir/check_library_edit.mjs"
 

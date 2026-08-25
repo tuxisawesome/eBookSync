@@ -28,12 +28,13 @@ int main(void) {
         return 1;
     }
 
-    if (!lib_open()) {
-        ui_message("No comics on this calculator.", "Sync some from the computer.");
-        render_free();
-        gfx_End();
-        return 0;
-    }
+    /*
+     * An empty calculator is the normal state before the first sync, not an
+     * error. Quitting here would also make the reader impossible to use at all:
+     * the sync screen is reached with 2nd from the book menu, so bailing out
+     * before showing that menu means no comic can ever arrive.
+     */
+    lib_open();
 
     uint16_t book = 0;
     for (;;) {

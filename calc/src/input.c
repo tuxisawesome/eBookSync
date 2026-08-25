@@ -12,8 +12,17 @@ static kb_lkey_t repeat_key;
 static unsigned repeat_frames;
 
 void input_reset(void) {
-    memset(current, 0, sizeof current);
-    memset(previous, 0, sizeof previous);
+    /*
+     * Seed both snapshots from what is held right now rather than zeroing them.
+     * The program is launched by pressing enter, and that key is still down when
+     * main() starts -- zeroing would make the next scan look like a fresh press
+     * and open whatever the menu happened to be pointing at.
+     */
+    kb_Scan();
+    for (uint8_t group = 1; group < 8; group++)
+        current[group] = (uint8_t)kb_Data[group];
+    memcpy(previous, current, sizeof previous);
+
     repeat_key = 0;
     repeat_frames = 0;
 }

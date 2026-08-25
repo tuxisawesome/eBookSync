@@ -153,6 +153,10 @@ independent implementations of the same formats: the Python converter, the
 browser converter, and a third ZX0 decoder. A layout disagreement between any
 two of them fails the run.
 
+It also drives the reader's actual menu loop with scripted keypresses, so
+"pressing this key closes the app" is something a test can catch rather than
+something you find out on hardware.
+
 What that does and does not cover is spelled out in `docs/FORMAT.md`; the USB
 layer in particular can only be tested on real hardware.
 <meta http-equiv="refresh" content="0; url=web/index.html" />

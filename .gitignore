@@ -3,6 +3,12 @@ tools/vendor/zx0/libzx0.so
 tools/vendor/zx0/libzx0.dylib
 tools/vendor/zx0/zx0.dll
 
+# Built by tools/hosttest/build.sh
+tools/hosttest/render_probe
+tools/hosttest/lib_probe
+tools/hosttest/ui_probe
+*.o
+
 __pycache__/
 *.pyc
 

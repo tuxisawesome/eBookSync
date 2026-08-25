@@ -146,8 +146,48 @@ void gfx_SetDraw(uint8_t location) { (void)location; }
 
 /* ------------------------------------------------------------------- keypad */
 
+#include "keys.h"
+
+#define MAX_FRAMES 8192
+
 uint16_t shim_kb_data[8];
-void kb_Scan(void) {}
+
+static uint16_t script[MAX_FRAMES][8];
+static int script_length;
+static int script_position;
+static long scans;
+
+void shim_keys_clear(void) {
+    memset(script, 0, sizeof script);
+    script_length = 0;
+    script_position = 0;
+    scans = 0;
+}
+
+void shim_keys_add(kb_lkey_t key, int frames) {
+    for (int i = 0; i < frames && script_length < MAX_FRAMES; i++, script_length++) {
+        if (key) script[script_length][key >> 8] = (uint8_t)key;
+    }
+}
+
+long shim_scan_count(void) { return scans; }
+
+void kb_Scan(void) {
+    scans++;
+    if (script_position < script_length) {
+        memcpy(shim_kb_data, script[script_position++], sizeof shim_kb_data);
+        return;
+    }
+
+    /* Script exhausted: hold nothing down. If the program is still going round
+     * its loop long after that, it is not going to exit on its own -- which for
+     * most of these tests is exactly what we want to prove. */
+    memset(shim_kb_data, 0, sizeof shim_kb_data);
+    if (scans - script_length > SHIM_GRACE_SCANS) {
+        fflush(stdout);
+        exit(SHIM_STILL_RUNNING);
+    }
+}
 
 /* -------------------------------------------------------------------- ZX0 */
 

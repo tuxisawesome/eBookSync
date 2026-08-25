@@ -85,7 +85,7 @@ Linker script and memory map
                 0x00d1a9c4                ___exithl
                 0x00d1a9c5                _exit.sp
 
-.text           0x00d1aa00     0x5c94
+.text           0x00d1aa00     0x5c91
  *(.text.unlikely .text.*_unlikely .text.unlikely.*)
  *(.text.exit .text.exit.*)
  *(.text.startup .text.startup.*)
@@ -169,274 +169,278 @@ Linker script and memory map
  .text._csx_band
                 0x00d1b4ab       0xb2 obj/COMICS.o
                 0x00d1b4ab                _csx_band
+ .text._input_reset
+                0x00d1b55d       0x92 obj/COMICS.o
+                0x00d1b55d                _input_reset
  .text._input_scan
-                0x00d1b55d       0x7d obj/COMICS.o
-                0x00d1b55d                _input_scan
+                0x00d1b5ef       0x7d obj/COMICS.o
+                0x00d1b5ef                _input_scan
  .text._input_repeat
-                0x00d1b5da       0x7e obj/COMICS.o
-                0x00d1b5da                _input_repeat
+                0x00d1b66c       0x7e obj/COMICS.o
+                0x00d1b66c                _input_repeat
  .text._input_idle
-                0x00d1b658       0x2b obj/COMICS.o
-                0x00d1b658                _input_idle
+                0x00d1b6ea       0x2b obj/COMICS.o
+                0x00d1b6ea                _input_idle
  .text._lib_open
-                0x00d1b683       0xc3 obj/COMICS.o
-                0x00d1b683                _lib_open
+                0x00d1b715       0xc3 obj/COMICS.o
+                0x00d1b715                _lib_open
  .text._lib_get_book
-                0x00d1b746       0x68 obj/COMICS.o
-                0x00d1b746                _lib_get_book
+                0x00d1b7d8       0x68 obj/COMICS.o
+                0x00d1b7d8                _lib_get_book
  .text._lib_get_strip
-                0x00d1b7ae      0x177 obj/COMICS.o
-                0x00d1b7ae                _lib_get_strip
+                0x00d1b840      0x177 obj/COMICS.o
+                0x00d1b840                _lib_get_strip
  .text._lib_book_read_count
-                0x00d1b925       0x9b obj/COMICS.o
-                0x00d1b925                _lib_book_read_count
+                0x00d1b9b7       0x9b obj/COMICS.o
+                0x00d1b9b7                _lib_book_read_count
  .text._lib_save_strip
-                0x00d1b9c0      0x11b obj/COMICS.o
-                0x00d1b9c0                _lib_save_strip
+                0x00d1ba52      0x11b obj/COMICS.o
+                0x00d1ba52                _lib_save_strip
  .text._lib_title
-                0x00d1badb       0xaf obj/COMICS.o
-                0x00d1badb                _lib_title
- .text._main    0x00d1bb8a      0x111 obj/COMICS.o
-                0x00d1bb8a                _main
+                0x00d1bb6d       0xaf obj/COMICS.o
+                0x00d1bb6d                _lib_title
+ .text._main    0x00d1bc1c       0xc8 obj/COMICS.o
+                0x00d1bc1c                _main
  .text._render_init
-                0x00d1bc9b       0xc9 obj/COMICS.o
-                0x00d1bc9b                _render_init
+                0x00d1bce4       0xc9 obj/COMICS.o
+                0x00d1bce4                _render_init
  .text._render_free
-                0x00d1bd64       0x41 obj/COMICS.o
-                0x00d1bd64                _render_free
+                0x00d1bdad       0x41 obj/COMICS.o
+                0x00d1bdad                _render_free
  .text._render_reset
-                0x00d1bda5       0x65 obj/COMICS.o
-                0x00d1bda5                _render_reset
+                0x00d1bdee       0x65 obj/COMICS.o
+                0x00d1bdee                _render_reset
  .text._render_band
-                0x00d1be0a      0x190 obj/COMICS.o
-                0x00d1be0a                _render_band
+                0x00d1be53      0x190 obj/COMICS.o
+                0x00d1be53                _render_band
  .text._render_set_palette
-                0x00d1bf9a       0x3e obj/COMICS.o
-                0x00d1bf9a                _render_set_palette
+                0x00d1bfe3       0x3e obj/COMICS.o
+                0x00d1bfe3                _render_set_palette
  .text._render_view
-                0x00d1bfd8      0x3ef obj/COMICS.o
-                0x00d1bfd8                _render_view
+                0x00d1c021      0x3ef obj/COMICS.o
+                0x00d1c021                _render_view
  .text._ui_set_chrome_palette
-                0x00d1c3c7       0x89 obj/COMICS.o
-                0x00d1c3c7                _ui_set_chrome_palette
+                0x00d1c410       0x89 obj/COMICS.o
+                0x00d1c410                _ui_set_chrome_palette
  .text._set_ramp
-                0x00d1c450      0x17a obj/COMICS.o
+                0x00d1c499      0x17a obj/COMICS.o
  .text._ui_header
-                0x00d1c5ca       0x4d obj/COMICS.o
-                0x00d1c5ca                _ui_header
+                0x00d1c613       0x4d obj/COMICS.o
+                0x00d1c613                _ui_header
  .text._ui_footer
-                0x00d1c617       0x54 obj/COMICS.o
-                0x00d1c617                _ui_footer
+                0x00d1c660       0x54 obj/COMICS.o
+                0x00d1c660                _ui_footer
  .text._ui_draw_title
-                0x00d1c66b      0x14f obj/COMICS.o
-                0x00d1c66b                _ui_draw_title
+                0x00d1c6b4      0x14f obj/COMICS.o
+                0x00d1c6b4                _ui_draw_title
  .text._ui_message
-                0x00d1c7ba       0xaf obj/COMICS.o
-                0x00d1c7ba                _ui_message
+                0x00d1c803       0x81 obj/COMICS.o
+                0x00d1c803                _ui_message
  .text._ui_book_menu
-                0x00d1c869      0x242 obj/COMICS.o
-                0x00d1c869                _ui_book_menu
+                0x00d1c884      0x292 obj/COMICS.o
+                0x00d1c884                _ui_book_menu
  .text._list_move
-                0x00d1caab       0xa9 obj/COMICS.o
+                0x00d1cb16       0xa9 obj/COMICS.o
  .text._draw_row_background
-                0x00d1cb54       0x5e obj/COMICS.o
+                0x00d1cbbf       0x5e obj/COMICS.o
  .text._draw_scrollbar
-                0x00d1cbb2       0xa3 obj/COMICS.o
+                0x00d1cc1d       0xa3 obj/COMICS.o
  .text._list_navigate
-                0x00d1cc55       0x64 obj/COMICS.o
+                0x00d1ccc0       0x64 obj/COMICS.o
  .text._ui_strip_menu
-                0x00d1ccb9      0x2a5 obj/COMICS.o
-                0x00d1ccb9                _ui_strip_menu
+                0x00d1cd24      0x2a5 obj/COMICS.o
+                0x00d1cd24                _ui_strip_menu
  .text._ui_sync_screen
-                0x00d1cf5e       0x7b obj/COMICS.o
-                0x00d1cf5e                _ui_sync_screen
+                0x00d1cfc9       0x3d obj/COMICS.o
+                0x00d1cfc9                _ui_sync_screen
  .text._sync_draw
-                0x00d1cfd9       0x97 obj/COMICS.o
+                0x00d1d006       0x97 obj/COMICS.o
  .text._sync_progress
-                0x00d1d070       0x87 obj/COMICS.o
+                0x00d1d09d       0x87 obj/COMICS.o
  .text._proto_run
-                0x00d1d0f7      0x829 obj/COMICS.o
-                0x00d1d0f7                _proto_run
+                0x00d1d124      0x829 obj/COMICS.o
+                0x00d1d124                _proto_run
  .text._handle_event
-                0x00d1d920      0x1c2 obj/COMICS.o
- .text._drain   0x00d1dae2       0x7b obj/COMICS.o
+                0x00d1d94d      0x1c2 obj/COMICS.o
+ .text._drain   0x00d1db0f       0x7b obj/COMICS.o
  .text._archive_free
-                0x00d1db5d        0xb obj/COMICS.o
+                0x00d1db8a        0xb obj/COMICS.o
  .text._send_header
-                0x00d1db68       0x4d obj/COMICS.o
+                0x00d1db95       0x4d obj/COMICS.o
  .text._write_exact
-                0x00d1dbb5       0x6b obj/COMICS.o
- .text._reply   0x00d1dc20       0x20 obj/COMICS.o
+                0x00d1dbe2       0x6b obj/COMICS.o
+ .text._reply   0x00d1dc4d       0x20 obj/COMICS.o
  .text._read_exact
-                0x00d1dc40       0x6b obj/COMICS.o
+                0x00d1dc6d       0x6b obj/COMICS.o
  .text._viewer_run
-                0x00d1dcab      0xb53 obj/COMICS.o
-                0x00d1dcab                _viewer_run
- .text._clamp   0x00d1e7fe       0x85 obj/COMICS.o
- .text._pan     0x00d1e883      0x11b obj/COMICS.o
+                0x00d1dcd8      0xb23 obj/COMICS.o
+                0x00d1dcd8                _viewer_run
+ .text._clamp   0x00d1e7fb       0x85 obj/COMICS.o
+ .text._pan     0x00d1e880      0x11b obj/COMICS.o
  .text._npf_vpprintf
-                0x00d1e99e     0x1775 obj/COMICS.o
-                0x00d1e99e                _npf_vpprintf
+                0x00d1e99b     0x1775 obj/COMICS.o
+                0x00d1e99b                _npf_vpprintf
  .text._NPF_PUTC_IMPL
-                0x00d20113       0x2d obj/COMICS.o
+                0x00d20110       0x2d obj/COMICS.o
  .text._npf_utoa_rev
-                0x00d20140       0xe6 obj/COMICS.o
+                0x00d2013d       0xe6 obj/COMICS.o
  .text._vsnprintf
-                0x00d20226       0x88 obj/COMICS.o
-                0x00d20226                _vsnprintf
+                0x00d20223       0x88 obj/COMICS.o
+                0x00d20223                _vsnprintf
  .text._npf_bufputc
-                0x00d202ae       0x25 obj/COMICS.o
+                0x00d202ab       0x25 obj/COMICS.o
  .text._npf_bufputc_nop
-                0x00d202d3        0x7 obj/COMICS.o
+                0x00d202d0        0x7 obj/COMICS.o
  .text._snprintf
-                0x00d202da       0x28 obj/COMICS.o
-                0x00d202da                _snprintf
+                0x00d202d7       0x28 obj/COMICS.o
+                0x00d202d7                _snprintf
  .text._sprintf
-                0x00d20302       0x29 obj/COMICS.o
-                0x00d20302                _sprintf
- .text.__bctlz  0x00d2032b       0x22 obj/COMICS.o
-                0x00d2032b                __bctlz
- .text.__sctlz  0x00d2034d        0xc obj/COMICS.o
-                0x00d2034d                __sctlz
- .text.__ictlz  0x00d20359       0x12 obj/COMICS.o
-                0x00d20359                __ictlz
+                0x00d202ff       0x29 obj/COMICS.o
+                0x00d202ff                _sprintf
+ .text.__bctlz  0x00d20328       0x22 obj/COMICS.o
+                0x00d20328                __bctlz
+ .text.__sctlz  0x00d2034a        0xc obj/COMICS.o
+                0x00d2034a                __sctlz
+ .text.__ictlz  0x00d20356       0x12 obj/COMICS.o
+                0x00d20356                __ictlz
  .text.__llctlz
-                0x00d2036b        0xe obj/COMICS.o
-                0x00d2036b                __llctlz
+                0x00d20368        0xe obj/COMICS.o
+                0x00d20368                __llctlz
  .text.__i48ctlz
-                0x00d20379       0x15 obj/COMICS.o
-                0x00d20379                __i48ctlz
- .text._time    0x00d2038e       0x82 obj/COMICS.o
-                0x00d2038e                _time
- .text._mktime  0x00d20410      0x105 obj/COMICS.o
-                0x00d20410                _mktime
- .text._malloc  0x00d20515       0xc2 /home/walter/CEdev/lib/libc/allocator_standard.a(allocator_standard.o)
-                0x00d20515                _malloc
- .text._free    0x00d205d7       0xbd /home/walter/CEdev/lib/libc/allocator_standard.a(allocator_standard.o)
-                0x00d205d7                _free
+                0x00d20376       0x15 obj/COMICS.o
+                0x00d20376                __i48ctlz
+ .text._time    0x00d2038b       0x82 obj/COMICS.o
+                0x00d2038b                _time
+ .text._mktime  0x00d2040d      0x105 obj/COMICS.o
+                0x00d2040d                _mktime
+ .text._malloc  0x00d20512       0xc2 /home/walter/CEdev/lib/libc/allocator_standard.a(allocator_standard.o)
+                0x00d20512                _malloc
+ .text._free    0x00d205d4       0xbd /home/walter/CEdev/lib/libc/allocator_standard.a(allocator_standard.o)
+                0x00d205d4                _free
  *(.gnu.warning)
 
-.rodata         0x00d20694      0x42c
+.rodata         0x00d20692      0x424
  *(.rodata .rodata.* .gnu.linkonce.r.*)
  .rodata._proto_run
-                0x00d20694       0x18 obj/COMICS.o
+                0x00d20692       0x18 obj/COMICS.o
  .rodata._handle_event
-                0x00d206ac       0x24 obj/COMICS.o
- .rodata._.str  0x00d206d0        0x9 obj/COMICS.o
+                0x00d206aa       0x24 obj/COMICS.o
+ .rodata._.str  0x00d206ce        0x9 obj/COMICS.o
  .rodata._.str.2.4
-                0x00d206d9        0x3 obj/COMICS.o
+                0x00d206d7        0x3 obj/COMICS.o
  .rodata._.str.5
-                0x00d206dc       0x18 obj/COMICS.o
+                0x00d206da       0x18 obj/COMICS.o
  .rodata._.str.1.6
-                0x00d206f4       0x1e obj/COMICS.o
- .rodata._.str.2.7
-                0x00d20712       0x1e obj/COMICS.o
+                0x00d206f2       0x1e obj/COMICS.o
+ .rodata._.str.17
+                0x00d20710        0x6 obj/COMICS.o
+ .rodata._.str.1.18
+                0x00d20716        0xf obj/COMICS.o
+ .rodata._.str.2.19
+                0x00d20725       0x23 obj/COMICS.o
  .rodata._.str.3
-                0x00d20730       0x1d obj/COMICS.o
- .rodata._.str.18
-                0x00d2074d        0x6 obj/COMICS.o
- .rodata._.str.1.19
-                0x00d20753        0x6 obj/COMICS.o
- .rodata._.str.2.20
-                0x00d20759       0x23 obj/COMICS.o
- .rodata._.str.3.23
-                0x00d2077c        0x7 obj/COMICS.o
+                0x00d20748        0x6 obj/COMICS.o
  .rodata._.str.4
-                0x00d20783        0x2 obj/COMICS.o
- .rodata._.str.5.24
-                0x00d20785        0x4 obj/COMICS.o
+                0x00d2074e       0x23 obj/COMICS.o
+ .rodata._.str.5.22
+                0x00d20771        0x7 obj/COMICS.o
  .rodata._.str.6
-                0x00d20789       0x18 obj/COMICS.o
+                0x00d20778        0x2 obj/COMICS.o
  .rodata._.str.7
-                0x00d207a1        0xc obj/COMICS.o
+                0x00d2077a        0x4 obj/COMICS.o
  .rodata._.str.8
-                0x00d207ad       0x19 obj/COMICS.o
+                0x00d2077e       0x18 obj/COMICS.o
  .rodata._.str.9
-                0x00d207c6       0x1c obj/COMICS.o
+                0x00d20796        0xc obj/COMICS.o
  .rodata._.str.10
-                0x00d207e2        0x5 obj/COMICS.o
+                0x00d207a2       0x19 obj/COMICS.o
  .rodata._.str.11
-                0x00d207e7       0x13 obj/COMICS.o
+                0x00d207bb       0x1c obj/COMICS.o
  .rodata._.str.12
-                0x00d207fa       0x14 obj/COMICS.o
+                0x00d207d7        0x5 obj/COMICS.o
  .rodata._.str.13
-                0x00d2080e        0x3 obj/COMICS.o
+                0x00d207dc       0x13 obj/COMICS.o
+ .rodata._.str.14
+                0x00d207ef       0x14 obj/COMICS.o
+ .rodata._.str.15
+                0x00d20803        0x3 obj/COMICS.o
  .rodata._descriptors
-                0x00d20811        0xd obj/COMICS.o
- .rodata._.str.33
-                0x00d2081e        0xa obj/COMICS.o
- .rodata._.str.1.34
-                0x00d20828       0x15 obj/COMICS.o
+                0x00d20806        0xd obj/COMICS.o
+ .rodata._.str.31
+                0x00d20813        0xa obj/COMICS.o
+ .rodata._.str.1.32
+                0x00d2081d       0x15 obj/COMICS.o
  .rodata._bos_descriptor
-                0x00d2083d       0x39 obj/COMICS.o
+                0x00d20832       0x39 obj/COMICS.o
  .rodata._msos_descriptor
-                0x00d20876       0x2e obj/COMICS.o
+                0x00d2086b       0x2e obj/COMICS.o
+ *fill*         0x00d20899        0x1 
  .rodata._device_descriptor
-                0x00d208a4       0x12 obj/COMICS.o
+                0x00d2089a       0x12 obj/COMICS.o
  .rodata._configurations
-                0x00d208b6        0x3 obj/COMICS.o
+                0x00d208ac        0x3 obj/COMICS.o
  .rodata._langids
-                0x00d208b9        0x4 obj/COMICS.o
+                0x00d208af        0x4 obj/COMICS.o
  .rodata._strings
-                0x00d208bd        0x6 obj/COMICS.o
+                0x00d208b3        0x6 obj/COMICS.o
  .rodata._configuration
-                0x00d208c3       0x20 obj/COMICS.o
+                0x00d208b9       0x20 obj/COMICS.o
  .rodata._string_manufacturer
-                0x00d208e3       0x12 obj/COMICS.o
+                0x00d208d9       0x12 obj/COMICS.o
  .rodata._string_product
-                0x00d208f5       0x1c obj/COMICS.o
- .rodata._.str.3.29
-                0x00d20911        0x2 obj/COMICS.o
- .rodata._.str.4.30
-                0x00d20913        0xa obj/COMICS.o
- .rodata._.str.5.31
-                0x00d2091d        0x6 obj/COMICS.o
- .rodata._.str.6.32
-                0x00d20923        0x2 obj/COMICS.o
- .rodata._.str.37
-                0x00d20925       0x18 obj/COMICS.o
- .rodata._.str.1.38
-                0x00d2093d       0x1e obj/COMICS.o
- .rodata._.str.2.41
-                0x00d2095b        0xe obj/COMICS.o
- .rodata._.str.3.39
-                0x00d20969        0x6 obj/COMICS.o
- .rodata._.str.4.40
-                0x00d2096f        0x1 obj/COMICS.o
+                0x00d208eb       0x1c obj/COMICS.o
+ .rodata._.str.3.27
+                0x00d20907        0x2 obj/COMICS.o
+ .rodata._.str.4.28
+                0x00d20909        0xa obj/COMICS.o
+ .rodata._.str.5.29
+                0x00d20913        0x6 obj/COMICS.o
+ .rodata._.str.6.30
+                0x00d20919        0x2 obj/COMICS.o
+ .rodata._.str.35
+                0x00d2091b       0x18 obj/COMICS.o
+ .rodata._.str.1.36
+                0x00d20933       0x1e obj/COMICS.o
+ .rodata._.str.2.39
+                0x00d20951        0xe obj/COMICS.o
+ .rodata._.str.3.37
+                0x00d2095f        0x6 obj/COMICS.o
+ .rodata._.str.4.38
+                0x00d20965        0x1 obj/COMICS.o
  .rodata._npf_vpprintf
-                0x00d20970      0x102 obj/COMICS.o
+                0x00d20966      0x102 obj/COMICS.o
  .rodata._.str.1
-                0x00d20a72        0x4 obj/COMICS.o
+                0x00d20a68        0x4 obj/COMICS.o
  .rodata._.str.2
-                0x00d20a76        0x4 obj/COMICS.o
+                0x00d20a6c        0x4 obj/COMICS.o
  .rodata._mktime.yday
-                0x00d20a7a       0x24 obj/COMICS.o
+                0x00d20a70       0x24 obj/COMICS.o
  .rodata.libload
-                0x00d20a9e       0x22 obj/crt0.o
+                0x00d20a94       0x22 obj/crt0.o
 
-.init_array     0x00d20ac0        0x0
+.init_array     0x00d20ab6        0x0
                 [!provide]                        PROVIDE (__init_array_start = .)
  *(.preinit_array)
  *(SORT_BY_INIT_PRIORITY(.init_array.*))
  *(.init_array)
                 [!provide]                        PROVIDE (__init_array_end = .)
 
-.fini_array     0x00d20ac0        0x0
+.fini_array     0x00d20ab6        0x0
                 [!provide]                        PROVIDE (__fini_array_start = .)
  *(SORT_BY_INIT_PRIORITY(.fini_array.*))
  *(.fini_array)
                 [!provide]                        PROVIDE (__fini_array_end = .)
-                0x00d20ac0                        ___data_low = .
+                0x00d20ab6                        ___data_low = .
 
-.data           0x00d20ac0        0x3
+.data           0x00d20ab6        0x3
  *(.data .data.* .gnu.linkonce.d.*)
  .data._heap_ptr
-                0x00d20ac0        0x3 /home/walter/CEdev/lib/libc/allocator_standard.a(allocator_standard.o)
+                0x00d20ab6        0x3 /home/walter/CEdev/lib/libc/allocator_standard.a(allocator_standard.o)
  *(.data1)
-                0x00d20ac3                        ___runprgm_reloc_start = .
+                0x00d20ab9                        ___runprgm_reloc_start = .
  *(.runprgm.reloc)
-                0x00d20ac3                        ___runprgm_reloc_end = .
-                0x00d20ac3                        ___data_high = .
+                0x00d20ab9                        ___runprgm_reloc_end = .
+                0x00d20ab9                        ___data_high = .
                 0x00000003                        ___data_len = (___data_high - ___data_low)
                 0x00d052c6                        . = BSSHEAP_LOW
                 0x00d052c6                        ___bss_low = .

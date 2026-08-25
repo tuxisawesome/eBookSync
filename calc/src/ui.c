@@ -102,7 +102,12 @@ void ui_message(const char *line1, const char *line2) {
         gfx_PrintStringXY(line2, 10, 118);
     gfx_SwapDraw();
 
+    /* Whatever key got us here may still be held. Wait for it to come up
+     * before listening, or the message vanishes the instant it is drawn. */
     input_reset();
+    do {
+        input_scan();
+    } while (!input_idle());
     do {
         input_scan();
     } while (input_idle());
@@ -184,6 +189,13 @@ ui_result_t ui_book_menu(uint16_t *selection) {
         if (dirty) {
             gfx_FillScreen(UI_BG);
             ui_header("Books");
+
+            if (!list.count) {
+                gfx_SetTextFGColor(UI_DIM);
+                gfx_SetTextBGColor(UI_BG);
+                gfx_PrintStringXY("No comics yet.", 10, 90);
+                gfx_PrintStringXY("Press 2nd to sync from a computer.", 10, 108);
+            }
 
             for (uint16_t row = 0; row < UI_LIST_ROWS; row++) {
                 uint16_t index = list.first + row;
