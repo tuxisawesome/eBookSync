@@ -19,9 +19,15 @@ around and zoom in. It remembers where you got to and marks a strip read when
 you reach the end.
 
 The sync page reads a folder of comics off your disk — one folder per book —
-lets you tick which books and strips you want, converts them, and sends them.
-It reads back what you have finished, records that in a metadata file beside
-your comics, and can clear read strips off the calculator to make room for more.
+lets you arrange the library and tick which books and strips you want, converts
+them, and sends them. It reads back what you have finished, records that in a
+metadata file beside your comics, and can clear read strips off the calculator
+to make room for more.
+
+The library is editable in the page: drag images in to add them, create, rename
+and delete books and strips, and drag rows into the order you want to read them.
+That order lives in `ebooksync.json` next to your comics, and it is the order the
+calculator shows — not whatever the filenames happen to sort into.
 
 ## Constraints worth knowing
 
@@ -76,13 +82,34 @@ comics/
     01.jpg
 ```
 
-Folders are books, JPEGs are strips, and the filename is the title. Files sort
-naturally, so `10` comes after `9`.
+Folders are books, JPEGs are strips, and the filename is the title. A library
+with no metadata yet starts out in natural order, so `10` comes after `9`; after
+that the order is whatever you arrange in the page.
+
+You do not have to lay it out by hand — you can start from an empty folder and
+drag comics into the page instead.
 
 **3. Open the sync page.**
 
 Open `web/index.html` in Chrome — straight off disk is fine, there is nothing to
 build or serve. Choose your comics folder, tick what you want, and press Sync.
+
+## Arranging the library
+
+Everything below happens on your actual files, in the folder you chose:
+
+| | |
+|---|---|
+| add strips | drop images onto a book |
+| add a book | drop a folder onto the list, or press **New book** |
+| reorder | drag a row, or use the ↑ ↓ buttons on it |
+| move between books | drag a strip onto another book |
+| rename | the ✎ button on a book or strip |
+| delete | the ✕ button — this deletes from disk, and cannot be undone |
+
+Renaming and reordering keep a strip's identity, so they cost a quick index
+update on the next sync rather than re-sending the comic. Deleting a strip that
+is on the calculator removes it from the calculator too, on the next sync.
 
 **4. Connect the calculator.**
 

@@ -28,8 +28,13 @@
   <section class="panel" id="library-panel">
     <div class="panel-head">
       <h2>Library</h2>
+      <button id="new-book" type="button" disabled>New book</button>
       <input id="filter" type="search" placeholder="Filter titles…" autocomplete="off">
     </div>
+    <p class="hint">
+      Drop images on a book to add them, or drop a whole folder here to make a new
+      book. Drag rows to reorder — that order is what the calculator shows.
+    </p>
     <div id="tree" class="tree" role="tree" aria-label="Books and strips"></div>
   </section>
 

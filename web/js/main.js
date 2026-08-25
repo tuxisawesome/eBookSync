@@ -1,8 +1,14 @@
 /*
- * The sync page: pick a library, tick what you want, send it.
+ * The sync page: arrange a library, tick what you want, send it.
  *
  * Everything that decides bytes lives elsewhere -- this wires the DOM to
- * fs/meta/sync and keeps the tree and the space meter honest.
+ * fs/meta/sync, keeps the tree and the space meter honest, and makes the
+ * library editable: drop files in, create and delete and rename books and
+ * strips, and drag them into the order you want to read them.
+ *
+ * Order lives in ebooksync.json, not in filenames, and flows straight through
+ * to the calculator: CSLIB lists books and strips in array order and the reader
+ * draws them in the order it finds them.
  */
 
 import * as cacheStore from './cache.js';
@@ -17,6 +23,7 @@ const ui = {
   status: el('status'),
   unsupported: el('unsupported'),
   chooseFolder: el('choose-folder'),
+  newBook: el('new-book'),
   connect: el('connect'),
   sync: el('sync'),
   tree: el('tree'),
@@ -38,6 +45,7 @@ const ui = {
   planBody: el('plan-body'),
   planGo: el('plan-go'),
   progressDialog: el('progress-dialog'),
+  progressTitle: el('progress-title'),
   progressStatus: el('progress-status'),
   progressFill: el('progress-fill'),
   progressLog: el('progress-log'),
@@ -51,11 +59,20 @@ const state = {
   meta: metaStore.defaultMeta(),
   calculator: null,
   resident: [],
+  deviceIndex: null,
   freeArchive: null,
   expanded: new Set(),
   filter: '',
   pool: null,
+  busy: false,
 };
+
+/* What is currently being dragged inside the tree, if anything. dataTransfer
+ * cannot be read during dragover, so the payload has to live here. */
+let dragging = null;
+
+/* Anchor for shift-click range selection. */
+let lastClicked = { book: null, index: -1 };
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -71,21 +88,17 @@ function setStatus(text, kind = '') {
   ui.status.className = `notice${kind ? ` ${kind}` : ''}`;
 }
 
-function stripsOf(bookName) {
-  const book = state.meta.books[bookName];
-  const scanned = state.books.find((entry) => entry.name === bookName);
-  if (!book || !scanned) return [];
-  return scanned.strips
-    .filter((strip) => book.strips[strip.name])
-    .map((strip) => ({
-      file: strip.name,
-      title: fs.titleFromFilename(strip.name),
-      state: book.strips[strip.name],
-    }));
-}
-
 function matchesFilter(text) {
   return !state.filter || text.toLowerCase().includes(state.filter);
+}
+
+/** Strips of one book, in stored order, as { file, title, state }. */
+function stripsOf(bookName) {
+  return metaStore.stripNames(state.meta, bookName).map((file) => ({
+    file,
+    title: fs.titleFromFilename(file),
+    state: state.meta.books[bookName].strips[file],
+  }));
 }
 
 /* ---------------------------------------------------------------- rendering */
@@ -97,122 +110,268 @@ function chip(text, kind) {
   return span;
 }
 
+function actionButton(label, title, handler) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'action';
+  button.textContent = label;
+  button.title = title;
+  button.setAttribute('aria-label', title);
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    handler();
+  });
+  return button;
+}
+
 function stripChips(strip) {
   const chips = document.createElement('div');
   chips.className = 'chips';
   if (strip.state.onCalc) chips.append(chip('on calc', 'on-calc'));
   if (strip.state.read) chips.append(chip('read', 'read'));
   if (strip.state.selected && !strip.state.onCalc) chips.append(chip('queued', 'queued'));
-  const size = strip.state.deviceBytes
-    || syncEngine.estimateBytes(strip, state.meta.settings);
+  const size = strip.state.deviceBytes || syncEngine.estimateBytes(strip, state.meta.settings);
   chips.append(chip(kb(size), 'size'));
   return chips;
+}
+
+/*
+ * Drag and drop does two different jobs on the same rows: reordering inside the
+ * tree, and importing files from outside it. They are told apart by whether
+ * `dragging` is set -- an internal drag always sets it on dragstart.
+ */
+function makeDropTarget(row, target) {
+  /*
+   * What a drop on this row would mean, worked out fresh from the pointer.
+   *
+   * Deliberately not remembered between dragover and drop: dragleave fires
+   * whenever the pointer crosses into a child element, so any state kept in CSS
+   * classes gets cleared mid-drag and every drop would land in the wrong place.
+   */
+  const intent = (event) => {
+    if (state.busy) return null;
+
+    if (!dragging) {
+      /* A drag from outside: only meaningful over a book. */
+      if (target.kind !== 'book') return null;
+      if (!Array.from(event.dataTransfer.types).includes('Files')) return null;
+      return { kind: 'import' };
+    }
+
+    if (dragging.kind === 'strip' && target.kind === 'book' && dragging.book !== target.book) {
+      return { kind: 'move-into' };
+    }
+    if (dragging.kind !== target.kind) return null;
+    if (dragging.kind === 'strip' && dragging.book !== target.book) return null;
+
+    const box = row.getBoundingClientRect();
+    return { kind: 'reorder', after: event.clientY > box.top + box.height / 2 };
+  };
+
+  const clear = () => row.classList.remove('drop-before', 'drop-after', 'drop-into');
+
+  row.addEventListener('dragover', (event) => {
+    const what = intent(event);
+    if (!what) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (what.kind === 'reorder') {
+      row.classList.toggle('drop-after', what.after);
+      row.classList.toggle('drop-before', !what.after);
+      row.classList.remove('drop-into');
+    } else {
+      event.dataTransfer.dropEffect = what.kind === 'import' ? 'copy' : 'move';
+      row.classList.add('drop-into');
+      row.classList.remove('drop-before', 'drop-after');
+    }
+  });
+
+  row.addEventListener('dragleave', clear);
+
+  row.addEventListener('drop', (event) => {
+    const what = intent(event);
+    clear();
+    if (!what) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (what.kind === 'import') {
+      /* Read the drop now: a DataTransfer is only alive during its event. */
+      importDrop(fs.readDrop(event.dataTransfer), target.book);
+    } else if (what.kind === 'move-into') {
+      opMoveStripToBook(dragging.book, dragging.file, target.book);
+    } else if (dragging.kind === 'book') {
+      opReorderBook(dragging.book, target.index + (what.after ? 1 : 0));
+    } else {
+      opReorderStrip(dragging.book, dragging.file, target.index + (what.after ? 1 : 0));
+    }
+  });
+}
+
+function makeDraggable(row, payload) {
+  row.draggable = true;
+  row.addEventListener('dragstart', (event) => {
+    if (state.busy) {
+      event.preventDefault();
+      return;
+    }
+    dragging = payload;
+    row.classList.add('dragging');
+    event.dataTransfer.effectAllowed = 'move';
+    /* Some browsers refuse to start a drag with no payload at all. */
+    event.dataTransfer.setData('text/plain', payload.file || payload.book);
+  });
+  row.addEventListener('dragend', () => {
+    dragging = null;
+    row.classList.remove('dragging');
+  });
+}
+
+function renderBookRow(bookName, index, strips, open) {
+  const row = document.createElement('div');
+  row.className = 'row book-row';
+
+  const twisty = document.createElement('button');
+  twisty.type = 'button';
+  twisty.className = 'twisty';
+  twisty.textContent = open ? '▾' : '▸';
+  twisty.setAttribute('aria-label', open ? 'Collapse' : 'Expand');
+  twisty.addEventListener('click', () => {
+    if (state.expanded.has(bookName)) state.expanded.delete(bookName);
+    else state.expanded.add(bookName);
+    renderTree();
+  });
+
+  const label = document.createElement('label');
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  const selected = strips.filter((strip) => strip.state.selected).length;
+  box.checked = selected > 0 && selected === strips.length;
+  box.indeterminate = selected > 0 && selected < strips.length;
+  box.disabled = !strips.length;
+  box.addEventListener('change', () => {
+    for (const strip of strips) strip.state.selected = box.checked;
+    refreshSelection();
+    renderTree();
+  });
+
+  const title = document.createElement('span');
+  title.className = 'title';
+  title.textContent = bookName;
+  label.append(box, title);
+
+  const actions = document.createElement('div');
+  actions.className = 'actions';
+  actions.append(
+    actionButton('↑', 'Move this book up', () => opReorderBook(bookName, index - 1)),
+    actionButton('↓', 'Move this book down', () => opReorderBook(bookName, index + 2)),
+    actionButton('✎', 'Rename this book', () => opRenameBook(bookName)),
+    actionButton('✕', 'Delete this book', () => opDeleteBook(bookName)),
+  );
+
+  const chips = document.createElement('div');
+  chips.className = 'chips';
+  const read = strips.filter((strip) => strip.state.read).length;
+  chips.append(chip(`${read}/${strips.length} read`, 'read'));
+
+  row.append(twisty, label, chips, actions);
+  makeDraggable(row, { kind: 'book', book: bookName, index });
+  makeDropTarget(row, { kind: 'book', book: bookName, index });
+  return row;
+}
+
+function renderStripRow(bookName, strip, index, siblings) {
+  const row = document.createElement('div');
+  row.className = 'row strip-row';
+
+  const label = document.createElement('label');
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = strip.state.selected;
+  box.addEventListener('click', (event) => {
+    /* Shift-click selects a range, the way file lists everywhere do. */
+    if (event.shiftKey && lastClicked.book === bookName && lastClicked.index >= 0) {
+      const [from, to] = [Math.min(lastClicked.index, index), Math.max(lastClicked.index, index)];
+      for (let i = from; i <= to; i++) siblings[i].state.selected = box.checked;
+    } else {
+      strip.state.selected = box.checked;
+    }
+    lastClicked = { book: bookName, index };
+    refreshSelection();
+    renderTree();
+  });
+
+  const title = document.createElement('span');
+  title.className = 'title';
+  title.textContent = strip.title;
+  label.append(box, title);
+
+  const actions = document.createElement('div');
+  actions.className = 'actions';
+  actions.append(
+    actionButton('↑', 'Move this strip up', () => opReorderStrip(bookName, strip.file, index - 1)),
+    actionButton('↓', 'Move this strip down', () => opReorderStrip(bookName, strip.file, index + 2)),
+    actionButton('✎', 'Rename this strip', () => opRenameStrip(bookName, strip.file)),
+    actionButton('✕', 'Delete this strip', () => opDeleteStrip(bookName, strip.file)),
+  );
+
+  row.append(label, stripChips(strip), actions);
+  makeDraggable(row, { kind: 'strip', book: bookName, file: strip.file, index });
+  makeDropTarget(row, { kind: 'strip', book: bookName, file: strip.file, index });
+  return row;
 }
 
 function renderTree() {
   ui.tree.replaceChildren();
 
-  const visibleBooks = state.books.filter((book) => {
-    if (!state.meta.books[book.name]) return false;
+  const names = metaStore.bookNames(state.meta).filter((name) => {
     if (!state.filter) return true;
-    return matchesFilter(book.name)
-      || stripsOf(book.name).some((strip) => matchesFilter(strip.title));
+    return matchesFilter(name) || stripsOf(name).some((strip) => matchesFilter(strip.title));
   });
 
-  if (!visibleBooks.length) {
+  if (!names.length) {
     const empty = document.createElement('p');
     empty.className = 'empty';
-    empty.textContent = state.books.length
+    empty.textContent = metaStore.bookNames(state.meta).length
       ? 'Nothing matches that filter.'
-      : 'No books found. Each book should be a folder of JPEGs.';
+      : 'No books yet. Drop a folder of images here, or press New book.';
     ui.tree.append(empty);
     return;
   }
 
-  for (const book of visibleBooks) {
-    const strips = stripsOf(book.name);
-    const shown = state.filter && !matchesFilter(book.name)
+  names.forEach((bookName, index) => {
+    const strips = stripsOf(bookName);
+    const shown = state.filter && !matchesFilter(bookName)
       ? strips.filter((strip) => matchesFilter(strip.title))
       : strips;
 
     const container = document.createElement('div');
     container.className = 'book';
 
-    const row = document.createElement('div');
-    row.className = 'row';
-
-    const open = state.expanded.has(book.name) || Boolean(state.filter);
-    const twisty = document.createElement('button');
-    twisty.type = 'button';
-    twisty.className = 'twisty';
-    twisty.textContent = open ? '▾' : '▸';
-    twisty.setAttribute('aria-label', open ? 'Collapse' : 'Expand');
-    twisty.addEventListener('click', () => {
-      if (state.expanded.has(book.name)) state.expanded.delete(book.name);
-      else state.expanded.add(book.name);
-      renderTree();
-    });
-
-    const label = document.createElement('label');
-    const box = document.createElement('input');
-    box.type = 'checkbox';
-    const selectedCount = strips.filter((strip) => strip.state.selected).length;
-    box.checked = selectedCount > 0 && selectedCount === strips.length;
-    box.indeterminate = selectedCount > 0 && selectedCount < strips.length;
-    box.addEventListener('change', () => {
-      for (const strip of strips) strip.state.selected = box.checked;
-      refreshSelection();
-      renderTree();
-    });
-
-    const title = document.createElement('span');
-    title.className = 'title';
-    title.textContent = book.name;
-    label.append(box, title);
-
-    const readCount = strips.filter((strip) => strip.state.read).length;
-    const chips = document.createElement('div');
-    chips.className = 'chips';
-    chips.append(chip(`${readCount}/${strips.length} read`, 'read'));
-
-    row.append(twisty, label, chips);
-    container.append(row);
+    const open = state.expanded.has(bookName) || Boolean(state.filter);
+    container.append(renderBookRow(bookName, index, strips, open));
 
     if (open) {
-      let lastClicked = -1;
-      shown.forEach((strip, position) => {
-        const stripRow = document.createElement('div');
-        stripRow.className = 'row strip-row';
-
-        const stripLabel = document.createElement('label');
-        const stripBox = document.createElement('input');
-        stripBox.type = 'checkbox';
-        stripBox.checked = strip.state.selected;
-        stripBox.addEventListener('click', (event) => {
-          /* Shift-click selects a range, the way file lists everywhere do. */
-          if (event.shiftKey && lastClicked >= 0) {
-            const [from, to] = [Math.min(lastClicked, position), Math.max(lastClicked, position)];
-            for (let i = from; i <= to; i++) shown[i].state.selected = stripBox.checked;
-          } else {
-            strip.state.selected = stripBox.checked;
-          }
-          lastClicked = position;
-          refreshSelection();
-          renderTree();
-        });
-
-        const stripTitle = document.createElement('span');
-        stripTitle.className = 'title';
-        stripTitle.textContent = strip.title;
-        stripLabel.append(stripBox, stripTitle);
-
-        stripRow.append(stripLabel, stripChips(strip));
-        container.append(stripRow);
-      });
+      if (!strips.length) {
+        const empty = document.createElement('p');
+        empty.className = 'empty-book';
+        empty.textContent = 'Empty. Drop images on this book to add them.';
+        container.append(empty);
+      }
+      /* Rows carry their index within the full list, not the filtered one, so
+       * reordering while filtering still moves things where you expect. */
+      for (const strip of shown) {
+        container.append(renderStripRow(bookName, strip,
+                                        strips.findIndex((each) => each.file === strip.file),
+                                        strips));
+      }
     }
 
     ui.tree.append(container);
-  }
+  });
 }
 
 function refreshSelection() {
@@ -241,7 +400,7 @@ function refreshSelection() {
   ui.meterFill.style.width = `${fraction * 100}%`;
   ui.meterFill.classList.toggle('over', total > budget);
 
-  ui.sync.disabled = !state.calculator || (!pending.length && !state.meta.settings.autoDelete);
+  ui.sync.disabled = !state.calculator || state.busy;
   saveMetaSoon();
 }
 
@@ -271,11 +430,17 @@ let saveTimer = null;
 function saveMetaSoon() {
   if (!state.root) return;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    metaStore.save(state.root, serialisableMeta()).catch((error) => {
-      setStatus(`Could not write ${metaStore.META_FILENAME}: ${error.message}`, 'error');
-    });
-  }, 400);
+  saveTimer = setTimeout(() => { saveMetaNow(); }, 400);
+}
+
+async function saveMetaNow() {
+  if (!state.root) return;
+  clearTimeout(saveTimer);
+  try {
+    await metaStore.save(state.root, serialisableMeta());
+  } catch (error) {
+    setStatus(`Could not write ${metaStore.META_FILENAME}: ${error.message}`, 'error');
+  }
 }
 
 /* The in-memory metadata carries live file handles; strip them before writing. */
@@ -288,6 +453,170 @@ function serialisableMeta() {
   }));
 }
 
+/* --------------------------------------------------------- library editing */
+
+/**
+ * Run an operation that touches the disk.
+ *
+ * Everything is serialised behind `busy` -- two overlapping renames of the same
+ * book would race on the filesystem -- and every one ends with a rescan, so the
+ * tree always shows what is actually there rather than what we hoped.
+ */
+async function runOp(label, action) {
+  if (state.busy || !state.root) return;
+  state.busy = true;
+  ui.tree.classList.add('busy');
+  setStatus(label, 'busy');
+
+  try {
+    await action();
+    await rescan();
+    await saveMetaNow();
+    setStatus(label.replace(/…$/, '') + ' — done.');
+  } catch (error) {
+    if (error.name !== 'AbortError') setStatus(error.message, 'error');
+    /* The disk may have changed before the failure, so resync the view. */
+    try {
+      await rescan();
+    } catch { /* the rescan error is less interesting than the original */ }
+  } finally {
+    state.busy = false;
+    ui.tree.classList.remove('busy');
+    renderTree();
+    refreshSelection();
+  }
+}
+
+async function rescan() {
+  state.books = await fs.scanLibrary(state.root);
+  metaStore.reconcile(state.meta, state.books);
+  if (state.resident.length) metaStore.mergeFromCalculator(state.meta, state.resident);
+}
+
+function opReorderBook(bookName, toIndex) {
+  metaStore.reorderBook(state.meta, bookName, toIndex);
+  saveMetaSoon();
+  renderTree();
+  refreshSelection();
+}
+
+function opReorderStrip(bookName, file, toIndex) {
+  metaStore.reorderStrip(state.meta, bookName, file, toIndex);
+  saveMetaSoon();
+  renderTree();
+  refreshSelection();
+}
+
+function opNewBook() {
+  const name = window.prompt('Name for the new book');
+  if (name === null) return;
+  runOp(`Creating "${name}"…`, async () => {
+    const created = await fs.createBook(state.root, name);
+    metaStore.addBookKey(state.meta, created);
+    state.expanded.add(created);
+  });
+}
+
+function opRenameBook(bookName) {
+  const name = window.prompt('Rename this book', bookName);
+  if (name === null || name === bookName) return;
+  runOp(`Renaming "${bookName}"…`, async () => {
+    const renamed = await fs.renameBook(state.root, bookName, name);
+    metaStore.renameBookKey(state.meta, bookName, renamed);
+    if (state.expanded.delete(bookName)) state.expanded.add(renamed);
+  });
+}
+
+function opDeleteBook(bookName) {
+  const strips = stripsOf(bookName);
+  const onCalc = strips.filter((strip) => strip.state.onCalc).length;
+  const warning = onCalc
+    ? `\n\n${onCalc} of them are on the calculator and will be removed on the next sync.`
+    : '';
+  if (!window.confirm(
+    `Delete "${bookName}" and its ${strips.length} strip(s) from disk?${warning}`
+    + '\n\nThis cannot be undone.',
+  )) return;
+
+  runOp(`Deleting "${bookName}"…`, async () => {
+    await fs.deleteBook(state.root, bookName);
+    metaStore.removeBookKey(state.meta, bookName);
+    state.expanded.delete(bookName);
+  });
+}
+
+function opRenameStrip(bookName, file) {
+  const name = window.prompt('Rename this strip', fs.titleFromFilename(file));
+  if (name === null) return;
+  runOp(`Renaming "${file}"…`, async () => {
+    const renamed = await fs.renameStrip(state.root, bookName, file, name);
+    metaStore.renameStripKey(state.meta, bookName, file, renamed);
+  });
+}
+
+function opDeleteStrip(bookName, file) {
+  const strip = state.meta.books[bookName].strips[file];
+  const warning = strip && strip.onCalc
+    ? '\n\nIt is on the calculator and will be removed on the next sync.'
+    : '';
+  if (!window.confirm(`Delete "${file}" from disk?${warning}\n\nThis cannot be undone.`)) return;
+
+  runOp(`Deleting "${file}"…`, async () => {
+    await fs.deleteStrip(state.root, bookName, file);
+    metaStore.removeStripKey(state.meta, bookName, file);
+  });
+}
+
+function opMoveStripToBook(fromBook, file, toBook) {
+  runOp(`Moving "${file}" to "${toBook}"…`, async () => {
+    const name = await fs.moveStripToBook(state.root, fromBook, toBook, file);
+    metaStore.moveStripKey(state.meta, fromBook, toBook, file);
+    if (name !== file) metaStore.renameStripKey(state.meta, toBook, file, name);
+    state.expanded.add(toBook);
+  });
+}
+
+/**
+ * Files dropped from outside.
+ *
+ * Loose images go into `bookName`; a dropped folder becomes a book of its own,
+ * which is the shape a downloaded chapter usually arrives in.
+ *
+ * `pending` is the promise fs.readDrop returned. It has to be started inside
+ * the drop event itself -- a DataTransfer is dead the moment the handler
+ * returns -- so the caller starts it and we only await the result.
+ */
+function importDrop(pending, bookName) {
+  runOp('Importing…', async () => {
+    const { loose, folders } = await pending;
+    if (!loose.length && !folders.size) {
+      throw new Error('Nothing to import — drop JPEG files or a folder of them.');
+    }
+
+    if (loose.length) {
+      if (!bookName) throw new Error('Drop loose images onto a book, or drop a whole folder.');
+      setStatus(`Importing ${loose.length} file(s) into "${bookName}"…`, 'busy');
+      await fs.importFiles(state.root, bookName, loose, ({ index, total, name }) => {
+        setStatus(`Importing ${index + 1}/${total}: ${name}`, 'busy');
+      });
+      state.expanded.add(bookName);
+    }
+
+    for (const [folder, files] of folders) {
+      const created = state.meta.books[folder]
+        ? folder
+        : await fs.createBook(state.root, folder).catch(() => folder);
+      if (!state.meta.books[created]) metaStore.addBookKey(state.meta, created);
+
+      setStatus(`Importing ${files.length} file(s) into "${created}"…`, 'busy');
+      await fs.importFiles(state.root, created, files, ({ index, total, name }) => {
+        setStatus(`Importing ${index + 1}/${total}: ${name}`, 'busy');
+      });
+      state.expanded.add(created);
+    }
+  });
+}
+
 /* --------------------------------------------------------------------- flow */
 
 async function loadLibrary(root) {
@@ -297,14 +626,15 @@ async function loadLibrary(root) {
   state.books = await fs.scanLibrary(root);
   state.meta = metaStore.reconcile(await metaStore.load(root), state.books);
 
-  const strips = state.books.reduce((sum, book) => sum + book.strips.length, 0);
-  setStatus(`${state.books.length} books, ${strips} strips.`);
+  const strips = metaStore.flatten(state.meta, state.books).length;
+  setStatus(`${metaStore.bookNames(state.meta).length} books, ${strips} strips.`);
 
+  ui.newBook.disabled = false;
   refreshSettings();
   renderTree();
   refreshSelection();
   refreshDevice();
-  await metaStore.save(root, serialisableMeta());
+  await saveMetaNow();
 }
 
 async function connect() {
@@ -317,6 +647,7 @@ async function connect() {
     state.calculator = calculator;
     state.freeArchive = hello.freeArchive;
     state.resident = await calculator.list();
+    state.deviceIndex = await calculator.getIndex();
 
     metaStore.mergeFromCalculator(state.meta, state.resident);
     setStatus(`Connected. ${state.resident.length} strips on the calculator.`);
@@ -324,7 +655,7 @@ async function connect() {
     renderTree();
     refreshSelection();
     refreshDevice();
-    await metaStore.save(state.root, serialisableMeta());
+    await saveMetaNow();
   } catch (error) {
     state.calculator = null;
     refreshDevice();
@@ -340,6 +671,19 @@ function describeConnectError(error) {
     return `Could not open the calculator: ${error.message}. On Linux you may need the udev rule from docs/PROTOCOL.md.`;
   }
   return `Could not connect: ${error.message}`;
+}
+
+/** Has the order or have the titles changed since the calculator was written? */
+function indexIsStale() {
+  if (!state.calculator) return false;
+  try {
+    const next = syncEngine.buildIndexFor(state.meta, state.books);
+    const current = state.deviceIndex;
+    if (!current || current.length !== next.length) return true;
+    return !next.every((byte, i) => byte === current[i]);
+  } catch {
+    return false;
+  }
 }
 
 function describePlan(plan) {
@@ -367,8 +711,14 @@ function describePlan(plan) {
        (strip) => `${strip.book} — ${strip.title}`);
   list(`Remove ${plan.deletes.length} read strip(s):`, plan.deletes,
        (strip) => `${strip.book} — ${strip.title}`);
-  list(`Remove ${plan.orphans.length} unknown strip(s):`, plan.orphans,
+  list(`Remove ${plan.orphans.length} strip(s) no longer in the library:`, plan.orphans,
        (orphan) => `slot ${orphan.slot}`);
+
+  if (plan.indexStale) {
+    const note = document.createElement('p');
+    note.textContent = 'Update the book and strip order and titles on the calculator.';
+    parts.push(note);
+  }
 
   if (plan.skipped.length) {
     const warning = document.createElement('p');
@@ -379,19 +729,21 @@ function describePlan(plan) {
     parts.push(warning);
   }
 
-  if (!plan.pushes.length && !plan.deletes.length && !plan.orphans.length) {
+  if (plan.empty) {
     const nothing = document.createElement('p');
-    nothing.textContent = 'Nothing to do — the calculator already matches your selection.';
+    nothing.textContent = 'Nothing to do — the calculator already matches your library.';
     parts.push(nothing);
   }
 
   ui.planBody.replaceChildren(...parts);
-  ui.planGo.disabled = !plan.pushes.length && !plan.deletes.length && !plan.orphans.length;
+  ui.planGo.disabled = plan.empty;
 }
 
 async function runSync() {
-  const plan = syncEngine.plan(state.meta, state.books, state.resident,
-                               { freeArchive: state.freeArchive });
+  const plan = syncEngine.plan(state.meta, state.books, state.resident, {
+    freeArchive: state.freeArchive,
+    indexStale: indexIsStale(),
+  });
   describePlan(plan);
 
   ui.planDialog.returnValue = '';
@@ -457,14 +809,16 @@ async function runSync() {
 
     state.resident = await state.calculator.list();
     state.freeArchive = await state.calculator.freeSpace();
+    state.deviceIndex = await state.calculator.getIndex();
     metaStore.mergeFromCalculator(state.meta, state.resident);
-    await metaStore.save(state.root, serialisableMeta());
+    await saveMetaNow();
   } catch (error) {
     appendLog(`Failed: ${error.message}`);
     ui.progressStatus.textContent = 'Something went wrong';
     /* The connection is the usual casualty; make the user reconnect rather than
      * leaving a half-dead device handle around. */
     state.calculator = null;
+    state.deviceIndex = null;
   } finally {
     ui.progressStop.hidden = true;
     ui.progressClose.hidden = false;
@@ -509,6 +863,30 @@ function bindSettings() {
   });
 }
 
+/* Dropping on the tree background rather than on a book: only whole folders
+ * make sense there, since loose files would have no book to go into. */
+function bindTreeDrop() {
+  ui.tree.addEventListener('dragover', (event) => {
+    if (dragging || state.busy || !state.root) return;
+    if (!event.dataTransfer.types.includes('Files')) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    ui.tree.classList.add('drop-into');
+  });
+  ui.tree.addEventListener('dragleave', (event) => {
+    if (event.target === ui.tree) ui.tree.classList.remove('drop-into');
+  });
+  ui.tree.addEventListener('drop', (event) => {
+    ui.tree.classList.remove('drop-into');
+    if (dragging || state.busy || !state.root) return;
+    event.preventDefault();
+    importDrop(fs.readDrop(event.dataTransfer), null);
+  });
+  /* Without this the browser navigates away when a drop misses a target. */
+  window.addEventListener('dragover', (event) => event.preventDefault());
+  window.addEventListener('drop', (event) => event.preventDefault());
+}
+
 async function start() {
   if (!fs.isSupported() || !usbSupported()) {
     ui.unsupported.hidden = false;
@@ -517,6 +895,7 @@ async function start() {
   }
 
   bindSettings();
+  bindTreeDrop();
   refreshSettings();
 
   ui.chooseFolder.addEventListener('click', async () => {
@@ -528,6 +907,7 @@ async function start() {
     }
   });
 
+  ui.newBook.addEventListener('click', opNewBook);
   ui.connect.addEventListener('click', connect);
   ui.sync.addEventListener('click', runSync);
   ui.progressClose.addEventListener('click', () => ui.progressDialog.close());

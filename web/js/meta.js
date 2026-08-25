@@ -1,17 +1,24 @@
 /*
- * ebooksync.json: what has been read, what is selected, and when we last synced.
+ * ebooksync.json: the order of things, what has been read, what is selected,
+ * and when we last synced.
  *
  * It lives in the root of the library directory so the state travels with the
  * comics. The calculator is authoritative for read flags and scroll positions
  * -- that is where reading happens -- and this file is authoritative for
- * everything else.
+ * everything else, including the order books and strips appear in.
+ *
+ * Order is stored here rather than inferred from filenames because the point of
+ * the library editor is to let you arrange a library that does not happen to
+ * sort the way you want it read. The order flows straight through to the
+ * calculator: CSLIB lists books and strips in array order, and the reader draws
+ * them in the order it finds them.
  */
 
 import { readJson, writeJson, titleFromFilename } from './fs.js';
 import { DEFAULT_PRESET, LAYER_PRESETS } from './convert.js';
 
 export const META_FILENAME = 'ebooksync.json';
-export const VERSION = 1;
+export const VERSION = 2;
 
 /* 3 MB of archive, minus room for the OS's own housekeeping and the index. */
 export const DEFAULT_DEVICE_BUDGET = 2_900_000;
@@ -41,6 +48,10 @@ export async function load(root) {
   meta.settings.keepRead = Math.max(0, Number(meta.settings.keepRead) || 0);
   meta.settings.maxDeviceBytes = Number(meta.settings.maxDeviceBytes) || DEFAULT_DEVICE_BUDGET;
   meta.books = raw.books && typeof raw.books === 'object' ? raw.books : {};
+
+  /* Version 1 had no order fields. Anything without one picks its order up in
+   * reconcile() from the natural sort the scan already did, which is exactly
+   * the order a version 1 library was displayed in. */
   return meta;
 }
 
@@ -48,12 +59,54 @@ export async function save(root, meta) {
   await writeJson(root, META_FILENAME, meta);
 }
 
+/* ------------------------------------------------------------------ ordering */
+
+const hasOrder = (entry) => Number.isFinite(entry && entry.order);
+
+function nextOrder(entries) {
+  let max = -1;
+  for (const entry of entries) {
+    if (hasOrder(entry) && entry.order > max) max = entry.order;
+  }
+  return max + 1;
+}
+
+/** Renumber a sorted list to 0..n-1, so orders stay dense and comparable. */
+function renumber(entries) {
+  entries.forEach((entry, index) => { entry.order = index; });
+}
+
+/** Book names in display order. */
+export function bookNames(meta) {
+  return Object.keys(meta.books).sort((a, b) => {
+    const left = meta.books[a].order;
+    const right = meta.books[b].order;
+    if (left !== right) return left - right;
+    return a.localeCompare(b);
+  });
+}
+
+/** Filenames of one book in display order. */
+export function stripNames(meta, bookName) {
+  const book = meta.books[bookName];
+  if (!book) return [];
+  return Object.keys(book.strips).sort((a, b) => {
+    const left = book.strips[a].order;
+    const right = book.strips[b].order;
+    if (left !== right) return left - right;
+    return a.localeCompare(b);
+  });
+}
+
 /**
  * Fold a fresh directory scan into the metadata.
  *
- * New strips get a slot; strips whose file has vanished are dropped, along with
- * books that end up empty. Slots are stable identities -- they name the appvars
- * on the calculator -- so an existing one is never reassigned.
+ * New strips get a slot and land at the end of their book rather than wherever
+ * their filename happens to sort -- dropping episode 15 into a library should
+ * put it after 14, not somewhere in the middle. Strips whose file has vanished
+ * are dropped, along with books that end up empty of both files and metadata.
+ * Slots are stable identities -- they name the appvars on the calculator -- so
+ * an existing one is never reassigned.
  */
 export function reconcile(meta, books) {
   const used = new Set();
@@ -74,14 +127,19 @@ export function reconcile(meta, books) {
   };
 
   const merged = {};
+  const previousBooks = Object.values(meta.books);
+  let bookOrder = nextOrder(previousBooks);
+
   for (const book of books) {
     const previous = meta.books[book.name] || {};
     const strips = {};
+    let stripOrder = nextOrder(Object.values(previous.strips || {}));
 
     for (const strip of book.strips) {
       const before = (previous.strips || {})[strip.name] || {};
       strips[strip.name] = {
         id: Number.isInteger(before.id) ? before.id : nextSlot(),
+        order: hasOrder(before) ? before.order : stripOrder++,
         selected: before.selected === true,
         read: before.read === true,
         readAt: before.readAt || null,
@@ -95,28 +153,145 @@ export function reconcile(meta, books) {
       };
     }
 
-    if (Object.keys(strips).length) merged[book.name] = { strips };
+    /* An empty book is kept: you can create one in the editor and fill it
+     * later, and deleting it is an explicit action. */
+    merged[book.name] = {
+      order: hasOrder(previous) ? previous.order : bookOrder++,
+      strips,
+    };
   }
 
   meta.books = merged;
+  normalise(meta);
   return meta;
 }
 
-/** Every strip as a flat list in reading order, with its book and filename. */
+/** Squeeze every order back to 0..n-1. Cheap, and keeps the file tidy. */
+export function normalise(meta) {
+  renumber(bookNames(meta).map((name) => meta.books[name]));
+  for (const name of Object.keys(meta.books)) {
+    renumber(stripNames(meta, name).map((file) => meta.books[name].strips[file]));
+  }
+  return meta;
+}
+
+/*
+ * `toIndex` means "put it where the row currently at toIndex is", counting in
+ * the list as it looks *before* the move. That is what a drag lands on -- you
+ * drop onto a row you can see -- so dropping on the row below something moves
+ * it down by one. Pulling the item out first would shift every index after it
+ * and make a downward drag land one short.
+ */
+function moveWithin(names, from, toIndex) {
+  const [item] = names.splice(from, 1);
+  const target = from < toIndex ? toIndex - 1 : toIndex;
+  names.splice(Math.max(0, Math.min(target, names.length)), 0, item);
+  return names;
+}
+
+/** Move a book to a new position in the book list. */
+export function reorderBook(meta, name, toIndex) {
+  const names = bookNames(meta);
+  const from = names.indexOf(name);
+  if (from < 0) return meta;
+
+  renumber(moveWithin(names, from, toIndex).map((each) => meta.books[each]));
+  return meta;
+}
+
+/** Move a strip to a new position within its book. */
+export function reorderStrip(meta, bookName, file, toIndex) {
+  const book = meta.books[bookName];
+  if (!book || !book.strips[file]) return meta;
+
+  const files = stripNames(meta, bookName);
+  renumber(moveWithin(files, files.indexOf(file), toIndex).map((each) => book.strips[each]));
+  return meta;
+}
+
+/* ------------------------------------------------- structural edits */
+
+/**
+ * Rekey a book after its folder was renamed on disk.
+ *
+ * The slot ids, read state and order ride along, so renaming a book does not
+ * cost you a re-sync of its contents -- only the titles on the calculator
+ * change.
+ */
+export function renameBookKey(meta, oldName, newName) {
+  if (oldName === newName || !meta.books[oldName]) return meta;
+  if (meta.books[newName]) throw new Error(`a book called "${newName}" already exists`);
+
+  meta.books[newName] = meta.books[oldName];
+  delete meta.books[oldName];
+  return meta;
+}
+
+/** Rekey a strip after its file was renamed on disk. */
+export function renameStripKey(meta, bookName, oldFile, newFile) {
+  const book = meta.books[bookName];
+  if (!book || oldFile === newFile || !book.strips[oldFile]) return meta;
+  if (book.strips[newFile]) throw new Error(`"${newFile}" already exists in this book`);
+
+  book.strips[newFile] = book.strips[oldFile];
+  delete book.strips[oldFile];
+  return meta;
+}
+
+/** Move a strip's metadata to another book, appending it at the end. */
+export function moveStripKey(meta, fromBook, toBook, file) {
+  const source = meta.books[fromBook];
+  const target = meta.books[toBook];
+  if (!source || !target || !source.strips[file]) return meta;
+  if (target.strips[file]) throw new Error(`"${file}" already exists in "${toBook}"`);
+
+  const state = source.strips[file];
+  delete source.strips[file];
+  state.order = nextOrder(Object.values(target.strips));
+  target.strips[file] = state;
+  return meta;
+}
+
+export function addBookKey(meta, name) {
+  if (meta.books[name]) throw new Error(`a book called "${name}" already exists`);
+  meta.books[name] = { order: nextOrder(Object.values(meta.books)), strips: {} };
+  return meta;
+}
+
+export function removeBookKey(meta, name) {
+  delete meta.books[name];
+  return normalise(meta);
+}
+
+export function removeStripKey(meta, bookName, file) {
+  const book = meta.books[bookName];
+  if (book) delete book.strips[file];
+  return normalise(meta);
+}
+
+/* ------------------------------------------------------------------- views */
+
+/**
+ * Every strip as a flat list in display order, with its book and filename.
+ *
+ * Driven by the stored order rather than the directory scan; the scan only
+ * supplies the file handles. This is the order that reaches the calculator.
+ */
 export function flatten(meta, books) {
-  const out = [];
+  const handles = new Map();
   for (const book of books) {
-    const entry = meta.books[book.name];
-    if (!entry) continue;
-    for (const strip of book.strips) {
-      const state = entry.strips[strip.name];
-      if (!state) continue;
+    for (const strip of book.strips) handles.set(`${book.name}/${strip.name}`, strip.handle);
+  }
+
+  const out = [];
+  for (const bookName of bookNames(meta)) {
+    for (const file of stripNames(meta, bookName)) {
       out.push({
-        book: book.name,
-        file: strip.name,
-        title: titleFromFilename(strip.name),
-        handle: strip.handle,
-        state,
+        book: bookName,
+        file,
+        title: titleFromFilename(file),
+        handle: handles.get(`${bookName}/${file}`) || null,
+        state: meta.books[bookName].strips[file],
       });
     }
   }

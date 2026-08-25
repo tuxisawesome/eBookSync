@@ -135,6 +135,124 @@ Bands are indexed `base[layer] + col * bands_per_col[layer] + band`, where
 A decompressed band is `stride * rows` bytes, where `stride = (col_width + 1) / 2`
 and `rows` is 32 except in the final band of a column.
 
+## `CSLIB`: the library index
+
+One appvar describing only what is actually resident on the calculator -- the
+computer stays the source of truth for the whole library. It carries the
+book/strip tree, per-strip read state and saved scroll position, and the
+pre-rendered title bitmaps.
+
+```
+Header (12 bytes)
+  0   5   magic       "CSLIB"
+  5   1   version     2
+  6   2   bookCount
+  8   2   stripCount
+  10  2   reserved
+
+Book table (bookCount x 6 bytes)
+  0   2   titleOffset     byte offset of the title record, from the start
+  2   2   stripFirst      index into the strip table
+  4   2   stripCount
+
+Strip table (stripCount x 16 bytes)
+  0   1   slot            names the CS<slot><chunk> appvars
+  1   1   chunkCount
+  2   3   bytes
+  5   1   flags           bit 0: read
+  6   4   readAt          unix seconds, 0 if never
+  10  3   pos             saved scroll position, in the saved layer's rows
+  13  1   layer           saved zoom layer
+  14  2   titleOffset
+
+Title records (variable, referenced by offset)
+  0   2   width
+  2   1   height          always 16
+  3   2   compressed length
+  5   ..  ZX0 stream of the 2bpp rows, stride = (width + 3) / 4
+```
+
+**Both tables are in display order**, and the reader draws them in the order it
+finds them. That is the entire mechanism by which the order arranged in the sync
+page is the order you get on the calculator; nothing on the calculator sorts
+anything.
+
+Titles are rendered on the computer, **not** stored as text -- the calculator
+has no CJK font and does no text shaping. Each is a 2bpp anti-aliased bitmap
+16 px tall, already ellipsised by the renderer to the list column width (300 px
+for books, 272 px for strips, leaving room for the read marker and size). The
+four grey levels map to reserved graphx palette indices 240-243 on a normal row
+and 244-247 on a selected one, leaving 0-15 for the artwork; level 0 is skipped
+when drawing so the row colour shows through.
+
+The bitmaps are ZX0-compressed. Uncompressed, a worst-case title is
+300 x 16 x 2 / 8 = 1 200 bytes and a library's worth would not fit in one
+appvar; compressed they come to a couple of kilobytes, and the reader expands
+only the row it is currently drawing, into a single scratch buffer.
+
+## The library on disk, and `ebooksync.json`
+
+Books are folders, strips are the JPEGs inside them, and a strip's title is its
+filename without the extension:
+
+```
+comics/
+  ebooksync.json
+  第一本书/
+    001 - 标题.jpg
+    002 - 标题.jpg
+  Another Book/
+    01.jpg
+```
+
+**Display order is metadata, not filenames.** `ebooksync.json` carries an
+explicit `order` on every book and every strip, and that is what the sync page
+shows and what is written into CSLIB. Nothing infers an order from names at sync
+time.
+
+A file discovered on disk for the first time is appended to the end of its book
+rather than slotted in where its name happens to sort -- dropping episode 15
+into a library should put it after 14, not in the middle. A library with no
+metadata yet takes its initial order from a natural sort, which is what it would
+have had anyway.
+
+```jsonc
+{
+  "version": 2,
+  "lastSync": "2026-08-25T17:40:00Z",
+  "settings": { "detail": "fit+1.5x", "colors": 16, "dither": false,
+                "selection": "manual", "autoDelete": true, "keepRead": 2,
+                "maxDeviceBytes": 2900000 },
+  "books": {
+    "第一本书": {
+      "order": 0,
+      "strips": {
+        "001 - 标题.jpg": {
+          "id": 17, "order": 0, "selected": true,
+          "read": true, "readAt": "2026-08-24T20:11:00Z", "pos": 3120, "layer": 1,
+          "srcHash": "…", "srcSize": 1962500,
+          "onCalc": true, "chunkCount": 25, "deviceBytes": 401927
+        }
+      }
+    }
+  }
+}
+```
+
+`id` is a stable 0-255 slot, assigned once and never reassigned; it is what
+names the `CS<slot><chunk>` appvars. It survives renames and moves between
+books, so renaming or reordering costs a fresh index on the next sync rather
+than re-sending half a megabyte of chunks.
+
+The calculator is authoritative for `read`, `readAt`, `pos` and `layer` -- that
+is where reading happens -- and this file is authoritative for everything else.
+`onCalc` is rebuilt from what the calculator reports rather than from what the
+page believes, so an interrupted sync corrects itself.
+
+Version 1 of this file had no `order` fields. Anything missing one picks its
+order up from the natural sort on the next scan, which is exactly the order a
+version 1 library was displayed in.
+
 ## Tools
 
 ```sh

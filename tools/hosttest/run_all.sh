@@ -30,6 +30,10 @@ echo "== library index: browser builder -> calculator parser =="
 "$node" "$dir/check_js_library.mjs"
 
 echo
+echo "== library editing, and order reaching the calculator =="
+"$node" "$dir/check_library_edit.mjs"
+
+echo
 echo "== sync planner =="
 "$node" "$dir/check_planner.mjs"
 

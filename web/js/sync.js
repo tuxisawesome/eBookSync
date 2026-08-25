@@ -73,8 +73,12 @@ export class ConversionPool {
  *
  * `resident` is what the calculator reported. Nothing here touches the
  * calculator or the disk -- it is pure enough to show as a preview.
+ *
+ * `indexStale` says the order or titles have changed since the calculator was
+ * last written, which is a reason to sync even when no bytes need moving.
+ * The caller works it out, because doing so needs a canvas to render titles.
  */
-export function plan(meta, books, resident, { freeArchive = null } = {}) {
+export function plan(meta, books, resident, { freeArchive = null, indexStale = false } = {}) {
   const strips = flatten(meta, books);
   const bySlot = new Map(resident.map((strip) => [strip.slot, strip]));
   const { autoDelete, keepRead, selection, maxDeviceBytes } = meta.settings;
@@ -133,7 +137,12 @@ export function plan(meta, books, resident, { freeArchive = null } = {}) {
     pushes.push(strip);
   }
 
-  return { strips, deletes, orphans, pushes, skipped, projectedBytes: residentBytes, budget };
+  return {
+    strips, deletes, orphans, pushes, skipped, indexStale,
+    projectedBytes: residentBytes,
+    budget,
+    empty: !pushes.length && !deletes.length && !orphans.length && !indexStale,
+  };
 }
 
 /* Bytes per source byte, measured across the sample strip at each preset. Only
@@ -216,8 +225,17 @@ export async function execute(calculator, meta, books, currentPlan, {
   return { aborted: false };
 }
 
-/** The CSLIB describing exactly what is resident now. */
-export function buildIndexFor(meta, books) {
+/**
+ * The CSLIB describing exactly what is resident now.
+ *
+ * Books and strips go in in the order stored in ebooksync.json, and the reader
+ * draws them in the order it finds them -- that is the whole mechanism by which
+ * the order you arrange here is the order you get on the calculator.
+ *
+ * `render` is injectable so this can be built where there is no canvas; the
+ * host tests use a deterministic stand-in.
+ */
+export function buildIndexFor(meta, books, { render = undefined } = {}) {
   const strips = flatten(meta, books);
   const grouped = new Map();
 
@@ -238,5 +256,6 @@ export function buildIndexFor(meta, books) {
 
   return library.buildIndex(
     [...grouped.entries()].map(([title, bookStrips]) => ({ title, strips: bookStrips })),
+    render ? { render } : {},
   );
 }
