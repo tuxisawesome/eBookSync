@@ -1,0 +1,12 @@
+# Built by tools/build.sh
+tools/vendor/zx0/libzx0.so
+tools/vendor/zx0/libzx0.dylib
+tools/vendor/zx0/zx0.dll
+
+__pycache__/
+*.pyc
+
+# Converter output
+out/
+*.8xv
+*.8xp

@@ -1,0 +1,14 @@
+#ifndef FILEIOC_H
+#define FILEIOC_H
+
+#include "shim.h"
+
+uint8_t ti_Open(const char *name, const char *mode);
+int ti_Close(uint8_t handle);
+void *ti_GetDataPtr(uint8_t handle);
+int ti_Delete(const char *name);
+int ti_Seek(int offset, unsigned origin, uint8_t handle);
+size_t ti_Write(const void *data, size_t size, size_t count, uint8_t handle);
+int ti_SetArchiveStatus(bool archive, uint8_t handle);
+
+#endif /* FILEIOC_H */

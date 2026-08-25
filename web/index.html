@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>eBookSync</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<header class="bar">
+  <h1>eBookSync</h1>
+  <div class="bar-actions">
+    <button id="choose-folder" type="button">Choose library folder…</button>
+    <button id="connect" type="button" disabled>Connect calculator</button>
+    <button id="sync" type="button" class="primary" disabled>Sync…</button>
+  </div>
+</header>
+
+<p id="unsupported" class="notice error" hidden>
+  This page needs WebUSB and the File System Access API, which only Chromium-based
+  browsers have. Open it in Chrome or Edge.
+</p>
+
+<p id="status" class="notice" role="status">Choose the folder holding your comics to begin.</p>
+
+<main>
+  <section class="panel" id="library-panel">
+    <div class="panel-head">
+      <h2>Library</h2>
+      <input id="filter" type="search" placeholder="Filter titles…" autocomplete="off">
+    </div>
+    <div id="tree" class="tree" role="tree" aria-label="Books and strips"></div>
+  </section>
+
+  <aside class="panel" id="settings-panel">
+    <h2>Settings</h2>
+
+    <label class="field">
+      <span>Detail</span>
+      <select id="detail">
+        <option value="fit">Fit width only — smallest, most strips fit</option>
+        <option value="fit+1.5x">Fit width + 1.5× zoom</option>
+        <option value="fit+2x">Fit width + 2× zoom — sharpest, fewest fit</option>
+      </select>
+    </label>
+
+    <label class="field">
+      <span>Which strips to send</span>
+      <select id="selection">
+        <option value="manual">The ones I tick</option>
+        <option value="auto">The next unread ones automatically</option>
+      </select>
+    </label>
+
+    <label class="field checkbox">
+      <input id="auto-delete" type="checkbox">
+      <span>Remove read strips from the calculator</span>
+    </label>
+
+    <label class="field" id="keep-read-field">
+      <span>…but keep the most recent <output id="keep-read-value">2</output></span>
+      <input id="keep-read" type="range" min="0" max="10" step="1">
+    </label>
+
+    <label class="field">
+      <span>Space to use on the calculator</span>
+      <input id="budget" type="number" min="100" step="100">
+      <small>KB. The calculator has about 3000 KB of archive in total.</small>
+    </label>
+
+    <h2>Calculator</h2>
+    <dl class="stats">
+      <dt>Status</dt><dd id="device-status">Not connected</dd>
+      <dt>Free archive</dt><dd id="device-free">—</dd>
+      <dt>Strips on device</dt><dd id="device-count">—</dd>
+      <dt>Last sync</dt><dd id="last-sync">Never</dd>
+    </dl>
+
+    <details class="help">
+      <summary>How to connect</summary>
+      <ol>
+        <li>Run <strong>COMICS</strong> on the calculator.</li>
+        <li>Press <strong>2nd</strong> on the book list to open the Sync screen.</li>
+        <li>Plug the calculator in and press <strong>Connect calculator</strong>.</li>
+      </ol>
+      <p>
+        On OS 5.5 and later the calculator needs the arTIfiCE jailbreak before it
+        will run native programs at all.
+      </p>
+    </details>
+  </aside>
+</main>
+
+<footer class="bar footer">
+  <div id="selection-summary">Nothing selected</div>
+  <div class="meter"><div id="meter-fill" class="meter-fill"></div></div>
+</footer>
+
+<dialog id="plan-dialog">
+  <form method="dialog">
+    <h2>This sync will…</h2>
+    <div id="plan-body" class="plan-body"></div>
+    <menu>
+      <button value="cancel">Cancel</button>
+      <button value="go" class="primary" id="plan-go">Sync</button>
+    </menu>
+  </form>
+</dialog>
+
+<dialog id="progress-dialog">
+  <h2 id="progress-title">Syncing</h2>
+  <p id="progress-status">Starting…</p>
+  <div class="meter"><div id="progress-fill" class="meter-fill"></div></div>
+  <pre id="progress-log" class="log"></pre>
+  <menu>
+    <button type="button" id="progress-stop">Stop</button>
+    <button type="button" id="progress-close" hidden class="primary">Close</button>
+  </menu>
+</dialog>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

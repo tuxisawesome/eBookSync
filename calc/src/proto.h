@@ -1,0 +1,73 @@
+/*
+ * The eBookSync USB protocol.
+ *
+ * The reader takes over the USB port and presents itself as a vendor-specific
+ * device, so the sync page can claim it with WebUSB directly. Every message is
+ * an 8-byte header and an optional payload; the computer sends a request and
+ * the calculator answers with the same command and sequence number.
+ *
+ * All fields are little-endian. See docs/PROTOCOL.md, and keep this file in
+ * step with web/js/usb.js.
+ */
+
+#ifndef PROTO_H
+#define PROTO_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#define PROTO_VERSION       1
+
+/* Chosen from the pid.codes test range: this is not a shipping USB product and
+ * must not squat on a real vendor's IDs. */
+#define PROTO_VENDOR_ID     0x1209
+#define PROTO_PRODUCT_ID    0x0001
+
+#define PROTO_EP_OUT        0x01    /* computer -> calculator */
+#define PROTO_EP_IN         0x82    /* calculator -> computer */
+#define PROTO_PACKET_SIZE   64      /* full speed bulk */
+
+#define PROTO_HEADER_SIZE   8
+
+typedef enum {
+    PROTO_HELLO      = 0x01,   /* -> version, free archive space */
+    PROTO_LIST       = 0x02,   /* -> the resident strips and their read state */
+    PROTO_PUT_CHUNK  = 0x03,   /* <- one 16 KB chunk of a strip */
+    PROTO_DEL        = 0x04,   /* <- delete every chunk of a strip */
+    PROTO_INDEX_GET  = 0x05,   /* -> the CSLIB index */
+    PROTO_INDEX_PUT  = 0x06,   /* <- replace the CSLIB index */
+    PROTO_SPACE      = 0x07,   /* -> free archive space */
+    PROTO_BYE        = 0x08,   /* <- leave sync mode */
+} proto_cmd_t;
+
+typedef enum {
+    PROTO_OK          = 0,
+    PROTO_BAD_CMD     = 1,
+    PROTO_BAD_LENGTH  = 2,
+    PROTO_NO_ROOM     = 3,     /* not enough archive space */
+    PROTO_WRITE_FAIL  = 4,     /* could not create or archive the variable */
+    PROTO_NOT_FOUND   = 5,
+    PROTO_TRUNCATED   = 6,     /* the payload ended early */
+} proto_status_t;
+
+/* Header: u8 cmd, u8 seq, u16 status, u32 length. */
+typedef struct {
+    uint8_t cmd;
+    uint8_t seq;
+    uint16_t status;
+    uint32_t length;
+} proto_header_t;
+
+/*
+ * Run the sync session: take over USB, answer requests until the computer says
+ * BYE or the user presses clear, then hand the port back to the OS.
+ *
+ * `progress` is called so the caller can draw a status screen; it returns false
+ * to abort.
+ */
+typedef bool (*proto_progress_t)(const char *state, uint8_t slot, uint8_t chunk,
+                                 uint8_t chunk_count);
+
+bool proto_run(proto_progress_t progress);
+
+#endif /* PROTO_H */
