@@ -22,6 +22,7 @@
 #include "library.h"
 
 #include <fileioc.h>
+#include <stdlib.h>
 #include <string.h>
 #include <tice.h>
 #include <srldrvce.h>
@@ -60,6 +61,31 @@ static uint24_t loop_count;
  * recommends 512.
  */
 static uint8_t serial_buffer[512];
+
+/*
+ * Everything the read-only commands answer with, gathered before USB starts.
+ *
+ * Those answers come from the OS -- ti_ArchiveHasRoom walks the VAT and flash,
+ * and HELLO used to call it two dozen times in a binary search. Running OS
+ * routines like that while a USB transfer may be in flight is what froze the
+ * link: the echo test, which touches nothing but srl_Read and srl_Write, has
+ * never once failed. So the OS is asked once, up front, and the answers are
+ * served from here.
+ */
+/*
+ * A whole chunk is taken into RAM before any of it is written.
+ *
+ * Writing as it arrived meant ti_Write calls interleaved between USB reads --
+ * OS work and USB traffic taking turns, which is the pattern most likely to
+ * upset the driver. Now the transfer finishes first and the OS work happens in
+ * one go with no USB in between. Allocated before usb_Init and freed after
+ * usb_Cleanup, so the heap is never touched while the link is up.
+ */
+static uint8_t *chunk_buffer;
+
+static uint24_t cached_archive_free;
+static const uint8_t *cached_index;
+static uint16_t cached_index_size;
 
 static srl_device_t serial;
 static bool serial_open;
@@ -166,7 +192,7 @@ static uint24_t archive_free(void) {
 }
 
 static bool cmd_hello(uint8_t seq) {
-    uint24_t space = archive_free();
+    uint24_t space = cached_archive_free;
     uint8_t body[6];
     body[0] = PROTO_VERSION;
     body[1] = (uint8_t)space;
@@ -227,50 +253,38 @@ static bool cmd_list(uint8_t seq) {
 static bool cmd_put_chunk(uint8_t seq, uint16_t arg, uint32_t length,
                           proto_progress_t progress) {
     /* Slot and chunk index ride in the header rather than at the front of the
-     * payload: there they would share a USB packet with the chunk data behind
-     * them, and could not be read separately from it. */
+     * payload, so the payload is nothing but chunk data. */
     uint8_t slot = (uint8_t)arg;
     uint8_t index = (uint8_t)(arg >> 8);
-    uint32_t payload = length;
 
-    if (!payload || payload > CSX_CHUNK_SIZE) {
+    if (!length || length > CSX_CHUNK_SIZE || !chunk_buffer) {
         drain(length);
         return reply(PROTO_PUT_CHUNK, seq, PROTO_BAD_LENGTH);
     }
 
+    /* Take the whole thing off the link first: no OS calls until it is in. */
+    if (!read_exact(chunk_buffer, (size_t)length))
+        return false;
+
     char name[9];
     csx_chunk_name(name, slot, index);
+
     ti_Delete(name);
 
+    bool ok = false;
+    bool archived = false;
     uint8_t handle = ti_Open(name, "w");
-    if (!handle) {
-        drain(payload);
-        return reply(PROTO_PUT_CHUNK, seq, PROTO_WRITE_FAIL);
-    }
+    if (handle) {
+        ok = ti_Write(chunk_buffer, (size_t)length, 1, handle) == 1;
 
-    /* Stream straight into the variable rather than staging the whole chunk:
-     * 16 KB of RAM is more than the reader can spare. */
-    bool ok = true;
-    uint32_t left = payload;
-    while (left) {
-        size_t take = left > sizeof stream ? sizeof stream : (size_t)left;
-        if (!read_exact(stream, take)) {
-            ti_Close(handle);
+        /* Archive rather than pre-checking for room: the OS collects deleted
+         * variables here if it has to, which a ti_ArchiveHasRoom test would
+         * have refused without ever freeing anything. */
+        archived = ok && ti_SetArchiveStatus(true, handle) != 0;
+        ti_Close(handle);
+        if (!archived)
             ti_Delete(name);
-            return false;
-        }
-        if (ti_Write(stream, take, 1, handle) != 1)
-            ok = false;
-        left -= take;
     }
-
-    /* Archive rather than pre-checking for room: the OS collects deleted
-     * variables here if it has to, which a ti_ArchiveHasRoom test would have
-     * refused without ever freeing anything. */
-    bool archived = ok && ti_SetArchiveStatus(true, handle) != 0;
-    ti_Close(handle);
-    if (!archived)
-        ti_Delete(name);
 
     if (progress)
         progress("Receiving", slot, index, 0);
@@ -288,13 +302,11 @@ static bool cmd_delete(uint8_t seq, uint16_t arg, uint32_t length) {
 }
 
 static bool cmd_index_get(uint8_t seq) {
-    uint8_t handle = ti_Open(LIB_NAME, "r");
-    if (!handle)
-        return send_header(PROTO_INDEX_GET, seq, PROTO_OK, 0);
+    uint16_t size = cached_index_size;
+    const uint8_t *data = cached_index;
 
-    uint16_t size = (uint16_t)ti_GetSize(handle);
-    const uint8_t *data = ti_GetDataPtr(handle);
-    ti_Close(handle);
+    if (!data || !size)
+        return send_header(PROTO_INDEX_GET, seq, PROTO_OK, 0);
 
     if (!send_header(PROTO_INDEX_GET, seq, PROTO_OK, size))
         return false;
@@ -349,7 +361,7 @@ static bool cmd_index_put(uint8_t seq, uint32_t length) {
 }
 
 static bool cmd_space(uint8_t seq) {
-    uint24_t space = archive_free();
+    uint24_t space = cached_archive_free;
     uint8_t body[3] = { (uint8_t)space, (uint8_t)(space >> 8), (uint8_t)(space >> 16) };
     return send_header(PROTO_SPACE, seq, PROTO_OK, sizeof body)
         && write_exact(body, sizeof body);
@@ -439,6 +451,21 @@ uint16_t proto_errors(void) { return receive_errors; }
 uint8_t proto_schedule_error(void) { return (uint8_t)open_error; }
 uint24_t proto_loops(void) { return loop_count; }
 
+/* Ask the OS everything the link will need, while it is still safe to ask. */
+static void gather_state(void) {
+    cached_archive_free = archive_free();
+
+    cached_index = NULL;
+    cached_index_size = 0;
+
+    uint8_t handle = ti_Open(LIB_NAME, "r");
+    if (handle) {
+        cached_index_size = (uint16_t)ti_GetSize(handle);
+        cached_index = ti_GetDataPtr(handle);
+        ti_Close(handle);
+    }
+}
+
 bool proto_run(proto_progress_t progress, bool echo_only) {
     requests_handled = 0;
     last_command = 0;
@@ -449,6 +476,11 @@ bool proto_run(proto_progress_t progress, bool echo_only) {
     serial_open = false;
     header_filled = 0;
     active_progress = progress;
+
+    gather_state();
+
+    /* The band cache has been handed back by now, so there is room. */
+    chunk_buffer = malloc(CSX_CHUNK_SIZE);
 
     if (usb_Init(handle_event, NULL, srl_GetCDCStandardDescriptors(),
                  USB_DEFAULT_INIT_FLAGS) != USB_SUCCESS) {
@@ -507,5 +539,8 @@ bool proto_run(proto_progress_t progress, bool echo_only) {
 
     active_progress = NULL;
     usb_Cleanup();
+
+    free(chunk_buffer);
+    chunk_buffer = NULL;
     return true;
 }

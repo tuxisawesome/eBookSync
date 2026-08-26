@@ -1,47 +1,52 @@
 # Where things stand
 
-`srl_echo` works on this Mac; the reader's own echo mode freezes on port open.
-That was the decisive pair:
+Echo mode works. Sync freezes. Between them that isolates the fault precisely:
 
-- **srldrvce and the CDC transport are fine.** Enumeration, control requests,
-  the lot.
-- **The protocol is innocent.** Echo mode runs none of it and still froze.
-- The fault is something else in the reader's environment that `srl_echo` does
-  not have.
+- **The transport is fine.** `srl_echo` works, and so does the reader's own echo
+  mode -- bytes in, bytes out, `req` climbing as you type.
+- **The fault is in what the protocol *does***, not in the link it does it over.
 
-## What changed as a result
+## What the protocol does that echo does not
 
-The sync loop now matches `srl_echo` as closely as it can. Three differences
-were removed:
+It calls the operating system. `HELLO`, the very first command and the one the
+page sends on connect, called `ti_ArchiveHasRoom()` **twenty-four times** in a
+binary search for the free archive size. That routine walks the VAT and the
+flash. Doing that while a USB transfer may be in flight is the one thing echo
+mode never does, and echo mode has never once failed.
 
-1. **`srl_Open` is called from inside the USB event handler**, the way
-   `srl_echo` does it, rather than deferred to the main loop. srldrvce's header
-   says not to; its own working example does it anyway. When the documentation
-   and the only working example disagree, follow the example.
-2. **`kb_Scan()` again**, instead of continuous keypad mode. `kb_Scan()`
-   disables interrupts, which looked like a hazard next to an interrupt-driven
-   USB driver -- but `srl_echo` calls it in its loop and works, and continuous
-   mode did not help.
-3. **No more framebuffer writes in the loop.** The phase marker painted pixels
-   straight into video memory every iteration, which nothing else here does. It
-   had already told us what it needed to (red: inside `usb_HandleEvents`).
+## What changed
 
-## Test it in this order
+**The read-only commands no longer touch the OS at all.** Everything they answer
+with -- free archive space, the library index and its size -- is gathered once
+before `usb_Init()` and served from memory afterwards. `HELLO`, `LIST`,
+`INDEX_GET`, `SPACE` and `BYE` now make no OS calls whatsoever.
 
-**1. Echo mode.** Run `COMICS`, press **alpha** on the book list, plug in,
-`screen /dev/tty.usbmodem…` and type. It should echo.
+**Chunks are taken into RAM before any of them is written.** `PUT_CHUNK` used to
+interleave `ti_Write` calls between USB reads, which is the worst possible
+pattern: OS work and USB traffic taking turns. Now the whole 16 KB transfer
+finishes first and the OS work happens in one go with nothing USB-related in
+between.
 
-**2. If echo works, sync.** Press `2nd` instead and sync from the page.
+## What to watch
 
-## If echo still freezes
+Connect from the page. It sends `HELLO`, then `LIST`, then `INDEX_GET` -- none
+of which touch the OS any more. If the page shows the calculator's contents,
+that is the connection working for the first time.
 
-Then it is none of those three, and what is left is the reader's memory layout:
-it allocates around 60 KB for the band cache at startup and frees it before
-sync, and `usbdrvce` places its own structures at `0xD10000` -- the same region
-a CE program's heap grows into. `USB_USE_C_HEAP` in `usbdrvce.h` carries the
-warning "do not use this unless you changed your program's bss/heap to end at
-0xD10000", which says the two areas do overlap by default.
+Then sync. That is where writes happen, and writes cannot be avoided. If it
+freezes there, **the `cmd` number on the calculator's screen says which command
+was in progress**:
 
-The next step would be to stop the reader from ever growing its heap that far:
-allocate the band cache from a fixed static buffer instead of `malloc`. That is
-a contained change, and it is where I would go next.
+| `cmd` | command | touches the OS |
+|---|---|---|
+| 1 | `HELLO` | no longer |
+| 2 | `LIST` | no |
+| 3 | `PUT_CHUNK` | yes -- creates and archives an appvar |
+| 4 | `DEL` | yes -- deletes an appvar |
+| 5 | `INDEX_GET` | no longer |
+| 6 | `INDEX_PUT` | yes -- creates and archives an appvar |
+| 7 | `SPACE` | no longer |
+
+`cmd 3` or `cmd 6` would mean flash writes cannot happen while the link is up,
+and the answer is to restructure so they happen between sessions rather than
+during one. That is a bigger change, but a well-defined one.

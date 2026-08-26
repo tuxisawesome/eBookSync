@@ -15,10 +15,6 @@ _ti_Close:
  .type _ti_Write, @function
 _ti_Write:
  jp 12
- .global _ti_Delete
- .type _ti_Delete, @function
-_ti_Delete:
- jp 24
  .global _ti_Seek
  .type _ti_Seek, @function
 _ti_Seek:
@@ -27,10 +23,6 @@ _ti_Seek:
  .type _ti_SetArchiveStatus, @function
 _ti_SetArchiveStatus:
  jp 39
- .global _ti_GetSize
- .type _ti_GetSize, @function
-_ti_GetSize:
- jp 48
  .global _ti_GetDataPtr
  .type _ti_GetDataPtr, @function
 _ti_GetDataPtr:
@@ -91,50 +83,6 @@ __libload_library_KEYPADC:
  .type _kb_Scan, @function
 _kb_Scan:
  jp 0
- .global __libload_library_SRLDRVCE
- .type __libload_library_SRLDRVCE, @object
-__libload_library_SRLDRVCE:
- .db 0xC0, "SRLDRVCE", 0, 0
- .global _srl_Open
- .type _srl_Open, @function
-_srl_Open:
- jp 0
- .global _srl_Read
- .type _srl_Read, @function
-_srl_Read:
- jp 6
- .global _srl_Write
- .type _srl_Write, @function
-_srl_Write:
- jp 9
- .global _srl_GetCDCStandardDescriptors
- .type _srl_GetCDCStandardDescriptors, @function
-_srl_GetCDCStandardDescriptors:
- jp 12
- .global _srl_UsbEventCallback
- .type _srl_UsbEventCallback, @function
-_srl_UsbEventCallback:
- jp 15
- .global __libload_library_USBDRVCE
- .type __libload_library_USBDRVCE, @object
-__libload_library_USBDRVCE:
- .db 0xC0, "USBDRVCE", 0, 0
- .global _usb_Init
- .type _usb_Init, @function
-_usb_Init:
- jp 0
- .global _usb_Cleanup
- .type _usb_Cleanup, @function
-_usb_Cleanup:
- jp 3
- .global _usb_HandleEvents
- .type _usb_HandleEvents, @function
-_usb_HandleEvents:
- jp 9
- .global _usb_FindDevice
- .type _usb_FindDevice, @function
-_usb_FindDevice:
- jp 36
 .endm
 
  .assume adl=1
