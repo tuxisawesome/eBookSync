@@ -1,11 +1,15 @@
 obj/src/library.c.bc: src/library.c src/library.h \
-  /home/walter/CEdev/include/stdbool.h \
-  /home/walter/CEdev/include/stdint.h /home/walter/CEdev/include/cdefs.h \
-  /home/walter/CEdev/include/compression.h \
-  /home/walter/CEdev/include/stddef.h \
-  /home/walter/CEdev/include/fileioc.h \
-  /home/walter/CEdev/include/stdlib.h /home/walter/CEdev/include/stdio.h \
-  /home/walter/CEdev/include/stdarg.h \
-  /home/walter/CEdev/include/ti/vars.h \
-  /home/walter/CEdev/include/ti/real.h \
-  /home/walter/CEdev/include/string.h
+  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/stdbool.h \
+  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/stdint.h \
+  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/cdefs.h \
+  src/csx.h \
+  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/compression.h \
+  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/stddef.h \
+  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/fileioc.h \
+  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/stdlib.h \
+  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/stdio.h \
+  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/stdarg.h \
+  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/ti/vars.h \
+  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/ti/real.h \
+  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/string.h \
+  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/time.h

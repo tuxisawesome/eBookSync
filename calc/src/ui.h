@@ -12,6 +12,19 @@
  * Call after any change to the strip palette. */
 void ui_set_chrome_palette(void);
 
+/*
+ * Show what has been drawn and wait for the frame.
+ *
+ * Menus used to run flat out, so key repeat was counted in loop iterations of
+ * unknown length and the cursor shot across the list. This paces every turn to
+ * one LCD frame, which makes the repeat rate mean something in seconds.
+ *
+ * `drew` copies the new frame back into the drawing buffer so both hold the
+ * same image; without that, pacing by swapping every turn would flicker between
+ * the current frame and the previous one.
+ */
+void ui_present(bool drew);
+
 void ui_header(const char *text);
 void ui_footer(const char *text);
 
@@ -27,11 +40,18 @@ typedef enum {
     UI_BACK,      /* the user backed out */
     UI_SYNC,      /* the user asked for the sync screen */
     UI_ECHO,      /* the user asked for the link echo test */
+    UI_SETUP,     /* the user asked for the settings screen */
 } ui_result_t;
 
 /* Take over USB and serve the sync protocol until the computer disconnects or
  * the user presses clear. */
 void ui_sync_screen(void);
+
+/* Settings: free space, and resetting the library. */
+void ui_setup_screen(void);
+
+/* Yes/no, drawn over a blank screen. Returns true for yes. */
+bool ui_confirm(const char *line1, const char *line2);
 
 /* The same screen, but running a bare echo instead of the protocol. */
 void ui_sync_run(bool echo_only);

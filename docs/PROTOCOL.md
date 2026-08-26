@@ -59,6 +59,29 @@ simply tidier: the payload is the chunk and nothing else.
 Neither end ever blocks. `srl_Read` returns what it has, so the reader pumps the
 USB event loop and redraws between reads, and the user can always press `clear`.
 
+## Speed
+
+Two things set the pace, and only one of them is the wire.
+
+**The link.** srldrvce schedules 64-byte reads and re-arms when the ring buffer
+is drained, so throughput depends on how often the loop gets round to calling
+`srl_Read`. Anything expensive per turn throttles the whole transfer. `kb_Scan()`
+was the culprit: it disables interrupts and waits for a hardware scan, roughly a
+millisecond, and it was being called every single turn. It now runs every 32
+turns -- still far faster than a person can press a key -- and the ring buffer
+is 2 KB rather than 512 bytes so more accumulates between turns.
+
+Redrawing the status is several OS text calls, so it happens when a command
+completes or every few thousand turns, not on every state change.
+
+**The flash.** Each 16 KB chunk is created in RAM and then archived, and
+archiving writes flash, which is slow and occasionally triggers a garbage
+collect. That cost is inherent -- the data has to land somewhere permanent --
+and it happens between chunks with the link idle.
+
+The page reports a KB/s figure while sending, so this is measurable rather than
+a matter of opinion.
+
 ## graphx has to be off
 
 usbdrvce notes that a transfer fails with `USB_TRANSFER_BUS_ERROR` when

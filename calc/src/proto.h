@@ -36,7 +36,15 @@ typedef enum {
     PROTO_INDEX_PUT  = 0x06,   /* <- replace the CSLIB index */
     PROTO_SPACE      = 0x07,   /* -> free archive space */
     PROTO_BYE        = 0x08,   /* <- leave sync mode */
+    PROTO_RESET      = 0x09,   /* <- delete the whole library */
 } proto_cmd_t;
+
+/* What HELLO says about the library already on the calculator. */
+typedef enum {
+    PROTO_LIBRARY_EMPTY     = 0,   /* nothing here yet; anything may be sent */
+    PROTO_LIBRARY_SAME      = 1,   /* same library as the computer's */
+    PROTO_LIBRARY_DIFFERENT = 2,   /* someone else's comics are on here */
+} proto_library_t;
 
 typedef enum {
     PROTO_OK          = 0,
@@ -104,6 +112,8 @@ uint8_t proto_open_error(void);      /* last srl_Open result */
  * completely different fixes.
  */
 uint24_t proto_loops(void);
+uint24_t proto_bytes(void);   /* payload bytes moved this session */
+uint8_t proto_library_state(void);  /* proto_library_t, as of the last HELLO */
 
 
 #endif /* PROTO_H */

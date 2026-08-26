@@ -15,6 +15,7 @@
 
 #include <graphx.h>
 #include <stdio.h>
+#include <time.h>
 #include <tice.h>
 #include <string.h>
 
@@ -46,6 +47,13 @@ void ui_set_chrome_palette(void) {
 
     set_ramp(UI_TEXT_RAMP, 248, 248, 248, 24, 24, 24);
     set_ramp(UI_TEXT_RAMP_SEL, 198, 218, 255, 16, 24, 48);
+}
+
+void ui_present(bool drew) {
+    gfx_SwapDraw();
+    gfx_Wait();
+    if (drew)
+        gfx_Blit(gfx_screen);
 }
 
 void ui_header(const char *text) {
@@ -117,6 +125,29 @@ void ui_message(const char *line1, const char *line2) {
     } while (!input_idle());
 }
 
+bool ui_confirm(const char *line1, const char *line2) {
+    bool drew = true;
+    gfx_FillScreen(UI_BG);
+    ui_header("Are you sure?");
+    gfx_SetTextFGColor(UI_FG);
+    gfx_SetTextBGColor(UI_BG);
+    gfx_PrintStringXY(line1, 10, 90);
+    if (line2)
+        gfx_PrintStringXY(line2, 10, 108);
+    ui_footer("2nd  yes          clear  no");
+
+    input_reset();
+    for (;;) {
+        ui_present(drew);
+        drew = false;
+        input_scan();
+        if (input_pressed(kb_Key2nd))
+            return true;
+        if (input_pressed(kb_KeyClear))
+            return false;
+    }
+}
+
 /* Shared scrolling-list state and movement. */
 typedef struct {
     uint16_t count;
@@ -185,6 +216,7 @@ ui_result_t ui_book_menu(uint16_t *selection) {
 
     char line[24];
     bool dirty = true;
+    bool drew = false;
 
     for (;;) {
         if (dirty) {
@@ -220,11 +252,13 @@ ui_result_t ui_book_menu(uint16_t *selection) {
             }
 
             draw_scrollbar(&list);
-            ui_footer("enter open  2nd sync  alpha echo  clear quit");
-            gfx_SwapDraw();
+            ui_footer("enter open  2nd sync  del read  mode setup");
             dirty = false;
+            drew = true;
         }
 
+        ui_present(drew);
+        drew = false;
         input_scan();
         if (list_navigate(&list))
             dirty = true;
@@ -236,6 +270,20 @@ ui_result_t ui_book_menu(uint16_t *selection) {
             return UI_SYNC;
         if (input_pressed(kb_KeyAlpha))
             return UI_ECHO;
+        if (input_pressed(kb_KeyMode)) {
+            *selection = list.selected;
+            return UI_SETUP;
+        }
+
+        /* Mark the whole book read, or unread if it already is. */
+        if (input_pressed(kb_KeyDel) && list.count) {
+            lib_book_t book;
+            lib_get_book(list.selected, &book);
+            if (book.strip_count) {
+                lib_set_book_read(&book, lib_book_read_count(&book) != book.strip_count);
+                dirty = true;
+            }
+        }
         if (input_pressed(kb_KeyClear))
             return UI_BACK;
     }
@@ -248,6 +296,7 @@ ui_result_t ui_strip_menu(uint16_t book_index, uint16_t *selection) {
     menu_list_t list = { book.strip_count, 0, 0 };
     char line[24];
     bool dirty = true;
+    bool drew = false;
 
     for (;;) {
         if (dirty) {
@@ -282,11 +331,13 @@ ui_result_t ui_strip_menu(uint16_t book_index, uint16_t *selection) {
             }
 
             draw_scrollbar(&list);
-            ui_footer("enter read   clear back");
-            gfx_SwapDraw();
+            ui_footer("enter read   del mark   clear back");
             dirty = false;
+            drew = true;
         }
 
+        ui_present(drew);
+        drew = false;
         input_scan();
         if (list_navigate(&list))
             dirty = true;
@@ -294,8 +345,77 @@ ui_result_t ui_strip_menu(uint16_t book_index, uint16_t *selection) {
             *selection = book.strip_first + list.selected;
             return UI_CHOSE;
         }
+        if (input_pressed(kb_KeyDel) && list.count) {
+            lib_strip_t strip;
+            uint16_t index = book.strip_first + list.selected;
+            lib_get_strip(index, &strip);
+            strip.flags ^= LIB_FLAG_READ;
+            if (strip.flags & LIB_FLAG_READ)
+                strip.read_at = (uint32_t)time(NULL);
+            lib_save_strip(index, &strip);
+            lib_get_book(book_index, &book);
+            dirty = true;
+        }
         if (input_pressed(kb_KeyClear))
             return UI_BACK;
+    }
+}
+
+void ui_setup_screen(void) {
+    bool dirty = true;
+    bool drew = false;
+    char line[40];
+
+    input_reset();
+    for (;;) {
+        if (dirty) {
+            gfx_FillScreen(UI_BG);
+            ui_header("Settings");
+
+            gfx_SetTextFGColor(UI_FG);
+            gfx_SetTextBGColor(UI_BG);
+
+            sprintf(line, "%u books, %u strips",
+                    lib_book_count(), lib_strip_count());
+            gfx_PrintStringXY(line, 10, 40);
+
+            uint16_t read = 0;
+            for (uint16_t i = 0; i < lib_book_count(); i++) {
+                lib_book_t book;
+                lib_get_book(i, &book);
+                read += lib_book_read_count(&book);
+            }
+            sprintf(line, "%u read", read);
+            gfx_PrintStringXY(line, 10, 58);
+
+            gfx_SetTextFGColor(UI_ACCENT);
+            gfx_PrintStringXY("del   erase the whole library", 10, 92);
+            gfx_SetTextFGColor(UI_DIM);
+            gfx_PrintStringXY("Deletes every comic on this", 10, 112);
+            gfx_PrintStringXY("calculator. The computer keeps", 10, 128);
+            gfx_PrintStringXY("its copies.", 10, 144);
+
+            ui_footer("clear  back");
+            dirty = false;
+            drew = true;
+        }
+
+        ui_present(drew);
+        drew = false;
+        input_scan();
+
+        if (input_pressed(kb_KeyDel)) {
+            if (ui_confirm("Erase every comic on this", "calculator?")) {
+                uint16_t removed = lib_reset();
+                char message[40];
+                sprintf(message, "Removed %u strip(s).", removed);
+                ui_message(message, "Sync again to refill it.");
+            }
+            input_reset();
+            dirty = true;
+        }
+        if (input_pressed(kb_KeyClear))
+            return;
     }
 }
 
@@ -339,7 +459,8 @@ static void sync_draw(void) {
     sync_line(0, sync_echo_mode ? "eBookSync - ECHO TEST" : "eBookSync");
     sync_line(2, sync_state);
 
-    sprintf(line, "%u chunks received", sync_chunks_received);
+    sprintf(line, "%u done, %uK moved", sync_chunks_received,
+            (unsigned)(proto_bytes() / 1024));
     sync_line(3, line);
 
     sprintf(line, "req %u cmd %u err %u", proto_requests(), proto_last_command(),
@@ -349,40 +470,68 @@ static void sync_draw(void) {
     sprintf(line, "open %u loops %u", proto_open_error(), (unsigned)proto_loops());
     sync_line(6, line);
 
+    if (proto_library_state() == PROTO_LIBRARY_DIFFERENT) {
+        sync_line(7, "Different library! del=erase");
+    } else {
+        sync_line(7, "");
+    }
+
     sync_line(8, "[clear] stop syncing");
 }
 
-/* Called from the protocol loop between requests. Returning false stops it. */
+/*
+ * Called from the protocol loop every turn, so it has to be cheap.
+ *
+ * It used to scan the keypad and compare status strings on every single turn.
+ * kb_Scan() disables interrupts and waits for a hardware scan -- around a
+ * millisecond -- and the loop's turn rate is exactly what drains srldrvce's
+ * ring buffer, so paying that every turn throttled the whole transfer. The
+ * keypad is polled often enough to feel instant and no more.
+ */
+#define POLL_EVERY  32      /* turns between keypad scans */
+#define REDRAW_EVERY 4096   /* turns between status redraws while busy */
+
 static bool sync_progress(const char *state, uint8_t slot, uint8_t chunk,
                           uint8_t chunk_count) {
     (void)slot;
     (void)chunk;
     (void)chunk_count;
 
-    bool changed = strcmp(sync_state, state) != 0;
-    if (changed)
-        snprintf(sync_state, sizeof sync_state, "%s", state);
-
-    if (strcmp(state, "Receiving") == 0) {
-        sync_chunks_received++;
-        changed = true;
-    }
-
+    static uint8_t poll;
+    static uint24_t drawn_at;
     static uint16_t drawn_requests;
+
+    /* Redraw when a command completes, or occasionally while one is in flight
+     * so the byte counter moves. Each redraw is several OS text calls. */
+    bool changed = false;
     if (proto_requests() != drawn_requests) {
         drawn_requests = proto_requests();
+        sync_chunks_received = drawn_requests;
         changed = true;
     }
-
-    /* A slow heartbeat, so the loop counter visibly moves while the loop is
-     * alive. Writing to the OS display is expensive, so not every time round. */
-    if ((proto_loops() & 0x7FF) == 0)
+    if (proto_loops() - drawn_at >= REDRAW_EVERY) {
+        drawn_at = proto_loops();
         changed = true;
-
-    if (changed)
+    }
+    if (changed) {
+        snprintf(sync_state, sizeof sync_state, "%s", state);
         sync_draw();
+    }
+
+    if (++poll < POLL_EVERY)
+        return true;
+    poll = 0;
 
     input_scan();
+
+    /* Erasing is offered here too, because this is where the mismatch shows. */
+    if (input_pressed(kb_KeyDel)
+        && proto_library_state() == PROTO_LIBRARY_DIFFERENT) {
+        lib_reset();
+        snprintf(sync_state, sizeof sync_state, "Erased -- sync again");
+        sync_draw();
+    }
+
     return !input_pressed(kb_KeyClear);
 }
 

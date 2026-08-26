@@ -63,6 +63,10 @@ _gfx_SetDraw:
  .type _gfx_SwapDraw, @function
 _gfx_SwapDraw:
  jp 30
+ .global _gfx_Blit
+ .type _gfx_Blit, @function
+_gfx_Blit:
+ jp 33
  .global _gfx_PrintStringXY
  .type _gfx_PrintStringXY, @function
 _gfx_PrintStringXY:
@@ -79,6 +83,10 @@ _gfx_SetTextFGColor:
  .type _gfx_FillRectangle_NoClip, @function
 _gfx_FillRectangle_NoClip:
  jp 126
+ .global _gfx_Wait
+ .type _gfx_Wait, @function
+_gfx_Wait:
+ jp 279
  .global __libload_library_KEYPADC
  .type __libload_library_KEYPADC, @object
 __libload_library_KEYPADC:

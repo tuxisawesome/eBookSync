@@ -15,7 +15,7 @@ import * as cacheStore from './cache.js';
 import * as fs from './fs.js';
 import * as metaStore from './meta.js';
 import * as syncEngine from './sync.js';
-import { Calculator, isSupported as linkSupported } from './link.js';
+import { Calculator, LIBRARY, isSupported as linkSupported } from './link.js';
 
 const el = (id) => document.getElementById(id);
 
@@ -24,6 +24,7 @@ const ui = {
   unsupported: el('unsupported'),
   chooseFolder: el('choose-folder'),
   newBook: el('new-book'),
+  reset: el('reset-calculator'),
   connect: el('connect'),
   sync: el('sync'),
   tree: el('tree'),
@@ -38,6 +39,7 @@ const ui = {
   deviceStatus: el('device-status'),
   deviceFree: el('device-free'),
   deviceCount: el('device-count'),
+  deviceLibrary: el('device-library'),
   lastSync: el('last-sync'),
   selectionSummary: el('selection-summary'),
   meterFill: el('meter-fill'),
@@ -60,6 +62,7 @@ const state = {
   calculator: null,
   resident: [],
   deviceIndex: null,
+  library: null,
   freeArchive: null,
   expanded: new Set(),
   filter: '',
@@ -411,6 +414,16 @@ function refreshDevice() {
   ui.lastSync.textContent = state.meta.lastSync
     ? new Date(state.meta.lastSync).toLocaleString()
     : 'Never';
+
+  const library = {
+    [LIBRARY.EMPTY]: 'empty',
+    [LIBRARY.SAME]: 'this one',
+    [LIBRARY.DIFFERENT]: 'a different one',
+  };
+  ui.deviceLibrary.textContent = state.calculator
+    ? (library[state.library] || '—') : '—';
+  ui.reset.hidden = !state.calculator
+    || (state.library === LIBRARY.EMPTY && state.resident.length === 0);
 }
 
 function refreshSettings() {
@@ -643,14 +656,28 @@ async function connect() {
     const calculator = await Calculator.request();
     await calculator.open();
 
-    const hello = await calculator.hello();
+    const hello = await calculator.hello(metaStore.libraryIdBytes(state.meta));
     state.calculator = calculator;
+    state.library = hello.library;
     state.freeArchive = hello.freeArchive;
     state.resident = await calculator.list();
     state.deviceIndex = await calculator.getIndex();
 
     metaStore.mergeFromCalculator(state.meta, state.resident);
-    setStatus(`Connected. ${state.resident.length} strips on the calculator.`);
+
+    if (hello.library === LIBRARY.DIFFERENT) {
+      /*
+       * These comics came from a different library folder. Syncing on top would
+       * leave the calculator holding strips this library cannot account for, so
+       * offer to clear it rather than merging two libraries by accident.
+       */
+      setStatus('This calculator holds a different library. Erase it to sync this one.',
+                'error');
+      ui.reset.hidden = false;
+    } else {
+      ui.reset.hidden = state.resident.length === 0;
+      setStatus(`Connected. ${state.resident.length} strips on the calculator.`);
+    }
 
     renderTree();
     refreshSelection();
@@ -746,6 +773,11 @@ function describePlan(plan) {
 }
 
 async function runSync() {
+  if (state.library === LIBRARY.DIFFERENT) {
+    setStatus('This calculator holds a different library. Erase it first.', 'error');
+    return;
+  }
+
   const plan = syncEngine.plan(state.meta, state.books, state.resident, {
     freeArchive: state.freeArchive,
     indexStale: indexIsStale(),
@@ -793,8 +825,9 @@ async function runSync() {
       },
       onProgress: (progress) => {
         if (progress.phase === 'send') {
+          const rate = progress.rate ? ` — ${progress.rate} KB/s` : '';
           ui.progressStatus.textContent =
-            `Sending ${progress.strip.title} — chunk ${progress.chunk}/${progress.chunks}`;
+            `Sending ${progress.strip.title} — chunk ${progress.chunk}/${progress.chunks}${rate}`;
         } else if (progress.stage === 'compressing') {
           ui.progressStatus.textContent =
             `Compressing ${progress.strip.title} — ${Math.round(progress.fraction * 100)}%`;
@@ -831,6 +864,41 @@ async function runSync() {
     renderTree();
     refreshSelection();
     refreshDevice();
+  }
+}
+
+async function resetCalculator() {
+  if (!state.calculator) return;
+  if (!window.confirm('Erase every comic on the calculator?\n\n'
+      + 'Your files here are untouched; the calculator can be refilled by syncing.')) {
+    return;
+  }
+
+  try {
+    setStatus('Erasing the calculator…', 'busy');
+    const removed = await state.calculator.resetLibrary();
+
+    state.resident = await state.calculator.list();
+    state.deviceIndex = await state.calculator.getIndex();
+    state.library = LIBRARY.EMPTY;
+
+    /* Nothing is on it now, so nothing should claim to be. */
+    for (const book of Object.values(state.meta.books)) {
+      for (const strip of Object.values(book.strips)) {
+        strip.onCalc = false;
+        strip.chunkCount = 0;
+        strip.deviceBytes = 0;
+      }
+    }
+
+    await saveMetaNow();
+    setStatus(`Erased ${removed} strip(s). Tick what you want and sync.`);
+    ui.reset.hidden = true;
+    renderTree();
+    refreshSelection();
+    refreshDevice();
+  } catch (error) {
+    setStatus(`Could not erase the calculator: ${error.message}`, 'error');
   }
 }
 
@@ -914,6 +982,7 @@ async function start() {
   });
 
   ui.newBook.addEventListener('click', opNewBook);
+  ui.reset.addEventListener('click', resetCalculator);
   ui.connect.addEventListener('click', connect);
   ui.sync.addEventListener('click', runSync);
   ui.progressClose.addEventListener('click', () => ui.progressDialog.close());

@@ -43,7 +43,11 @@ export const CMD = {
   INDEX_PUT: 0x06,
   SPACE: 0x07,
   BYE: 0x08,
+  RESET: 0x09,
 };
+
+/* What HELLO reports about the library already on the calculator. */
+export const LIBRARY = { EMPTY: 0, SAME: 1, DIFFERENT: 2 };
 
 export const STATUS = {
   0: 'ok',
@@ -188,8 +192,15 @@ export class Calculator {
     return body;
   }
 
-  async hello() {
-    const body = await this.request(CMD.HELLO);
+  /**
+   * Open the conversation.
+   *
+   * `libraryId` identifies this library folder. The calculator compares it with
+   * whatever it is already holding and says whether they match, so a calculator
+   * carrying a different library is noticed before anything is sent to it.
+   */
+  async hello(libraryId = new Uint8Array(16)) {
+    const body = await this.request(CMD.HELLO, libraryId);
     if (body.length < 6) throw new Error('short HELLO reply');
 
     const version = body[0];
@@ -202,7 +213,14 @@ export class Calculator {
       freeArchive: body[1] | (body[2] << 8) | (body[3] << 16),
       maxChunks: body[4],
       chunkSize: body[5] * 256,
+      library: body.length > 6 ? body[6] : LIBRARY.EMPTY,
     };
+  }
+
+  /** Erase every comic on the calculator. Returns how many strips went. */
+  async resetLibrary() {
+    const body = await this.request(CMD.RESET);
+    return body.length >= 2 ? body[0] | (body[1] << 8) : 0;
   }
 
   async list() {

@@ -46,11 +46,23 @@
 #include <tice.h>
 #include <usbdrvce.h>
 
-/* srldrvce wants at least 128 bytes, an even size, and recommends 512. */
-#define SERIAL_BUFFER 512
+/*
+ * srldrvce's ring buffer. It wants at least 128 bytes and an even size, and
+ * recommends 512; bigger is better here. The driver schedules 64-byte reads and
+ * re-arms when we drain it, so a larger ring lets more accumulate between our
+ * turns and makes throughput less sensitive to how often we get round to it.
+ */
+#define SERIAL_BUFFER 2048
 
-/* Bytes moved per turn. Small enough that a turn stays short. */
-#define SLICE 512
+/* Bytes moved per turn. There is no point asking for more than the ring holds. */
+#define SLICE SERIAL_BUFFER
+
+/*
+ * Somewhere to throw away a payload that cannot be held.
+ *
+ * Emphatically not serial_buffer: that belongs to srldrvce and it is using it.
+ */
+static uint8_t discard_scratch[256];
 
 /* ------------------------------------------------------------------- state */
 
@@ -106,12 +118,16 @@ static uint16_t requests_handled;
 static uint8_t last_command;
 static uint16_t link_errors;
 static uint24_t loop_count;
+static uint24_t bytes_moved;
+static uint8_t library_state;
 
 uint16_t proto_requests(void) { return requests_handled; }
 uint8_t proto_last_command(void) { return last_command; }
 uint16_t proto_errors(void) { return link_errors; }
 uint8_t proto_open_error(void) { return (uint8_t)open_error; }
 uint24_t proto_loops(void) { return loop_count; }
+uint24_t proto_bytes(void) { return bytes_moved; }
+uint8_t proto_library_state(void) { return library_state; }
 
 /* ----------------------------------------------------------------- helpers */
 
@@ -154,12 +170,41 @@ static void answer(uint16_t status, const uint8_t *body, uint32_t length) {
 
 /* ---------------------------------------------------------------- commands */
 
+/*
+ * HELLO carries the computer's library identifier, and the answer says whether
+ * it matches what is already here. Mixing two libraries would leave the
+ * calculator holding comics the computer cannot account for, so it is worth
+ * knowing before anything is sent.
+ */
 static void do_hello(void) {
+    proto_library_t which = PROTO_LIBRARY_EMPTY;
+
+    const uint8_t *here = lib_id();
+    if (here) {
+        which = (payload_want >= LIB_ID_SIZE
+                 && memcmp(here, payload, LIB_ID_SIZE) == 0)
+            ? PROTO_LIBRARY_SAME
+            : PROTO_LIBRARY_DIFFERENT;
+    }
+    library_state = (uint8_t)which;
+
     reply_small[0] = PROTO_VERSION;
     put24(reply_small + 1, cached_archive_free);
     reply_small[4] = CSX_MAX_CHUNKS;
     reply_small[5] = CSX_CHUNK_SIZE / 256;
-    answer(PROTO_OK, reply_small, 6);
+    reply_small[6] = (uint8_t)which;
+    answer(PROTO_OK, reply_small, 7);
+}
+
+static void do_reset(void) {
+    uint16_t removed = lib_reset();
+    library_state = PROTO_LIBRARY_EMPTY;
+
+    cached_index = NULL;
+    cached_index_size = 0;
+
+    put16(reply_small, removed);
+    answer(PROTO_OK, reply_small, 2);
 }
 
 static void do_space(void) {
@@ -277,6 +322,7 @@ static void execute(void) {
         case PROTO_INDEX_GET: do_index_get(); break;
         case PROTO_INDEX_PUT: do_index_put(); break;
         case PROTO_SPACE:     do_space(); break;
+        case PROTO_RESET:     do_reset(); break;
         case PROTO_BYE:       closing = true; answer(PROTO_OK, NULL, 0); break;
         default:              answer(PROTO_BAD_CMD, NULL, 0); break;
     }
@@ -333,6 +379,7 @@ static void pump(void) {
                 return;
             }
             payload_have += (uint32_t)got;
+            bytes_moved += (uint24_t)got;
             if (payload_have >= payload_want)
                 execute();
             return;
@@ -340,11 +387,10 @@ static void pump(void) {
 
         case LINK_DISCARD: {
             uint32_t left = payload_want - payload_have;
-            size_t take = left > SERIAL_BUFFER ? SERIAL_BUFFER : (size_t)left;
+            size_t take = left > sizeof discard_scratch
+                ? sizeof discard_scratch : (size_t)left;
 
-            /* The serial buffer is srldrvce's, but it is not using it between
-             * calls, and this data is being thrown away regardless. */
-            int got = srl_Read(&serial, serial_buffer, take);
+            int got = srl_Read(&serial, discard_scratch, take);
             if (got < 0) {
                 fail();
                 return;
@@ -380,6 +426,7 @@ static void pump(void) {
                     return;
                 }
                 reply_body_sent += (uint32_t)sent;
+                bytes_moved += (uint24_t)sent;
                 return;
             }
 
@@ -479,6 +526,8 @@ bool proto_run(proto_progress_t progress, bool echo_only) {
     last_command = 0;
     link_errors = 0;
     loop_count = 0;
+    bytes_moved = 0;
+    library_state = PROTO_LIBRARY_EMPTY;
 
     gather_state();
 
@@ -500,13 +549,13 @@ bool proto_run(proto_progress_t progress, bool echo_only) {
         if (serial_open) {
             if (echo_only) {
                 /* Bytes in, the same bytes out, and nothing else at all. */
-                int got = srl_Read(&serial, serial_buffer, sizeof serial_buffer);
+                int got = srl_Read(&serial, discard_scratch, sizeof discard_scratch);
                 if (got < 0) {
                     fail();
                 } else if (got > 0) {
                     requests_handled++;
-                    last_command = serial_buffer[0];
-                    if (srl_Write(&serial, serial_buffer, (size_t)got) < 0)
+                    last_command = discard_scratch[0];
+                    if (srl_Write(&serial, discard_scratch, (size_t)got) < 0)
                         fail();
                 }
             } else {

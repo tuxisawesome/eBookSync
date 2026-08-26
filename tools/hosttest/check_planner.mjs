@@ -180,5 +180,63 @@ const slotOf = (meta, book, file) => meta.books[book].strips[file].id;
   check('freeArchive: caps the pushes', result.pushes.length, 1);
 }
 
+/* --- connecting ticks whatever is already on the calculator ------------- */
+{
+  const { meta, books } = setup();
+  const slot = slotOf(meta, 'Book A', '001.jpg');
+  const resident = [{
+    slot, chunkCount: 25, bytes: 100_000, read: false, readAt: 0, pos: 0, layer: 0,
+  }];
+  mergeFromCalculator(meta, resident);
+
+  check('resident strips arrive ticked',
+        meta.books['Book A'].strips['001.jpg'].selected, true);
+
+  /* Ticked and resident: nothing to do. */
+  const before = plan(meta, books, resident);
+  check('a ticked resident strip is left alone',
+        [before.pushes.length, before.deletes.length], [0, 0]);
+
+  /* Unticking it is how you ask for it to go. */
+  meta.books['Book A'].strips['001.jpg'].selected = false;
+  const after = plan(meta, books, resident);
+  check('unticking a resident strip removes it',
+        after.deletes.map((s) => s.file), ['001.jpg']);
+  check('and it is not re-sent in the same breath', after.pushes.length, 0);
+}
+
+/* --- a strip being removed is not also queued to be sent ----------------- */
+{
+  const { meta, books } = setup((m) => {
+    m.settings.keepRead = 0;
+    m.books['Book A'].strips['001.jpg'].read = true;
+    m.books['Book A'].strips['001.jpg'].selected = true;
+  });
+  const resident = [{
+    slot: slotOf(meta, 'Book A', '001.jpg'), chunkCount: 25, bytes: 100_000,
+    read: true, readAt: 0, pos: 0, layer: 0,
+  }];
+  mergeFromCalculator(meta, resident);
+
+  const result = plan(meta, books, resident);
+  check('cleanup deletes it', result.deletes.map((s) => s.file), ['001.jpg']);
+  check('and does not immediately re-send it',
+        result.pushes.filter((s) => s.file === '001.jpg').length, 0);
+}
+
+/* --- automatic selection ignores the ticks ------------------------------ */
+{
+  const { meta, books } = setup((m) => { m.settings.selection = 'auto'; });
+  const resident = [{
+    slot: slotOf(meta, 'Book A', '001.jpg'), chunkCount: 25, bytes: 100_000,
+    read: false, readAt: 0, pos: 0, layer: 0,
+  }];
+  mergeFromCalculator(meta, resident);
+  meta.books['Book A'].strips['001.jpg'].selected = false;
+
+  const result = plan(meta, books, resident);
+  check('auto mode does not remove unticked strips', result.deletes.length, 0);
+}
+
 console.log(`${checks - failures}/${checks} planner checks pass`);
 process.exit(failures ? 1 : 0);

@@ -132,6 +132,28 @@ memory bus, and USB loses whenever graphx has the LCD in its 8bpp mode.
 
 Reaching the last 5% of a strip marks it read on its own.
 
+On the book list: `del` marks a whole book read or unread, `mode` opens
+settings, `2nd` opens the sync screen. On the strip list, `del` marks one strip.
+
+Settings has one thing in it: **erase the library**, which deletes every comic
+on the calculator. Your files on the computer are untouched, and syncing again
+refills it.
+
+## Two libraries, one calculator
+
+Each library folder gets an identifier the first time it is used, stored in
+`ebooksync.json`, and the calculator keeps a copy alongside the comics. If you
+connect a calculator holding a different library, the page says so and offers to
+erase it rather than mixing the two -- the calculator would otherwise end up
+with comics the library cannot account for. The calculator's own sync screen
+shows the same warning.
+
+## What the ticks mean
+
+Connecting ticks everything already on the calculator. A tick means "I want
+this on the calculator", not "send this now" -- so **unticking something is how
+you ask for it to be removed** on the next sync.
+
 ## The desktop converter
 
 `tools/convert.py` does the same conversion as the browser, which is handy for

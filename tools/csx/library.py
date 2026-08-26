@@ -18,17 +18,17 @@ import struct
 from . import titles as titles_mod, zx0
 
 MAGIC = b"CSLIB"
-VERSION = 1
+VERSION = 2
 NAME = "CSLIB"
 
-HEADER_FMT = "<5sBHHH"      # 12 bytes
+HEADER_FMT = "<5sBHHH16s"   # 28 bytes, ending in the library id
 BOOK_FMT = "<HHH"           # 6 bytes
 STRIP_FMT = "<BBHBBIHBBH"   # 16 bytes
 
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
 BOOK_SIZE = struct.calcsize(BOOK_FMT)
 STRIP_SIZE = struct.calcsize(STRIP_FMT)
-assert (HEADER_SIZE, BOOK_SIZE, STRIP_SIZE) == (12, 6, 16)
+assert (HEADER_SIZE, BOOK_SIZE, STRIP_SIZE) == (28, 6, 16)
 
 FLAG_READ = 0x01
 
@@ -55,8 +55,12 @@ class Book:
         self.strips = strips
 
 
-def build(books, renderer=None):
-    """Serialise the index. `books` is a list of Book, in reading order."""
+def build(books, renderer=None, library_id=b"\0" * 16):
+    """Serialise the index. `books` is a list of Book, in reading order.
+
+    `library_id` identifies the library folder these comics came from, so the
+    calculator can tell when it is handed somebody else's.
+    """
     renderer = renderer or titles_mod.TitleRenderer()
 
     strips = [strip for book in books for strip in book.strips]
@@ -101,7 +105,8 @@ def build(books, renderer=None):
             add_title(strip.title, titles_mod.STRIP_WIDTH),
         )
 
-    header = struct.pack(HEADER_FMT, MAGIC, VERSION, len(books), len(strips), 0)
+    header = struct.pack(HEADER_FMT, MAGIC, VERSION, len(books), len(strips), 0,
+                         bytes(library_id)[:16].ljust(16, b"\0"))
     index = bytes(header) + bytes(book_rows) + bytes(strip_rows) + bytes(blob)
     assert len(header) + len(book_rows) + len(strip_rows) == title_base
     return index
@@ -109,7 +114,8 @@ def build(books, renderer=None):
 
 def parse(data):
     """Read an index back, for verification and for merging calculator state."""
-    magic, version, book_count, strip_count, _ = struct.unpack_from(HEADER_FMT, data, 0)
+    magic, version, book_count, strip_count, _, library_id = struct.unpack_from(
+        HEADER_FMT, data, 0)
     if magic != MAGIC:
         raise ValueError("not a CSLIB index")
     if version != VERSION:
@@ -138,4 +144,7 @@ def parse(data):
         book = Book("", strips[first:first + count])
         book.title_bitmap = title_at(title_ofs)
         books.append(book)
+
+    for book in books:
+        book.library_id = library_id
     return books

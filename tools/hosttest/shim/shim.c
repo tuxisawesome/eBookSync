@@ -175,6 +175,8 @@ uint8_t gfx_SetTextFGColor(uint8_t color) { (void)color; return 0; }
 uint8_t gfx_SetTextBGColor(uint8_t color) { (void)color; return 0; }
 void gfx_PrintStringXY(const char *s, int x, int y) { (void)s; (void)x; (void)y; }
 void gfx_SwapDraw(void) {}
+void gfx_Wait(void) {}
+void gfx_Blit(uint8_t src) { (void)src; }
 void gfx_Begin(void) {}
 void gfx_End(void) {}
 void gfx_SetDraw(uint8_t location) { (void)location; }

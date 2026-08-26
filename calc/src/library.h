@@ -16,7 +16,10 @@
 #include <stdint.h>
 
 #define LIB_NAME        "CSLIB"
-#define LIB_VERSION     1
+#define LIB_VERSION     2
+
+/* Identifies which library on the computer these comics came from. */
+#define LIB_ID_SIZE     16
 #define LIB_FLAG_READ   0x01
 
 /* Largest 2bpp title bitmap the reader has to expand, in bytes. */
@@ -41,6 +44,21 @@ typedef struct {
 
 /* Map the index. False when there is no library on the calculator yet. */
 bool lib_open(void);
+
+/*
+ * The library's identifier, or NULL if there is no library.
+ *
+ * The computer generates one per library folder and sends it with every
+ * connection. If it does not match, these comics came from somewhere else and
+ * mixing the two would leave a library the computer cannot account for.
+ */
+const uint8_t *lib_id(void);
+
+/* Mark every strip of a book read or unread, in one rewrite of the index. */
+bool lib_set_book_read(const lib_book_t *book, bool read);
+
+/* Delete the index and every strip it lists. Returns strips removed. */
+uint16_t lib_reset(void);
 
 uint16_t lib_book_count(void);
 uint16_t lib_strip_count(void);

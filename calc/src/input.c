@@ -2,9 +2,16 @@
 
 #include <string.h>
 
-/* Frames before a held key starts repeating, and the gap between repeats. */
-#define REPEAT_DELAY  14
-#define REPEAT_RATE   2
+/*
+ * Frames before a held key starts repeating, and frames between repeats.
+ *
+ * These are real LCD frames now -- see ui_present -- so 18 is about 300ms
+ * before the first repeat and 4 is a little over a dozen steps a second. They
+ * used to be counted in loop iterations of no fixed length, which is why the
+ * cursor shot off the end of the list at the slightest touch.
+ */
+#define REPEAT_DELAY  18
+#define REPEAT_RATE   4
 
 static uint8_t current[8];
 static uint8_t previous[8];

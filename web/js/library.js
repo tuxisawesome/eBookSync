@@ -10,10 +10,11 @@ import { compress, decompress } from './zx0.js';
 import { BOOK_WIDTH, STRIP_WIDTH, renderTitle } from './titles.js';
 
 const MAGIC = 'CSLIB';
-export const VERSION = 1;
+export const VERSION = 2;
 export const NAME = 'CSLIB';
 
-const HEADER_SIZE = 12;
+const HEADER_SIZE = 28;
+export const LIBRARY_ID_SIZE = 16;
 const BOOK_SIZE = 6;
 const STRIP_SIZE = 16;
 
@@ -32,7 +33,7 @@ export const FLAG_READ = 0x01;
  * `render` is injectable so the index can be built where there is no canvas --
  * the host tests use a deterministic stand-in.
  */
-export function buildIndex(books, { render = renderTitle } = {}) {
+export function buildIndex(books, { render = renderTitle, libraryId = null } = {}) {
   const strips = books.flatMap((book) => book.strips);
   if (books.length > 0xffff || strips.length > 0xffff) {
     throw new Error('too many books or strips for the index');
@@ -98,6 +99,11 @@ export function buildIndex(books, { render = renderTitle } = {}) {
   view.setUint8(5, VERSION);
   view.setUint16(6, books.length, true);
   view.setUint16(8, strips.length, true);
+
+  /* Which library folder these comics came from, so the calculator can tell
+   * when it is handed somebody else's. */
+  if (libraryId) out.set(libraryId.subarray(0, LIBRARY_ID_SIZE), 12);
+
   out.set(bookRows, HEADER_SIZE);
   out.set(stripRows, HEADER_SIZE + bookRows.length);
 
@@ -144,7 +150,7 @@ export function parseIndex(data) {
     const firstStrip = view.getUint16(at + 2, true);
     books.push({ strips: strips.slice(firstStrip, firstStrip + view.getUint16(at + 4, true)) });
   }
-  return { books, strips };
+  return { books, strips, libraryId: data.slice(12, 12 + LIBRARY_ID_SIZE) };
 }
 
 /** Decode one title bitmap, for previewing what the calculator will show. */

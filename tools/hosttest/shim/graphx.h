@@ -22,6 +22,8 @@ void gfx_SwapDraw(void);
 void gfx_Begin(void);
 void gfx_End(void);
 void gfx_SetDraw(uint8_t location);
+void gfx_Wait(void);
+void gfx_Blit(uint8_t src);
 enum { gfx_screen = 0, gfx_buffer = 1 };
 #define gfx_SetDrawBuffer() gfx_SetDraw(1)
 

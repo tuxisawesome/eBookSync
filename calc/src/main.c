@@ -41,6 +41,13 @@ int main(void) {
         ui_result_t result = ui_book_menu(&book);
         if (result == UI_BACK)
             break;
+        if (result == UI_SETUP) {
+            ui_setup_screen();
+            lib_open();
+            book = 0;
+            continue;
+        }
+
         if (result == UI_SYNC || result == UI_ECHO) {
             /* The band cache is the biggest thing in RAM and sync needs room to
              * build variables before archiving them, so hand it back first. */

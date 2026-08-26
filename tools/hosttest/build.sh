@@ -11,7 +11,7 @@ ${CC:-cc} $flags -o "$dir/render_probe" \
     "$dir/render_probe.c" $common "$root/calc/src/csx.c" "$root/calc/src/render.c"
 
 ${CC:-cc} $flags -o "$dir/lib_probe" \
-    "$dir/lib_probe.c" $common "$root/calc/src/library.c"
+    "$dir/lib_probe.c" $common "$root/calc/src/library.c" "$root/calc/src/csx.c"
 
 # calc/src/main.c owns `main`, and so does the probe. Rename the reader's, in a
 # compile of its own so the define cannot leak into the probe.

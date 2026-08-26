@@ -8,12 +8,18 @@
 
 import * as cache from './cache.js';
 import * as library from './library.js';
-import { flatten, readOrder } from './meta.js';
+import { flatten, libraryIdBytes, readOrder } from './meta.js';
 import { hashFile } from './fs.js';
 
-/** Runs conversions in workers, one per core up to a sensible ceiling. */
+/**
+ * Runs conversions in workers, one per core.
+ *
+ * Converting is the slow half of a first sync -- the ZX0 parse is O(n x window)
+ * over several hundred bands -- and it parallelises perfectly, one strip per
+ * worker. The cap used to be four for no better reason than caution.
+ */
 export class ConversionPool {
-  constructor(size = Math.min(4, navigator.hardwareConcurrency || 2)) {
+  constructor(size = Math.min(8, navigator.hardwareConcurrency || 2)) {
     this.size = Math.max(1, size);
     this.workers = [];
     this.idle = [];
@@ -91,9 +97,28 @@ export function plan(meta, books, resident, { freeArchive = null, indexStale = f
   }
 
   const deletes = [];
+  const dropped = new Set();
+
+  /*
+   * Anything resident that is no longer ticked comes off.
+   *
+   * Connecting ticks whatever is already on the calculator, so a tick means "I
+   * want this there" and clearing one is how you ask for it to go. Only in
+   * manual mode: automatic selection has no ticks to read.
+   */
+  if (selection === 'manual') {
+    for (const strip of strips) {
+      if (bySlot.has(strip.state.id) && !strip.state.selected) {
+        deletes.push(strip);
+        dropped.add(strip.state.id);
+      }
+    }
+  }
+
   if (autoDelete) {
     for (const strip of strips) {
-      if (strip.state.read && bySlot.has(strip.state.id) && !keep.has(strip.state.id)) {
+      if (strip.state.read && bySlot.has(strip.state.id)
+          && !keep.has(strip.state.id) && !dropped.has(strip.state.id)) {
         deletes.push(strip);
       }
     }
@@ -110,7 +135,7 @@ export function plan(meta, books, resident, { freeArchive = null, indexStale = f
 
   const deleting = new Set(deletes.map((strip) => strip.state.id));
   const candidates = wanted.filter(
-    (strip) => !bySlot.has(strip.state.id) || deleting.has(strip.state.id),
+    (strip) => !bySlot.has(strip.state.id) && !deleting.has(strip.state.id),
   );
 
   /* Budget against what will actually be free once the deletes have happened. */
@@ -205,11 +230,22 @@ export async function execute(calculator, meta, books, currentPlan, {
     }
 
     onStatus(`Sending ${strip.title} (${index}/${currentPlan.pushes.length})`);
+    const started = Date.now();
+    let sent = 0;
+
     for (let chunk = 0; chunk < container.chunks.length; chunk++) {
       if (aborted()) return { aborted: true };
       await calculator.putChunk(strip.state.id, chunk, container.chunks[chunk]);
+      sent += container.chunks[chunk].length;
+
+      /* Report a rate, so "it feels slow" becomes a number. */
+      const seconds = (Date.now() - started) / 1000;
       onProgress({
-        strip, phase: 'send', chunk: chunk + 1, chunks: container.chunks.length,
+        strip,
+        phase: 'send',
+        chunk: chunk + 1,
+        chunks: container.chunks.length,
+        rate: seconds > 0.5 ? Math.round(sent / seconds / 1024) : null,
       });
     }
 
@@ -254,8 +290,11 @@ export function buildIndexFor(meta, books, { render = undefined } = {}) {
     });
   }
 
+  const options = { libraryId: libraryIdBytes(meta) };
+  if (render) options.render = render;
+
   return library.buildIndex(
     [...grouped.entries()].map(([title, bookStrips]) => ({ title, strips: bookStrips })),
-    render ? { render } : {},
+    options,
   );
 }

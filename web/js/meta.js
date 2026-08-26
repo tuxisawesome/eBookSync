@@ -18,7 +18,7 @@ import { readJson, writeJson, titleFromFilename } from './fs.js';
 import { DEFAULT_PRESET, LAYER_PRESETS } from './convert.js';
 
 export const META_FILENAME = 'ebooksync.json';
-export const VERSION = 2;
+export const VERSION = 3;
 
 /* 3 MB of archive, minus room for the OS's own housekeeping and the index. */
 export const DEFAULT_DEVICE_BUDGET = 2_900_000;
@@ -33,8 +33,34 @@ export const DEFAULT_SETTINGS = {
   maxDeviceBytes: DEFAULT_DEVICE_BUDGET,
 };
 
+/*
+ * A library's identity, generated once and kept in its metadata file.
+ *
+ * The calculator stores it alongside the comics and compares it on every
+ * connection, so plugging into a calculator holding a different library is
+ * noticed rather than quietly mixed together.
+ */
+function newLibraryId() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+export function libraryIdBytes(meta) {
+  const out = new Uint8Array(16);
+  const hex = String(meta.libraryId || '');
+  for (let i = 0; i < 16; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16) || 0;
+  return out;
+}
+
 export function defaultMeta() {
-  return { version: VERSION, lastSync: null, settings: { ...DEFAULT_SETTINGS }, books: {} };
+  return {
+    version: VERSION,
+    libraryId: newLibraryId(),
+    lastSync: null,
+    settings: { ...DEFAULT_SETTINGS },
+    books: {},
+  };
 }
 
 export async function load(root) {
@@ -42,6 +68,10 @@ export async function load(root) {
   if (!raw || typeof raw !== 'object') return defaultMeta();
 
   const meta = defaultMeta();
+  /* Keep the identity a library already has; only mint one for a new library. */
+  if (typeof raw.libraryId === 'string' && raw.libraryId.length === 32) {
+    meta.libraryId = raw.libraryId;
+  }
   meta.lastSync = typeof raw.lastSync === 'string' ? raw.lastSync : null;
   meta.settings = { ...DEFAULT_SETTINGS, ...(raw.settings || {}) };
   if (!(meta.settings.detail in LAYER_PRESETS)) meta.settings.detail = DEFAULT_PRESET;
@@ -317,6 +347,12 @@ export function mergeFromCalculator(meta, resident) {
         continue;
       }
       state.onCalc = true;
+      /*
+       * Anything on the calculator shows as ticked. Unticking it is then how
+       * you ask for it to be removed on the next sync -- the tick means "I want
+       * this on the calculator", not "send this now".
+       */
+      state.selected = true;
       state.chunkCount = live.chunkCount;
       state.deviceBytes = live.bytes;
       state.pos = live.pos;
