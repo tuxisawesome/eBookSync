@@ -1,36 +1,38 @@
 /*
- * WebUSB transport for the sync protocol.
+ * Talking to the calculator over USB serial.
  *
- * The calculator must be running the reader and sitting on its Sync screen:
- * only then does it present the vendor-specific device this claims. See
- * docs/PROTOCOL.md, and keep the constants in step with calc/src/proto.h.
+ * The calculator presents a USB CDC serial port (srldrvce on its side), and
+ * this uses the Web Serial API. Chrome has it on macOS, Windows and Linux, and
+ * a CDC device needs no driver on any of them -- the OS's own serial driver
+ * claims it and Chrome talks through that.
+ *
+ * This replaced a hand-written vendor-class WebUSB device, which was the
+ * original plan and could not be made to work: it needed descriptors, control
+ * requests, endpoint lookup and packet-exact framing all correct at once, and
+ * failed the same silent way every time. A serial port is a byte stream, which
+ * is all this protocol ever wanted. See docs/PROTOCOL.md.
  */
 
-export const VENDOR_ID = 0x1209;
-export const PRODUCT_ID = 0x0001;
-export const PROTOCOL_VERSION = 1;
+/* srldrvce presents these -- the shared V-USB CDC identifiers. */
+export const USB_VENDOR_ID = 0x16c0;
+export const USB_PRODUCT_ID = 0x05e1;
 
-const EP_OUT = 1;
-const EP_IN = 2;
+export const PROTOCOL_VERSION = 1;
 const HEADER_SIZE = 8;
 
-/* The calculator's endpoints are 64 bytes -- it is a full-speed device. */
-const PACKET_SIZE = 64;
+/*
+ * The calculator ignores the baud rate -- it is a USB device pretending to be a
+ * serial port, so there is no real UART to configure -- but the API insists.
+ */
+const BAUD_RATE = 115200;
 
 /*
- * How long to wait for the calculator to answer before giving up.
- *
- * Archiving a chunk can take a while, and a garbage collect longer still, so
- * this is generous. It exists so that a calculator that is wedged or not
- * actually on its sync screen produces an error you can act on, rather than a
- * page that sits there saying "waiting" forever.
+ * How long to wait for a reply before giving up. Archiving a chunk takes a
+ * while and a garbage collect longer, so this is generous; it exists so a
+ * calculator that is wedged or not on its Sync screen produces an error you can
+ * act on rather than a page that waits forever.
  */
 const REPLY_TIMEOUT_MS = 20000;
-
-/* Must match STREAM_BUFFER in calc/src/usb.c: the calculator reads a payload in
- * posts of this size, and a transfer larger than one post would leave a partial
- * packet stranded between them. A multiple of PACKET_SIZE, necessarily. */
-const MAX_PAYLOAD_TRANSFER = 8 * PACKET_SIZE;
 
 export const CMD = {
   HELLO: 0x01,
@@ -63,47 +65,62 @@ export class ProtocolError extends Error {
 }
 
 export function isSupported() {
-  return typeof navigator !== 'undefined' && 'usb' in navigator;
+  return typeof navigator !== 'undefined' && 'serial' in navigator;
 }
 
 export class Calculator {
-  constructor(device) {
-    this.device = device;
+  constructor(port) {
+    this.port = port;
     this.seq = 0;
+    this.reader = null;
+    this.writer = null;
+    /* Whatever arrived but has not been consumed yet: a stream gives no
+     * guarantee about where reads land relative to messages. */
+    this.pending = new Uint8Array(0);
   }
 
-  /** Prompt for the calculator, or reuse one already granted. */
+  /** Prompt for the calculator's serial port, or reuse one already granted. */
   static async request() {
     if (!isSupported()) {
-      throw new Error('This browser has no WebUSB. Use Chrome, Edge or another Chromium browser.');
+      throw new Error('This browser has no Web Serial. Use Chrome, Edge or another '
+        + 'Chromium browser.');
     }
-    const filters = [{ vendorId: VENDOR_ID, productId: PRODUCT_ID }];
-    const granted = await navigator.usb.getDevices();
-    const device = granted.find((d) => d.vendorId === VENDOR_ID && d.productId === PRODUCT_ID)
-      || await navigator.usb.requestDevice({ filters });
-    return new Calculator(device);
+
+    const filters = [{ usbVendorId: USB_VENDOR_ID, usbProductId: USB_PRODUCT_ID }];
+    const granted = await navigator.serial.getPorts();
+    const known = granted.find((port) => {
+      const info = port.getInfo();
+      return info.usbVendorId === USB_VENDOR_ID && info.usbProductId === USB_PRODUCT_ID;
+    });
+
+    return new Calculator(known || await navigator.serial.requestPort({ filters }));
   }
 
   async open() {
-    await this.device.open();
-    if (this.device.configuration === null) await this.device.selectConfiguration(1);
-    await this.device.claimInterface(0);
+    await this.port.open({ baudRate: BAUD_RATE });
+    this.reader = this.port.readable.getReader();
+    this.writer = this.port.writable.getWriter();
+    this.pending = new Uint8Array(0);
   }
 
   async close() {
     try {
-      await this.device.releaseInterface(0);
+      if (this.reader) {
+        await this.reader.cancel().catch(() => {});
+        this.reader.releaseLock();
+        this.reader = null;
+      }
+      if (this.writer) {
+        this.writer.releaseLock();
+        this.writer = null;
+      }
     } finally {
-      await this.device.close();
+      await this.port.close();
     }
   }
 
   async #send(bytes) {
-    const result = await this.device.transferOut(EP_OUT, bytes);
-    if (result.status !== 'ok') throw new Error(`USB write ${result.status}`);
-    if (result.bytesWritten !== bytes.length) {
-      throw new Error(`USB write short: ${result.bytesWritten}/${bytes.length}`);
-    }
+    await this.writer.write(bytes);
   }
 
   /* Reject rather than hang, so a wedged calculator is reportable. */
@@ -119,20 +136,21 @@ export class Calculator {
     return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
   }
 
+  /** Read exactly `length` bytes off the stream. */
   async #receive(length, what) {
-    const out = new Uint8Array(length);
-    let filled = 0;
-    while (filled < length) {
-      const result = await Calculator.#withTimeout(
-        this.device.transferIn(EP_IN, length - filled), what,
-      );
-      if (result.status !== 'ok') throw new Error(`USB read ${result.status}`);
-      const chunk = new Uint8Array(result.data.buffer, result.data.byteOffset,
-                                   result.data.byteLength);
-      if (!chunk.length) throw new Error('calculator sent an empty packet');
-      out.set(chunk.subarray(0, length - filled), filled);
-      filled += chunk.length;
+    while (this.pending.length < length) {
+      const { value, done } = await Calculator.#withTimeout(this.reader.read(), what);
+      if (done) throw new Error('the calculator closed the connection');
+      if (!value || !value.length) continue;
+
+      const merged = new Uint8Array(this.pending.length + value.length);
+      merged.set(this.pending, 0);
+      merged.set(value, this.pending.length);
+      this.pending = merged;
     }
+
+    const out = this.pending.slice(0, length);
+    this.pending = this.pending.slice(length);
     return out;
   }
 
@@ -141,30 +159,19 @@ export class Calculator {
    *
    * Strictly one request in flight at a time: the calculator has no room to
    * queue work, and lockstep makes recovery after an unplug trivial.
-   *
-   * The header goes out as a transfer of its own, and so does the payload.
-   * That is not tidiness -- USB is packet-based, and the calculator posts an
-   * 8-byte receive for the header. Bundling the two into one transfer would put
-   * both in a single 64-byte packet, and everything past the header would
-   * overflow the endpoint and be thrown away.
    */
   async request(cmd, payload = new Uint8Array(0), arg = 0) {
     const seq = (this.seq = (this.seq + 1) & 0xff);
     const what = `command 0x${cmd.toString(16).padStart(2, '0')}`;
 
-    const header = new Uint8Array(HEADER_SIZE);
-    const view = new DataView(header.buffer);
+    const message = new Uint8Array(HEADER_SIZE + payload.length);
+    const view = new DataView(message.buffer);
     view.setUint8(0, cmd);
     view.setUint8(1, seq);
     view.setUint16(2, arg, true);
     view.setUint32(4, payload.length, true);
-    await this.#send(header);
-
-    /* Split the payload on packet boundaries for the same reason: the
-     * calculator receives it in STREAM_BUFFER-sized posts. */
-    for (let sent = 0; sent < payload.length; sent += MAX_PAYLOAD_TRANSFER) {
-      await this.#send(payload.subarray(sent, sent + MAX_PAYLOAD_TRANSFER));
-    }
+    message.set(payload, HEADER_SIZE);
+    await this.#send(message);
 
     const reply = await this.#receive(HEADER_SIZE, what);
     const replyView = new DataView(reply.buffer);
@@ -184,10 +191,11 @@ export class Calculator {
   async hello() {
     const body = await this.request(CMD.HELLO);
     if (body.length < 6) throw new Error('short HELLO reply');
+
     const version = body[0];
     if (version !== PROTOCOL_VERSION) {
-      throw new Error(`calculator speaks protocol ${version}, this page speaks ${PROTOCOL_VERSION}`
-        + ' -- update the reader on the calculator');
+      throw new Error(`calculator speaks protocol ${version}, this page speaks `
+        + `${PROTOCOL_VERSION} -- update the reader on the calculator`);
     }
     return {
       version,
@@ -219,10 +227,6 @@ export class Calculator {
   }
 
   async putChunk(slot, index, chunk) {
-    /* Slot and index go in the header's arg, not at the front of the payload:
-     * the calculator reads the header and the payload as separate USB
-     * transfers, and anything prepended to the payload would be stuck in the
-     * same packet as the chunk data. */
     await this.request(CMD.PUT_CHUNK, chunk, slot | (index << 8));
   }
 

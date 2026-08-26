@@ -176,6 +176,7 @@ uint24_t os_PutStrFull(const char *string) { (void)string; return 0; }
 
 #define MAX_FRAMES 8192
 
+uint16_t shim_vram[240 * 320];
 uint16_t shim_kb_data[8];
 uint8_t shim_kb_config;
 

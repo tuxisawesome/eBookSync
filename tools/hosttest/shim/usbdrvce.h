@@ -121,25 +121,11 @@ usb_error_t usb_Init(usb_event_callback_t handler, usb_callback_data_t *data,
 void usb_Cleanup(void);
 usb_error_t usb_HandleEvents(void);
 usb_device_t usb_FindDevice(usb_device_t root, usb_device_t from, usb_device_flags_t flags);
-usb_endpoint_t usb_GetDeviceEndpoint(usb_device_t device, uint8_t address);
-usb_error_t usb_Transfer(usb_endpoint_t endpoint, void *buffer, size_t length,
-                         unsigned retries, size_t *transferred);
-usb_error_t usb_ScheduleTransfer(usb_endpoint_t endpoint, void *buffer, size_t length,
-                                 usb_transfer_callback_t handler, usb_transfer_data_t *data);
 
 /* ------------------------------------------------------- the wire, for tests */
 
-/* Queue one packet from the computer to the calculator. */
-void wire_push_out(const void *data, size_t length);
-
-/* Take the next packet the calculator sent. Returns its length, or -1. */
-int wire_pop_in(void *data, size_t max);
-
-/*
- * Protocol violations seen: receives posted shorter than the packet arriving
- * into them, and receives posted shorter than the endpoint's maximum packet.
- * Any value but zero is a bug that would show up as a stalled sync.
- */
+/* Always zero now that the link is a byte stream; kept so the probe's exit
+ * status still means "the transport was used correctly". */
 int wire_overflows(void);
 
 /* True once every queued OUT packet has been consumed. */

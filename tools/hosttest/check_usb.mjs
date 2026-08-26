@@ -1,22 +1,16 @@
 /*
  * Run the real sync protocol, both ends, over a pipe.
  *
- * web/js/usb.js talks to a fake USBDevice that frames its transfers into 64-byte
- * packets and pipes them to tools/hosttest/usb_probe, which runs calc/src/usb.c
- * for real -- the same scheduling loop, command handlers and appvar writes that
- * run on the calculator. Replies come back the same way.
+ * web/js/link.js talks to a stand-in serial port whose bytes are piped to
+ * tools/hosttest/usb_probe, which runs calc/src/usb.c for real -- the same
+ * loop, command handlers and appvar writes that run on the calculator. Replies
+ * come back the same way.
  *
- * This exists because two bugs got all the way to hardware:
- *
- *   - the reader waited for the next request with a *blocking* transfer, so the
- *     calculator stopped scanning its keypad the moment it was plugged in and
- *     could only be recovered with the reset button;
- *   - the computer sent a request header and its payload in one transfer, so
- *     both landed in one USB packet while the reader read them separately --
- *     everything past the header was silently dropped by the endpoint.
- *
- * The wire model counts that second failure and the probe exits non-zero on it,
- * so neither can come back unnoticed.
+ * It cannot check the thing that actually broke sync for a week, which was the
+ * USB layer underneath: descriptors, control requests, endpoints, interrupts.
+ * That is exactly why the transport moved to a CDC serial port and srldrvce,
+ * which is the one device-mode path on this platform known to work. What is
+ * left above it is a byte stream, and this checks that end to end.
  *
  *   node tools/hosttest/check_usb.mjs
  */
@@ -27,7 +21,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { Calculator } from '../../web/js/usb.js';
+import { Calculator } from '../../web/js/link.js';
 import * as lib from '../../web/js/library.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -47,83 +41,28 @@ function check(label, actual, expected) {
 }
 
 /*
- * A USBDevice whose transfers become framed packets on the probe's stdin, and
- * whose reads come from its stdout. Splitting into packets here is the whole
- * point: it is what makes an over-long transfer visible to the model.
+ * A stand-in for a Web Serial port, wired to the probe's stdin and stdout.
+ * A byte stream in, a byte stream out -- there is nothing else to model.
  */
-class PipeDevice {
-  constructor(child) {
-    this.child = child;
-    this.buffered = [];
-    this.waiting = null;
-    this.closed = false;
+function makePort(child) {
+  return {
+    async open() {},
+    async close() { child.stdin.end(); },
+    getInfo() { return { usbVendorId: 0x16c0, usbProductId: 0x05e1 }; },
 
-    child.stdout.on('data', (data) => {
-      this.buffered.push(...data);
-      this.#pump();
-    });
-    child.stdout.on('end', () => {
-      this.closed = true;
-      this.#pump();
-    });
-  }
+    readable: new ReadableStream({
+      start(controller) {
+        child.stdout.on('data', (data) => controller.enqueue(new Uint8Array(data)));
+        child.stdout.on('end', () => {
+          try { controller.close(); } catch { /* already closed */ }
+        });
+      },
+    }),
 
-  #pump() {
-    while (this.waiting) {
-      if (this.buffered.length < 2) break;
-      const length = this.buffered[0] | (this.buffered[1] << 8);
-      if (this.buffered.length < 2 + length) break;
-      this.buffered.splice(0, 2);
-      const packet = this.buffered.splice(0, length);
-      const resolve = this.waiting;
-      this.waiting = null;
-      resolve(Uint8Array.from(packet));
-    }
-    if (this.waiting && this.closed) {
-      const resolve = this.waiting;
-      this.waiting = null;
-      resolve(null);
-    }
-  }
-
-  #nextPacket() {
-    return new Promise((resolve) => {
-      this.waiting = resolve;
-      this.#pump();
-    });
-  }
-
-  async open() {}
-  async close() { this.child.stdin.end(); }
-  async selectConfiguration() {}
-  async claimInterface() {}
-  async releaseInterface() {}
-
-  get configuration() { return {}; }
-
-  async transferOut(endpoint, data) {
-    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-    let sent = 0;
-    do {
-      const packet = bytes.subarray(sent, sent + PACKET_SIZE);
-      const frame = Buffer.alloc(2 + packet.length);
-      frame.writeUInt16LE(packet.length, 0);
-      Buffer.from(packet).copy(frame, 2);
-      this.child.stdin.write(frame);
-      sent += PACKET_SIZE;
-    } while (sent < bytes.length);
-    return { status: 'ok', bytesWritten: bytes.length };
-  }
-
-  async transferIn(endpoint, length) {
-    const packet = await this.#nextPacket();
-    if (!packet) return { status: 'stall', data: new DataView(new ArrayBuffer(0)) };
-    if (packet.length > length) {
-      failures++;
-      console.log(`  FAIL babble: ${packet.length} byte packet into a ${length} byte read`);
-    }
-    return { status: 'ok', data: new DataView(packet.buffer, packet.byteOffset, packet.length) };
-  }
+    writable: new WritableStream({
+      write(chunk) { child.stdin.write(Buffer.from(chunk)); },
+    }),
+  };
 }
 
 function fakeRender(text, maxWidth) {
@@ -144,7 +83,8 @@ function startProbe(libraryDir) {
 
 async function session(libraryDir, body) {
   const { child, getStderr } = startProbe(libraryDir);
-  const calculator = new Calculator(new PipeDevice(child));
+  const calculator = new Calculator(makePort(child));
+  await calculator.open();
 
   let result;
   try {
@@ -172,7 +112,7 @@ async function session(libraryDir, body) {
   check('list: empty calculator', result.list, []);
   check('index: empty calculator', result.index.length, 0);
   check('space: reports free archive', result.space > 0, true);
-  check('no endpoint overflows', status, 0);
+  check('the probe used the link correctly', status, 0);
   if (status !== 0) console.log('    probe said:', stderr.trim());
 }
 
@@ -206,15 +146,14 @@ async function session(libraryDir, body) {
           readAt: 0, pos: 0, layer: 0 });
   check('index: comes back byte for byte',
         Array.from(result.index), Array.from(index));
-  check('library session: no endpoint overflows', status, 0);
+  check('library session: link used correctly', status, 0);
 }
 
 /*
  * --- chunks survive the trip ----------------------------------------------
  *
- * Sizes chosen to catch the packet edges: one byte, exactly one packet, exactly
- * one staging buffer, a size that lands on a packet boundary with no short
- * packet to end it, and a full 16 KB chunk.
+ * Sizes spanning the staging buffer boundaries the reader reads through, and a
+ * full 16 KB chunk.
  */
 {
   const sizes = [1, 63, 64, 65, 511, 512, 513, 1024, 4096, 16384];
@@ -227,7 +166,7 @@ async function session(libraryDir, body) {
   });
 
   check('every chunk was accepted', result.count, sizes.length);
-  check('chunk session: no endpoint overflows', status, 0);
+  check('chunk session: link used correctly', status, 0);
 }
 
 /* --- delete and bye ------------------------------------------------------- */
@@ -239,7 +178,7 @@ async function session(libraryDir, body) {
 
   check('deleting a strip that is not there is not an error', result.removed, 0);
   check('bye is acknowledged', result.bye, 'ok');
-  check('delete session: no endpoint overflows', status, 0);
+  check('delete session: link used correctly', status, 0);
 }
 
 /* --- an unknown command is refused, not fatal ----------------------------- */
@@ -257,7 +196,7 @@ async function session(libraryDir, body) {
 
   check('unknown command is refused', result.refused, 1);
   check('the link survives it', result.stillAlive, 1);
-  check('unknown-command session: no endpoint overflows', status, 0);
+  check('unknown-command session: link used correctly', status, 0);
 }
 
 console.log(`${checks - failures}/${checks} usb protocol checks pass`);

@@ -102,6 +102,30 @@ __libload_library_KEYPADC:
 	.type _kb_Scan, @function
 _kb_Scan:
 	jp 0
+	.global __libload_library_SRLDRVCE
+	.type __libload_library_SRLDRVCE, @object
+__libload_library_SRLDRVCE:
+	.db 0xC0, "SRLDRVCE", 0, 0
+	.global _srl_Open
+	.type _srl_Open, @function
+_srl_Open:
+	jp 0
+	.global _srl_Read
+	.type _srl_Read, @function
+_srl_Read:
+	jp 6
+	.global _srl_Write
+	.type _srl_Write, @function
+_srl_Write:
+	jp 9
+	.global _srl_GetCDCStandardDescriptors
+	.type _srl_GetCDCStandardDescriptors, @function
+_srl_GetCDCStandardDescriptors:
+	jp 12
+	.global _srl_UsbEventCallback
+	.type _srl_UsbEventCallback, @function
+_srl_UsbEventCallback:
+	jp 15
 	.global __libload_library_USBDRVCE
 	.type __libload_library_USBDRVCE, @object
 __libload_library_USBDRVCE:
@@ -122,18 +146,6 @@ _usb_HandleEvents:
 	.type _usb_FindDevice, @function
 _usb_FindDevice:
 	jp 36
-	.global _usb_GetDeviceEndpoint
-	.type _usb_GetDeviceEndpoint, @function
-_usb_GetDeviceEndpoint:
-	jp 84
-	.global _usb_Transfer
-	.type _usb_Transfer, @function
-_usb_Transfer:
-	jp 123
-	.global _usb_ScheduleTransfer
-	.type _usb_ScheduleTransfer, @function
-_usb_ScheduleTransfer:
-	jp 129
 .endm
 #endif
 #define HAS_LIBLOAD 1

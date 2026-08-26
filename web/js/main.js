@@ -15,7 +15,7 @@ import * as cacheStore from './cache.js';
 import * as fs from './fs.js';
 import * as metaStore from './meta.js';
 import * as syncEngine from './sync.js';
-import { Calculator, isSupported as usbSupported } from './usb.js';
+import { Calculator, isSupported as linkSupported } from './link.js';
 
 const el = (id) => document.getElementById(id);
 
@@ -665,10 +665,16 @@ async function connect() {
 
 function describeConnectError(error) {
   if (error.name === 'NotFoundError') {
-    return 'No calculator chosen. Run COMICS, press 2nd for the Sync screen, then try again.';
+    return 'No calculator chosen. Run COMICS, press 2nd for the Sync screen, plug the '
+      + 'cable in, then try again.';
   }
-  if (error.name === 'SecurityError' || error.name === 'NetworkError') {
-    return `Could not open the calculator: ${error.message}. On Linux you may need the udev rule from docs/PROTOCOL.md.`;
+  if (error.name === 'InvalidStateError') {
+    return 'That port is already open. Close any other program using it (a serial '
+      + 'monitor, say) and try again.';
+  }
+  if (error.name === 'NetworkError') {
+    return `Could not open the calculator's serial port: ${error.message}. `
+      + 'On Linux your user may need to be in the dialout group.';
   }
   return `Could not connect: ${error.message}`;
 }
@@ -888,7 +894,7 @@ function bindTreeDrop() {
 }
 
 async function start() {
-  if (!fs.isSupported() || !usbSupported()) {
+  if (!fs.isSupported() || !linkSupported()) {
     ui.unsupported.hidden = false;
     ui.chooseFolder.disabled = true;
     return;

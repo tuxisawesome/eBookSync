@@ -1,27 +1,33 @@
-# The eBookSync USB protocol
+# The eBookSync sync protocol
 
-The reader takes over the calculator's USB port and presents a **vendor-specific
-device**, which the sync page claims directly with WebUSB. The calculator must
+The calculator presents itself as a **USB CDC serial port** using `srldrvce`,
+and the sync page talks to it with the **Web Serial API**. The calculator must
 be running the reader and sitting on its Sync screen before you connect.
 
-`calc/src/usb.c` and `web/js/usb.js` are the two ends; `calc/src/proto.h` holds
+`calc/src/usb.c` and `web/js/link.js` are the two ends; `calc/src/proto.h` holds
 the constants both must agree on.
 
-## Why a custom device rather than TI's link protocol
+## Why a serial port
 
-The obvious alternative is to speak TI's own DirectLink protocol so the
-calculator can sit at the home screen. Two things argue against it:
+The original design was a hand-written vendor-class WebUSB device: the reader
+declared its own descriptors, answered control requests, looked up its own
+endpoints and scheduled its own transfers. It never worked. Seven separate
+defects were found and fixed in it -- blocking receives, control replies sent
+with the wrong API, packet-illegal framing, receives shorter than the endpoint's
+maximum -- and it still froze inside `usb_HandleEvents()` with no transfer ever
+completing and no error ever reported.
 
-- On Windows, TI's driver claims the stock device, and WebUSB cannot take an
-  interface a kernel driver owns. Users would need Zadig. Our device advertises
-  **WebUSB and Microsoft OS 2.0 descriptors**, so Windows binds WinUSB by itself
-  and Chrome can open it with no driver work at all.
-- Sync needs to *delete* strips and *read back* progress, not just push files.
-  Both are awkward over DirectLink and trivial with a protocol designed for it.
+`srldrvce` is the one device-mode path on this platform that is known to work;
+the toolchain's own `srl_echo` example demonstrates it. Moving to it deletes
+every line where those defects lived. What is left is a byte stream, which is
+all this protocol ever needed.
 
-The cost is that the reader has to be running to sync, and that the reader
-itself must be installed some other way the first time -- TI Connect CE or
-ticalc.link.
+The cost is that it is not WebUSB. Nothing else changed: the framing, the
+commands and everything above them are identical.
+
+**No driver is needed on any platform.** A CDC serial port is claimed by the
+operating system's own driver, and Chrome talks through that -- no WinUSB, no
+Zadig, no udev rule. On Linux your user may need to be in the `dialout` group.
 
 ## Framing
 
@@ -39,49 +45,19 @@ The computer sends a request and waits for the reply carrying the same `cmd` and
 `seq`. There is exactly one request in flight at a time -- the calculator has no
 room to queue work, and a strict lockstep makes recovery after an unplug simple.
 
-## Packet rules, which are not optional
+## The stream
 
-Bulk endpoints move whole packets of at most 64 bytes -- the calculator is a
-full-speed device. A receive ends when its buffer fills or a short packet
-arrives, and **a receive posted shorter than the packet arriving into it keeps
-what fits and silently loses the rest**. Three rules follow, and breaking any of
-them wedges a sync in a way that is invisible from either end:
+A serial port is a byte stream, so the framing needs no care beyond reading the
+right number of bytes: a header, then exactly `length` payload bytes. Requests
+and replies both go out as a single write.
 
-1. **The header is a transfer of its own.** The calculator posts an 8-byte
-   receive for it. Bundling a payload behind it in the same transfer puts both
-   in one 64-byte packet, and everything past the header is dropped by the
-   endpoint.
+Arguments still ride in the header's `arg` field rather than at the front of the
+payload -- `PUT_CHUNK` carries `slot | (index << 8)` there, `DEL` carries the
+slot. That was forced by the old packet-based transport and kept because it is
+simply tidier: the payload is the chunk and nothing else.
 
-2. **Arguments live in the header, not at the front of the payload.** That is
-   what `arg` is for: `PUT_CHUNK` carries `slot | (index << 8)` there and `DEL`
-   carries the slot. A few argument bytes ahead of the chunk data would share a
-   packet with it and could not be read separately.
-
-3. **Every receive the calculator posts is a whole number of packets.** An
-   8-byte receive for an 8-byte header looks reasonable and simply never
-   completes -- no data, no error, nothing. `srldrvce`, the toolchain's own
-   device-mode driver, always posts a full 64 bytes, and so does this. The idle
-   wait posts a whole packet and takes the first 8 bytes; payload receives round
-   up to a packet boundary. A short packet still ends a transfer early, so
-   asking for more than is coming is safe.
-
-4. **Payload transfers are capped at 512 bytes, on both sides.** The calculator
-   receives a payload in 512-byte posts (`STREAM_BUFFER` in `calc/src/usb.c`),
-   so the computer sends it in 512-byte transfers (`MAX_PAYLOAD_TRANSFER` in
-   `web/js/usb.js`). The two constants must match: a larger transfer on the
-   computer would leave a partial packet stranded between two posts.
-
-The calculator also never waits for a request with a blocking transfer.
-`usb_Transfer()` does not return until the transfer completes, so waiting that
-way would sit inside the driver with the computer idle -- the keypad would never
-be scanned again and the reader would be unrecoverable short of the reset
-button. The idle receive is scheduled instead, and delivered by
-`usb_HandleEvents()` while the loop keeps drawing and watching for `clear`.
-Once a header has arrived the computer is committed to the exchange, so the
-payload and reply do use blocking transfers.
-
-`tools/hosttest/check_usb.mjs` runs both ends against a model of these rules and
-fails on any overflow.
+Neither end ever blocks. `srl_Read` returns what it has, so the reader pumps the
+USB event loop and redraws between reads, and the user can always press `clear`.
 
 ## graphx has to be off
 
@@ -175,26 +151,8 @@ is why every step reports progress.
 
 ## Device descriptors
 
-Vendor ID `0x1209`, product ID `0x0001` -- from the pid.codes test range, since
-this is not a shipping USB product.
+Vendor ID `0x16C0`, product ID `0x05E1` -- the shared V-USB CDC identifiers that
+`srl_GetCDCStandardDescriptors()` presents. The sync page filters on them.
 
-One configuration, one vendor-specific interface (class `0xFF`), two bulk
-endpoints: `0x01` OUT and `0x82` IN, 64-byte packets. The device also answers:
-
-The device declares plain **USB 2.0**, and answers no control requests of its
-own -- usbdrvce handles every standard request.
-
-It did once declare 2.1 and answer the BOS and Microsoft OS 2.0 requests, so
-that Windows would bind WinUSB by itself. That is worth having, but a control
-request must be answered with `usb_ScheduleControlTransfer()`, which takes the
-setup packet; answering with plain `usb_ScheduleTransfer()` on endpoint 0 feeds
-raw bytes into the control pipe as though they were a setup packet and wedges
-the device the instant the host asks. Until it is done properly, **Windows users
-need [Zadig](https://zadig.akeo.ie/) to bind WinUSB to the device by hand.**
-Linux and macOS need nothing beyond the udev rule below.
-
-On Linux, a udev rule lets the browser open the device:
-
-```
-SUBSYSTEM=="usb", ATTR{idVendor}=="1209", ATTR{idProduct}=="0001", MODE="0660", TAG+="uaccess"
-```
+`srldrvce` owns the descriptors; the reader writes none of its own and answers
+no control requests. That is the point of it.

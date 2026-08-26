@@ -18,14 +18,12 @@
 
 #define PROTO_VERSION       1
 
-/* Chosen from the pid.codes test range: this is not a shipping USB product and
- * must not squat on a real vendor's IDs. */
-#define PROTO_VENDOR_ID     0x1209
-#define PROTO_PRODUCT_ID    0x0001
-
-#define PROTO_EP_OUT        0x01    /* computer -> calculator */
-#define PROTO_EP_IN         0x82    /* calculator -> computer */
-#define PROTO_PACKET_SIZE   64      /* full speed bulk */
+/*
+ * The calculator is a USB CDC serial port, so the computer finds it by the
+ * descriptors srldrvce presents. These are the shared V-USB CDC identifiers.
+ */
+#define PROTO_USB_VENDOR    0x16C0
+#define PROTO_USB_PRODUCT   0x05E1
 
 #define PROTO_HEADER_SIZE   8
 
@@ -89,7 +87,7 @@ bool proto_run(proto_progress_t progress);
 uint16_t proto_requests(void);      /* requests handled */
 uint8_t proto_last_command(void);   /* the most recent one */
 uint16_t proto_errors(void);        /* failed receives on the idle wait */
-uint8_t proto_schedule_error(void); /* last usb_ScheduleTransfer result */
+uint8_t proto_schedule_error(void); /* last srl_Open result */
 
 /*
  * Times round the sync loop. Shown as a live counter, because a static screen
@@ -103,11 +101,17 @@ uint24_t proto_loops(void);
  * which stops dead still says where it stopped. The periodic redraw cannot do
  * that -- it only runs if the loop is still going.
  */
-#define PROTO_PHASE_EVENTS   253   /* red    -- inside usb_HandleEvents */
-#define PROTO_PHASE_SCHEDULE 254   /* yellow -- inside usb_ScheduleTransfer */
-#define PROTO_PHASE_UI       255   /* green  -- inside the progress callback */
-#define PROTO_PHASE_DRAW     252   /* blue   -- inside the redraw */
+#define PROTO_PHASE_EVENTS   0   /* red    -- inside usb_HandleEvents */
+#define PROTO_PHASE_OPEN     1   /* yellow -- opening the serial device */
+#define PROTO_PHASE_UI       2   /* green  -- reading the keypad */
+#define PROTO_PHASE_DRAW     3   /* blue   -- drawing the status */
 
 void proto_mark(uint8_t phase);
+
+/* Where proto_mark paints. The host tests point this at a plain buffer, since
+ * the calculator's framebuffer address means nothing there. */
+#ifndef PROTO_VRAM
+#define PROTO_VRAM ((uint16_t *)0xD40000)
+#endif
 
 #endif /* PROTO_H */

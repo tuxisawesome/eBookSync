@@ -46,21 +46,16 @@ around 50 KB of free RAM. That drives everything:
 
 ## Requirements
 
-- **A Chromium-based browser** (Chrome or Edge). WebUSB and the File System
-  Access API do not exist in Firefox or Safari.
+- **A Chromium-based browser** (Chrome or Edge). The Web Serial and File System
+  Access APIs do not exist in Firefox or Safari.
 - **A jailbroken calculator on OS 5.5 or later.** TI removed the ability to run
   native programs; [arTIfiCE](https://yvantt.github.io/arTIfiCE/) puts it back
   and covers OS 5.6.5 and 5.8.3. OS 5.3 and earlier need nothing.
 - **The [CE C/C++ toolchain](https://ce-programming.github.io/toolchain/)** to
   build the reader.
-- On Windows, [Zadig](https://zadig.akeo.ie/) to bind WinUSB to the calculator
-  while it is on its Sync screen. See `docs/PROTOCOL.md` for why. macOS and
-  Linux need no driver for a vendor-class interface.
-- On Linux, a udev rule so the browser may open the calculator:
-
-  ```
-  SUBSYSTEM=="usb", ATTR{idVendor}=="1209", ATTR{idProduct}=="0001", MODE="0660", TAG+="uaccess"
-  ```
+- **No driver, on any platform.** The calculator appears as a USB serial port,
+  which every OS claims with its own driver. On Linux your user may need to be
+  in the `dialout` group.
 
 ## Getting started
 
@@ -117,7 +112,8 @@ is on the calculator removes it from the calculator too, on the next sync.
 **4. Connect the calculator.**
 
 Run `COMICS`, press `2nd` on the book list to reach the Sync screen, plug in the
-cable, and press **Connect calculator** on the page.
+cable, and press **Connect calculator** on the page, then pick the calculator's
+serial port from the browser's list.
 
 The sync screen is plain text on the homescreen rather than the reader's own
 graphics. That is deliberate: the USB controller and the LCD contend for the

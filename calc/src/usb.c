@@ -1,10 +1,17 @@
 /*
- * The calculator end of the sync protocol.
+ * The calculator end of the sync protocol, over USB serial.
  *
- * usb_Init() with our own descriptors takes the port away from the TI OS and
- * makes the reader a plain vendor-specific device. The descriptors advertise
- * WebUSB and Microsoft OS 2.0, which is what lets Chrome open the device on
- * Windows without anyone installing a driver.
+ * The calculator presents itself as a USB CDC serial port using srldrvce, and
+ * the computer talks to it with the Web Serial API. srldrvce sits on the same
+ * usbdrvce underneath, but it is the one device-mode path on this platform that
+ * is known to work -- the toolchain's srl_echo example demonstrates it.
+ *
+ * A hand-written vendor-class WebUSB device was tried first and could not be
+ * made to work: descriptors, control requests, endpoint lookup and transfer
+ * scheduling all had to be right at once, and the failure mode was always the
+ * same silent freeze inside usb_HandleEvents(). All of that is srldrvce's
+ * problem now. What is left here is a byte stream, which is all the protocol
+ * ever needed.
  *
  * See docs/PROTOCOL.md.
  */
@@ -17,213 +24,100 @@
 #include <fileioc.h>
 #include <string.h>
 #include <tice.h>
+#include <srldrvce.h>
 #include <usbdrvce.h>
 
 
 /*
- * Retries for the blocking transfers used *inside* a command, once its header
- * has arrived and the computer is committed to the exchange.
- */
-#define TRANSFER_RETRIES 10
-
-/*
- * Streaming buffer for chunk payloads. Small on purpose -- chunks are written
- * straight into the appvar as they arrive rather than staged whole in RAM --
- * and a multiple of the endpoint packet size, which is not optional: posting a
- * receive shorter than the packet the host sends overflows the endpoint and the
- * excess is silently dropped.
+ * Staging buffer for chunk payloads. Small on purpose: chunks are written
+ * straight into the appvar as they arrive rather than held whole in RAM.
  */
 #define STREAM_BUFFER 512
 
-static usb_device_t host_device;
-static usb_endpoint_t endpoint_in;
-static usb_endpoint_t endpoint_out;
-static bool configured;
 static bool finished;
 
 static uint8_t stream[STREAM_BUFFER];
 
+/* Filled a few bytes at a time by the main loop until a whole header is in. */
+static uint8_t request_header[PROTO_HEADER_SIZE];
+static uint8_t header_filled;
+
 /*
- * The idle wait for the next request is asynchronous, and has to be.
- *
- * usb_Transfer() blocks until the transfer completes, so waiting for a command
- * that way would sit inside the USB driver forever with the computer idle --
- * the keypad would never be scanned again and the reader would look hung, with
- * no way out but the reset button. Scheduling the receive instead lets
- * usb_HandleEvents() deliver it whenever it turns up, while the loop keeps
- * drawing and watching for the clear key.
- *
- * Once a header has arrived the computer is mid-exchange and committed to
- * sending the rest, so the payload and the reply can use blocking transfers.
+ * Counters the sync screen puts on display. When a sync stalls, the difference
+ * between "nothing ever arrived", "requests arrive but replies fail" and "the
+ * link dropped" is the whole diagnosis, and there is nowhere else to see it.
  */
 static uint16_t requests_handled;
 static uint8_t last_command;
 static uint16_t receive_errors;
-static usb_error_t schedule_error;
 static uint24_t loop_count;
 
-/* A whole packet, not just the 8 header bytes: see read_exact. */
-static uint8_t request_header[PROTO_PACKET_SIZE];
-static volatile bool header_posted;
-static volatile bool header_ready;
-static volatile bool link_lost;
 
+/* ------------------------------------------------------------------- state */
 
-/* ------------------------------------------------------------- descriptors */
+/*
+ * srldrvce's working buffer. It wants at least 128 bytes, an even size, and
+ * recommends 512.
+ */
+static uint8_t serial_buffer[512];
 
-static const usb_device_descriptor_t device_descriptor = {
-    .bLength = 18,
-    .bDescriptorType = USB_DEVICE_DESCRIPTOR,
-    /*
-     * Plain USB 2.0, deliberately.
-     *
-     * Declaring 2.1 makes the host ask for a BOS descriptor, which is how a
-     * device advertises WebUSB and asks Windows to bind WinUSB automatically.
-     * Answering it means handling a control request by hand, and getting that
-     * wrong wedges the control pipe the instant the host asks -- which is
-     * exactly what happened. Answering it correctly needs
-     * usb_ScheduleControlTransfer(), which takes the setup packet, and not
-     * usb_ScheduleTransfer(), which does not.
-     *
-     * None of it is needed to talk to the device: Chrome will open any
-     * vendor-class interface the user picks. It only buys automatic driver
-     * binding on Windows, where Zadig is the fallback. Worth doing properly one
-     * day; not worth a wedged calculator today.
-     */
-    .bcdUSB = 0x0200,
-    .bDeviceClass = 0,
-    .bDeviceSubClass = 0,
-    .bDeviceProtocol = 0,
-    .bMaxPacketSize0 = 64,
-    .idVendor = PROTO_VENDOR_ID,
-    .idProduct = PROTO_PRODUCT_ID,
-    .bcdDevice = 0x0100,
-    .iManufacturer = 1,
-    .iProduct = 2,
-    .iSerialNumber = 0,
-    .bNumConfigurations = 1,
-};
+static srl_device_t serial;
+static bool serial_open;
+static bool open_pending;
+static srl_error_t open_error;
 
-/* Configuration, one vendor-specific interface, one bulk pair. Written out as
- * bytes because that is how the spec reads and how it must reach the wire. */
-static const uint8_t configuration[] = {
-    /* configuration */
-    9, USB_CONFIGURATION_DESCRIPTOR, 32, 0, 1, 1, 0, 0x80, 250 / 2,
-    /* interface: class 0xFF, vendor specific */
-    9, USB_INTERFACE_DESCRIPTOR, 0, 0, 2, 0xFF, 0x00, 0x00, 0,
-    /* bulk OUT */
-    7, USB_ENDPOINT_DESCRIPTOR, PROTO_EP_OUT, 0x02,
-       PROTO_PACKET_SIZE & 0xFF, PROTO_PACKET_SIZE >> 8, 0,
-    /* bulk IN */
-    7, USB_ENDPOINT_DESCRIPTOR, PROTO_EP_IN, 0x02,
-       PROTO_PACKET_SIZE & 0xFF, PROTO_PACKET_SIZE >> 8, 0,
-};
-
-static const usb_configuration_descriptor_t *const configurations[] = {
-    (const usb_configuration_descriptor_t *)configuration,
-};
-
-static const uint8_t langids[] = { 4, USB_STRING_DESCRIPTOR, 0x09, 0x04 };
-
-static const uint8_t string_manufacturer[] = {
-    18, USB_STRING_DESCRIPTOR,
-    'e',0, 'B',0, 'o',0, 'o',0, 'k',0, 'S',0, 'y',0, 'n',0,
-};
-static const uint8_t string_product[] = {
-    28, USB_STRING_DESCRIPTOR,
-    'C',0, 'o',0, 'm',0, 'i',0, 'c',0, ' ',0, 'R',0, 'e',0,
-    'a',0, 'd',0, 'e',0, 'r',0, ' ',0,
-};
-
-static const usb_string_descriptor_t *const strings[] = {
-    (const usb_string_descriptor_t *)string_manufacturer,
-    (const usb_string_descriptor_t *)string_product,
-};
-
-static const usb_standard_descriptors_t descriptors = {
-    .device = &device_descriptor,
-    .configurations = configurations,
-    .langids = (const usb_string_descriptor_t *)langids,
-    .numStrings = 2,
-    .strings = strings,
-};
+/* Set while a command is being handled, so the stream helpers can keep the
+ * screen alive and let the user give up. */
+static proto_progress_t active_progress;
 
 /* ---------------------------------------------------------------- transport */
 
 /*
- * Receive exactly `length` bytes.
+ * Read exactly `length` bytes.
  *
- * The posted length is capped at STREAM_BUFFER rather than chopped into small
- * reads: a receive shorter than the packet the host is sending overflows the
- * endpoint and loses the remainder. Callers never ask for more than they can
- * hold, so the cap only matters as a guard.
- */
-/*
- * Look the endpoint up afresh for every transfer.
- *
- * srldrvce -- the one driver in the toolchain that acts as a device -- does
- * exactly this rather than caching the handle, and it is cheap. A handle kept
- * across a reconfiguration is not obviously still valid.
- */
-static usb_endpoint_t endpoint(uint8_t address) {
-    usb_device_t device = usb_FindDevice(NULL, NULL, USB_SKIP_HUBS);
-    return device ? usb_GetDeviceEndpoint(device, address) : NULL;
-}
-
-/*
- * Receive exactly `length` bytes.
- *
- * Every posted receive is a whole number of packets. That is not an
- * optimisation: the endpoint moves whole packets, and a receive posted shorter
- * than the endpoint's maximum simply does not work -- srldrvce always posts a
- * full 64 bytes for the same reason. Short packets still end a transfer early,
- * so asking for more than is coming is safe and `got` says what really arrived.
- *
- * Callers always read into `stream`, so rounding up can never overrun.
+ * srl_Read is non-blocking and returns what it has, so this pumps the USB event
+ * loop and the progress callback while it waits. Nothing here ever blocks: a
+ * computer that stops mid-message leaves the reader responsive and abortable
+ * rather than wedged.
  */
 static bool read_exact(void *buffer, size_t length) {
     uint8_t *out = buffer;
 
     while (length) {
-        size_t want = length;
-        if (want > STREAM_BUFFER)
-            want = STREAM_BUFFER;
-        want = (want + PROTO_PACKET_SIZE - 1) / PROTO_PACKET_SIZE * PROTO_PACKET_SIZE;
-        if (want > STREAM_BUFFER)
-            want = STREAM_BUFFER;
-
-        usb_endpoint_t out_ep = endpoint(PROTO_EP_OUT);
-        if (!out_ep)
+        usb_HandleEvents();
+        if (!serial_open)
             return false;
 
-        size_t got = 0;
-        if (usb_Transfer(out_ep, out, want, TRANSFER_RETRIES, &got) != USB_SUCCESS)
+        int got = srl_Read(&serial, out, length);
+        if (got < 0)
             return false;
-        if (!got || got > length)
-            return false;
+
         out += got;
-        length -= got;
+        length -= (size_t)got;
+
+        if (length && active_progress && !active_progress("Syncing", 0, 0, 0))
+            return false;
     }
     return true;
 }
 
 static bool write_exact(const void *buffer, size_t length) {
-    /* usb_Transfer wants a RAM buffer and does not modify it; the cast is safe
-     * because everything we send already lives in RAM. */
-    uint8_t *in = (uint8_t *)buffer;
+    const uint8_t *in = buffer;
 
     while (length) {
-        usb_endpoint_t in_ep = endpoint(PROTO_EP_IN);
-        if (!in_ep)
+        usb_HandleEvents();
+        if (!serial_open)
             return false;
 
-        size_t sent = 0;
-        if (usb_Transfer(in_ep, in, length, TRANSFER_RETRIES, &sent) != USB_SUCCESS)
+        int sent = srl_Write(&serial, in, length);
+        if (sent < 0)
             return false;
-        if (!sent)
-            return false;
+
         in += sent;
-        length -= sent;
+        length -= (size_t)sent;
+
+        if (length && active_progress && !active_progress("Syncing", 0, 0, 0))
+            return false;
     }
     return true;
 }
@@ -497,25 +391,23 @@ static bool handle_request(proto_progress_t progress) {
 
 static usb_error_t handle_event(usb_event_t event, void *event_data,
                                 usb_callback_data_t *callback_data) {
-    (void)callback_data;
-    (void)event_data;
+    /* srldrvce does the real work; it needs to see every event first. */
+    usb_error_t error = srl_UsbEventCallback(event, event_data, callback_data);
+    if (error != USB_SUCCESS)
+        return error;
 
     switch (event) {
         case USB_HOST_CONFIGURE_EVENT:
-            host_device = usb_FindDevice(NULL, NULL, USB_SKIP_HUBS);
-            if (host_device) {
-                endpoint_out = usb_GetDeviceEndpoint(host_device, PROTO_EP_OUT);
-                endpoint_in = usb_GetDeviceEndpoint(host_device, PROTO_EP_IN);
-                configured = endpoint_in && endpoint_out;
-            }
+            /* srl_Open must not be called from an event handler, so just note
+             * that the computer has configured us and open it in the loop. */
+            open_pending = true;
             break;
-
 
         case USB_DEVICE_DISCONNECTED_EVENT:
         case USB_DEVICE_SUSPENDED_EVENT:
         case USB_DEVICE_DISABLED_EVENT:
-            configured = false;
-            link_lost = true;
+            serial_open = false;
+            header_filled = 0;
             break;
 
         default:
@@ -524,51 +416,30 @@ static usb_error_t handle_event(usb_event_t event, void *event_data,
     return USB_SUCCESS;
 }
 
-/* A scheduled idle receive finished: either a request header arrived, or the
- * link went away. Runs from usb_HandleEvents(), so it only sets flags. */
-static usb_error_t request_arrived(usb_endpoint_t endpoint, usb_transfer_status_t status,
-                                   size_t transferred, usb_transfer_data_t *data) {
-    (void)endpoint;
-    (void)data;
-
-    header_posted = false;
-    if (status == USB_TRANSFER_COMPLETED && transferred >= PROTO_HEADER_SIZE) {
-        header_ready = true;
-    } else if (status & (USB_TRANSFER_NO_DEVICE | USB_TRANSFER_CANCELLED)) {
-        link_lost = true;
-    } else {
-        receive_errors++;
-    }
-    /* Anything else -- a stall, a bus error -- just means no request this time;
-     * the loop posts another receive. */
-    return USB_SUCCESS;
-}
-
 uint16_t proto_requests(void) { return requests_handled; }
 uint8_t proto_last_command(void) { return last_command; }
 uint16_t proto_errors(void) { return receive_errors; }
-uint8_t proto_schedule_error(void) { return (uint8_t)schedule_error; }
+uint8_t proto_schedule_error(void) { return (uint8_t)open_error; }
 uint24_t proto_loops(void) { return loop_count; }
 
 /*
  * Written straight into video memory, in the OS's own 16bpp layout.
  *
- * graphx is shut down for the duration of a sync (see ui_sync_screen), so this
- * cannot go through it -- and going through nothing is the point anyway: it
- * appears immediately and survives the loop stopping dead, which is what it is
- * for.
+ * graphx is shut down for the duration of a sync, so this cannot go through it
+ * -- and going through nothing is the point: it appears immediately and
+ * survives the loop stopping dead, which is what it is for.
  */
 void proto_mark(uint8_t phase) {
     static const uint16_t colours[] = {
         0xF800,   /* red    -- inside usb_HandleEvents */
-        0xFFE0,   /* yellow -- inside usb_ScheduleTransfer */
+        0xFFE0,   /* yellow -- opening the serial device */
         0x07E0,   /* green  -- reading the keypad */
         0x001F,   /* blue   -- drawing */
     };
     if (phase >= sizeof colours / sizeof *colours)
         return;
 
-    uint16_t *vram = (uint16_t *)0xD40000;
+    uint16_t *vram = PROTO_VRAM;
     for (uint8_t y = 0; y < 12; y++) {
         uint16_t *row = vram + (uint24_t)y * 320 + (320 - 14);
         for (uint8_t x = 0; x < 12; x++)
@@ -580,18 +451,16 @@ bool proto_run(proto_progress_t progress) {
     requests_handled = 0;
     last_command = 0;
     receive_errors = 0;
-    schedule_error = USB_SUCCESS;
+    open_error = SRL_SUCCESS;
     loop_count = 0;
-
-    host_device = NULL;
-    endpoint_in = endpoint_out = NULL;
-    configured = false;
     finished = false;
-    header_posted = false;
-    header_ready = false;
-    link_lost = false;
+    serial_open = false;
+    open_pending = false;
+    header_filled = 0;
+    active_progress = progress;
 
-    if (usb_Init(handle_event, NULL, &descriptors, USB_DEFAULT_INIT_FLAGS) != USB_SUCCESS) {
+    if (usb_Init(handle_event, NULL, srl_GetCDCStandardDescriptors(),
+                 USB_DEFAULT_INIT_FLAGS) != USB_SUCCESS) {
         usb_Cleanup();
         return false;
     }
@@ -602,37 +471,43 @@ bool proto_run(proto_progress_t progress) {
         proto_mark(PROTO_PHASE_EVENTS);
         usb_HandleEvents();
 
-        if (link_lost) {
-            link_lost = false;
-            configured = false;
-            header_posted = false;
-            header_ready = false;
+        if (open_pending && !serial_open) {
+            proto_mark(PROTO_PHASE_OPEN);
+            open_pending = false;
+
+            usb_device_t device = usb_FindDevice(NULL, NULL, USB_SKIP_HUBS);
+            if (device) {
+                open_error = srl_Open(&serial, device, serial_buffer,
+                                      sizeof serial_buffer, SRL_INTERFACE_ANY, 115200);
+                serial_open = open_error == SRL_SUCCESS;
+            }
         }
 
-        /* Keep exactly one idle receive outstanding. */
-        if (configured && !header_posted && !header_ready) {
-            proto_mark(PROTO_PHASE_SCHEDULE);
-            usb_endpoint_t out_ep = endpoint(PROTO_EP_OUT);
-            schedule_error = out_ep
-                ? usb_ScheduleTransfer(out_ep, request_header, sizeof request_header,
-                                       request_arrived, NULL)
-                : USB_ERROR_NO_DEVICE;
-            if (schedule_error == USB_SUCCESS)
-                header_posted = true;
+        /* Collect a header a few bytes at a time; srl_Read never blocks. */
+        if (serial_open && header_filled < PROTO_HEADER_SIZE) {
+            int got = srl_Read(&serial, request_header + header_filled,
+                               PROTO_HEADER_SIZE - header_filled);
+            if (got < 0) {
+                serial_open = false;
+                receive_errors++;
+            } else {
+                header_filled += (uint8_t)got;
+            }
         }
 
-        if (header_ready) {
-            header_ready = false;
+        if (header_filled == PROTO_HEADER_SIZE) {
+            header_filled = 0;
             if (!handle_request(progress))
-                configured = false;
+                serial_open = false;
         }
 
         proto_mark(PROTO_PHASE_UI);
-        if (progress && !progress(configured ? "Connected" : "Waiting for computer",
+        if (progress && !progress(serial_open ? "Connected" : "Waiting for computer",
                                   0, 0, 0))
             break;
     }
 
+    active_progress = NULL;
     usb_Cleanup();
     return true;
 }
