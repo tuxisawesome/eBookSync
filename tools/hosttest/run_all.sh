@@ -38,6 +38,10 @@ echo "== library editing, and order reaching the calculator =="
 "$node" "$dir/check_library_edit.mjs"
 
 echo
+echo "== usb protocol: browser and calculator over a modelled wire =="
+"$node" "$dir/check_usb.mjs"
+
+echo
 echo "== sync planner =="
 "$node" "$dir/check_planner.mjs"
 

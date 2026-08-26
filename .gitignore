@@ -1,4 +1,10 @@
-# Built by tools/build.sh
+# Intermediates from the CE toolchain. The finished program in calc/bin is
+# committed on purpose, so it can be installed without building anything.
+calc/obj/
+*.o
+*.bc
+
+# Built by tools/build.sh -- platform-specific, rebuild it locally.
 tools/vendor/zx0/libzx0.so
 tools/vendor/zx0/libzx0.dylib
 tools/vendor/zx0/zx0.dll
@@ -7,12 +13,11 @@ tools/vendor/zx0/zx0.dll
 tools/hosttest/render_probe
 tools/hosttest/lib_probe
 tools/hosttest/ui_probe
-*.o
+tools/hosttest/usb_probe
 
 __pycache__/
 *.pyc
 
-# Converter output
+# Converter output: comics, not source.
 out/
 *.8xv
-*.8xp

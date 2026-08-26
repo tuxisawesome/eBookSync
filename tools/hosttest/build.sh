@@ -23,4 +23,9 @@ ${CC:-cc} $flags -o "$dir/ui_probe" \
     "$dir/reader_main.o"
 rm -f "$dir/reader_main.o"
 
-echo "built $dir/render_probe, $dir/lib_probe and $dir/ui_probe"
+# usb.c against the wire model, driven over a pipe by the real web/js/usb.js.
+${CC:-cc} $flags -o "$dir/usb_probe" \
+    "$dir/usb_probe.c" $common "$dir/shim/usbwire.c" \
+    "$root/calc/src/usb.c" "$root/calc/src/csx.c" "$root/calc/src/library.c"
+
+echo "built $dir/render_probe, $dir/lib_probe, $dir/ui_probe and $dir/usb_probe"

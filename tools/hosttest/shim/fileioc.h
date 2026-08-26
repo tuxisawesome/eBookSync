@@ -10,5 +10,11 @@ int ti_Delete(const char *name);
 int ti_Seek(int offset, unsigned origin, uint8_t handle);
 size_t ti_Write(const void *data, size_t size, size_t count, uint8_t handle);
 int ti_SetArchiveStatus(bool archive, uint8_t handle);
+uint16_t ti_GetSize(uint8_t handle);
+bool ti_ArchiveHasRoom(uint24_t num_bytes);
+
+/* Pretend the archive is this big, so the reader's free-space probe has
+ * something believable to binary-search. */
+void shim_set_archive_free(uint24_t bytes);
 
 #endif /* FILEIOC_H */

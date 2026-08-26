@@ -59,7 +59,12 @@ const uint8_t *shim_var_data(const char *name, size_t *size) {
 }
 
 uint8_t ti_Open(const char *name, const char *mode) {
-    (void)mode;
+    /* A write mode creates the variable if it is not there, the way fileioc
+     * does; the reader relies on that when a chunk arrives. */
+    if (mode && (*mode == 'w' || *mode == 'a') && !shim_var_data(name, NULL)) {
+        shim_add_var(name, "", 0);
+    }
+
     for (int i = 0; i < MAX_VARS; i++) {
         if (vars[i].used && strcmp(vars[i].name, name) == 0) {
             uint8_t handle = next_handle++;
@@ -102,8 +107,13 @@ size_t ti_Write(const void *data, size_t size, size_t count, uint8_t handle) {
     shim_var_t *var = &vars[open_handle_var[handle]];
     size_t at = open_handle_pos[handle];
     size_t bytes = size * count;
-    if (at + bytes > var->size)
-        return 0;
+
+    if (at + bytes > var->size) {
+        uint8_t *grown = realloc(var->data, at + bytes);
+        if (!grown) return 0;
+        var->data = grown;
+        var->size = at + bytes;
+    }
     memcpy(var->data + at, data, bytes);
     open_handle_pos[handle] = at + bytes;
     return count;
@@ -114,6 +124,16 @@ int ti_SetArchiveStatus(bool archive, uint8_t handle) {
     (void)handle;
     return 1;
 }
+
+uint16_t ti_GetSize(uint8_t handle) {
+    return (uint16_t)vars[open_handle_var[handle]].size;
+}
+
+static uint24_t archive_free_bytes = 2900000;
+
+void shim_set_archive_free(uint24_t bytes) { archive_free_bytes = bytes; }
+
+bool ti_ArchiveHasRoom(uint24_t num_bytes) { return num_bytes <= archive_free_bytes; }
 
 /* ------------------------------------------------------------------ graphics */
 

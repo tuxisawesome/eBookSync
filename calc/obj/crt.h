@@ -130,6 +130,10 @@ _usb_GetDeviceEndpoint:
 	.type _usb_Transfer, @function
 _usb_Transfer:
 	jp 123
+	.global _usb_ScheduleTransfer
+	.type _usb_ScheduleTransfer, @function
+_usb_ScheduleTransfer:
+	jp 129
 .endm
 #endif
 #define HAS_LIBLOAD 1

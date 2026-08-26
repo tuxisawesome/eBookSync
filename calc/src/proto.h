@@ -50,11 +50,20 @@ typedef enum {
     PROTO_TRUNCATED   = 6,     /* the payload ended early */
 } proto_status_t;
 
-/* Header: u8 cmd, u8 seq, u16 status, u32 length. */
+/*
+ * Header: u8 cmd, u8 seq, u16 arg, u32 length.
+ *
+ * `arg` is a status in replies and a command argument in requests -- it is what
+ * carries the slot and chunk index of a PUT_CHUNK. Keeping those out of the
+ * payload matters more than it looks: USB is packet-based and the calculator
+ * posts one receive for the header and another for the payload, so a few
+ * argument bytes at the front of the payload would share a packet with the data
+ * behind them and be impossible to read separately.
+ */
 typedef struct {
     uint8_t cmd;
     uint8_t seq;
-    uint16_t status;
+    uint16_t arg;
     uint32_t length;
 } proto_header_t;
 

@@ -31,12 +31,19 @@
  * compatible ID (20). */
 #define MSOS_TOTAL_LENGTH    46
 
-/* Bulk transfers are retried this many times before we give up and go back to
- * polling the keypad, so a stalled host cannot wedge the reader. */
-#define TRANSFER_RETRIES 3
+/*
+ * Retries for the blocking transfers used *inside* a command, once its header
+ * has arrived and the computer is committed to the exchange.
+ */
+#define TRANSFER_RETRIES 10
 
-/* Streaming buffer for chunk payloads. Small on purpose: chunks are written
- * straight into the appvar as they arrive rather than staged whole in RAM. */
+/*
+ * Streaming buffer for chunk payloads. Small on purpose -- chunks are written
+ * straight into the appvar as they arrive rather than staged whole in RAM --
+ * and a multiple of the endpoint packet size, which is not optional: posting a
+ * receive shorter than the packet the host sends overflows the endpoint and the
+ * excess is silently dropped.
+ */
 #define STREAM_BUFFER 512
 
 static usb_device_t host_device;
@@ -46,6 +53,28 @@ static bool configured;
 static bool finished;
 
 static uint8_t stream[STREAM_BUFFER];
+
+/*
+ * The idle wait for the next request is asynchronous, and has to be.
+ *
+ * usb_Transfer() blocks until the transfer completes, so waiting for a command
+ * that way would sit inside the USB driver forever with the computer idle --
+ * the keypad would never be scanned again and the reader would look hung, with
+ * no way out but the reset button. Scheduling the receive instead lets
+ * usb_HandleEvents() deliver it whenever it turns up, while the loop keeps
+ * drawing and watching for the clear key.
+ *
+ * Once a header has arrived the computer is mid-exchange and committed to
+ * sending the rest, so the payload and the reply can use blocking transfers.
+ */
+static uint8_t request_header[PROTO_HEADER_SIZE];
+static volatile bool header_posted;
+static volatile bool header_ready;
+static volatile bool link_lost;
+
+/* Control responses are answered from an event callback, so they need a buffer
+ * of their own that stays put until the transfer completes. */
+static uint8_t setup_buffer[64];
 
 /* ------------------------------------------------------------- descriptors */
 
@@ -160,11 +189,20 @@ static const uint8_t msos_descriptor[] = {
 
 /* ---------------------------------------------------------------- transport */
 
+/*
+ * Receive exactly `length` bytes.
+ *
+ * The posted length is capped at STREAM_BUFFER rather than chopped into small
+ * reads: a receive shorter than the packet the host is sending overflows the
+ * endpoint and loses the remainder. Callers never ask for more than they can
+ * hold, so the cap only matters as a guard.
+ */
 static bool read_exact(void *buffer, size_t length) {
     uint8_t *out = buffer;
     while (length) {
+        size_t want = length > STREAM_BUFFER ? STREAM_BUFFER : length;
         size_t got = 0;
-        if (usb_Transfer(endpoint_out, out, length, TRANSFER_RETRIES, &got) != USB_SUCCESS)
+        if (usb_Transfer(endpoint_out, out, want, TRANSFER_RETRIES, &got) != USB_SUCCESS)
             return false;
         if (!got)
             return false;
@@ -247,20 +285,32 @@ static bool cmd_hello(uint8_t seq) {
         && write_exact(body, sizeof body);
 }
 
+#define LIST_RECORD 14
+
 static bool cmd_list(uint8_t seq) {
     uint16_t count = lib_strip_count();
-    uint8_t header[2] = { (uint8_t)count, (uint8_t)(count >> 8) };
 
-    if (!send_header(PROTO_LIST, seq, PROTO_OK, 2 + (uint32_t)count * 14))
+    if (!send_header(PROTO_LIST, seq, PROTO_OK, 2 + (uint32_t)count * LIST_RECORD))
         return false;
-    if (!write_exact(header, sizeof header))
-        return false;
+
+    /* Filled and flushed in whole bufferfuls rather than a record at a time:
+     * every write is one USB transfer, and a 14-byte transfer is a short packet
+     * that ends the computer's read early. */
+    size_t used = 0;
+    stream[used++] = (uint8_t)count;
+    stream[used++] = (uint8_t)(count >> 8);
 
     for (uint16_t i = 0; i < count; i++) {
+        if (used + LIST_RECORD > sizeof stream) {
+            if (!write_exact(stream, used))
+                return false;
+            used = 0;
+        }
+
         lib_strip_t strip;
         lib_get_strip(i, &strip);
 
-        uint8_t record[14];
+        uint8_t *record = &stream[used];
         record[0] = strip.slot;
         record[1] = strip.chunk_count;
         record[2] = (uint8_t)strip.bytes;
@@ -275,28 +325,26 @@ static bool cmd_list(uint8_t seq) {
         record[11] = (uint8_t)(strip.pos >> 8);
         record[12] = (uint8_t)(strip.pos >> 16);
         record[13] = strip.layer;
-        if (!write_exact(record, sizeof record))
-            return false;
+        used += LIST_RECORD;
     }
-    return true;
+
+    return used ? write_exact(stream, used) : true;
 }
 
-static bool cmd_put_chunk(uint8_t seq, uint32_t length, proto_progress_t progress) {
-    uint8_t head[5];
-    if (length < sizeof head) {
+static bool cmd_put_chunk(uint8_t seq, uint16_t arg, uint32_t length,
+                          proto_progress_t progress) {
+    /* Slot and chunk index ride in the header rather than at the front of the
+     * payload: there they would share a USB packet with the chunk data behind
+     * them, and could not be read separately from it. */
+    uint8_t slot = (uint8_t)arg;
+    uint8_t index = (uint8_t)(arg >> 8);
+    uint32_t payload = length;
+
+    if (!payload || payload > CSX_CHUNK_SIZE) {
         drain(length);
         return reply(PROTO_PUT_CHUNK, seq, PROTO_BAD_LENGTH);
     }
-    if (!read_exact(head, sizeof head))
-        return false;
 
-    uint8_t slot = head[0];
-    uint8_t index = head[1];
-    uint32_t payload = (uint32_t)head[2] | ((uint32_t)head[3] << 8) | ((uint32_t)head[4] << 16);
-    if (payload != length - sizeof head || payload > CSX_CHUNK_SIZE) {
-        drain(length - sizeof head);
-        return reply(PROTO_PUT_CHUNK, seq, PROTO_BAD_LENGTH);
-    }
     char name[9];
     csx_chunk_name(name, slot, index);
     ti_Delete(name);
@@ -338,16 +386,10 @@ static bool cmd_put_chunk(uint8_t seq, uint32_t length, proto_progress_t progres
                  archived ? PROTO_OK : (ok ? PROTO_NO_ROOM : PROTO_WRITE_FAIL));
 }
 
-static bool cmd_delete(uint8_t seq, uint32_t length) {
-    if (length != 1) {
-        drain(length);
-        return reply(PROTO_DEL, seq, PROTO_BAD_LENGTH);
-    }
-    uint8_t slot;
-    if (!read_exact(&slot, 1))
-        return false;
+static bool cmd_delete(uint8_t seq, uint16_t arg, uint32_t length) {
+    drain(length);
 
-    uint8_t removed = csx_delete(slot);
+    uint8_t removed = csx_delete((uint8_t)arg);
     return send_header(PROTO_DEL, seq, removed ? PROTO_OK : PROTO_NOT_FOUND, 1)
         && write_exact(&removed, 1);
 }
@@ -420,24 +462,21 @@ static bool cmd_space(uint8_t seq) {
         && write_exact(body, sizeof body);
 }
 
+/* Act on the header that just arrived. Returns false if the link is gone. */
 static bool handle_request(proto_progress_t progress) {
-    uint8_t header[PROTO_HEADER_SIZE];
-    size_t got = 0;
-    if (usb_Transfer(endpoint_out, header, sizeof header, TRANSFER_RETRIES, &got) != USB_SUCCESS)
-        return true;                       /* nothing waiting; keep polling */
-    if (got != sizeof header)
-        return true;
+    const uint8_t *header = request_header;
 
     uint8_t cmd = header[0];
     uint8_t seq = header[1];
+    uint16_t arg = (uint16_t)header[2] | ((uint16_t)header[3] << 8);
     uint32_t length = (uint32_t)header[4] | ((uint32_t)header[5] << 8)
                     | ((uint32_t)header[6] << 16) | ((uint32_t)header[7] << 24);
 
     switch (cmd) {
         case PROTO_HELLO:     drain(length); return cmd_hello(seq);
         case PROTO_LIST:      drain(length); return cmd_list(seq);
-        case PROTO_PUT_CHUNK: return cmd_put_chunk(seq, length, progress);
-        case PROTO_DEL:       return cmd_delete(seq, length);
+        case PROTO_PUT_CHUNK: return cmd_put_chunk(seq, arg, length, progress);
+        case PROTO_DEL:       return cmd_delete(seq, arg, length);
         case PROTO_INDEX_GET: drain(length); return cmd_index_get(seq);
         case PROTO_INDEX_PUT: return cmd_index_put(seq, length);
         case PROTO_SPACE:     drain(length); return cmd_space(seq);
@@ -469,9 +508,11 @@ static usb_error_t handle_setup(const usb_control_setup_t *setup) {
         size_t length = sizeof bos_descriptor;
         if (length > setup->wLength)
             length = setup->wLength;
-        memcpy(stream, bos_descriptor, length);
-        usb_Transfer(usb_GetDeviceEndpoint(device, 0), stream, length,
-                     TRANSFER_RETRIES, NULL);
+        memcpy(setup_buffer, bos_descriptor, length);
+        /* Scheduled, not blocking: this runs inside an event callback, and
+         * waiting for the transfer here would stall enumeration. */
+        usb_ScheduleTransfer(usb_GetDeviceEndpoint(device, 0), setup_buffer, length,
+                             NULL, NULL);
         return USB_IGNORE;
     }
 
@@ -481,9 +522,9 @@ static usb_error_t handle_setup(const usb_control_setup_t *setup) {
         size_t length = sizeof msos_descriptor;
         if (length > setup->wLength)
             length = setup->wLength;
-        memcpy(stream, msos_descriptor, length);
-        usb_Transfer(usb_GetDeviceEndpoint(device, 0), stream, length,
-                     TRANSFER_RETRIES, NULL);
+        memcpy(setup_buffer, msos_descriptor, length);
+        usb_ScheduleTransfer(usb_GetDeviceEndpoint(device, 0), setup_buffer, length,
+                             NULL, NULL);
         return USB_IGNORE;
     }
 
@@ -512,6 +553,7 @@ static usb_error_t handle_event(usb_event_t event, void *event_data,
         case USB_DEVICE_SUSPENDED_EVENT:
         case USB_DEVICE_DISABLED_EVENT:
             configured = false;
+            link_lost = true;
             break;
 
         default:
@@ -520,11 +562,32 @@ static usb_error_t handle_event(usb_event_t event, void *event_data,
     return USB_SUCCESS;
 }
 
+/* A scheduled idle receive finished: either a request header arrived, or the
+ * link went away. Runs from usb_HandleEvents(), so it only sets flags. */
+static usb_error_t request_arrived(usb_endpoint_t endpoint, usb_transfer_status_t status,
+                                   size_t transferred, usb_transfer_data_t *data) {
+    (void)endpoint;
+    (void)data;
+
+    header_posted = false;
+    if (status == USB_TRANSFER_COMPLETED && transferred == PROTO_HEADER_SIZE) {
+        header_ready = true;
+    } else if (status & (USB_TRANSFER_NO_DEVICE | USB_TRANSFER_CANCELLED)) {
+        link_lost = true;
+    }
+    /* Anything else -- a stall, a bus error -- just means no request this time;
+     * the loop posts another receive. */
+    return USB_SUCCESS;
+}
+
 bool proto_run(proto_progress_t progress) {
     host_device = NULL;
     endpoint_in = endpoint_out = NULL;
     configured = false;
     finished = false;
+    header_posted = false;
+    header_ready = false;
+    link_lost = false;
 
     if (usb_Init(handle_event, NULL, &descriptors, USB_DEFAULT_INIT_FLAGS) != USB_SUCCESS) {
         usb_Cleanup();
@@ -534,8 +597,26 @@ bool proto_run(proto_progress_t progress) {
     while (!finished) {
         usb_HandleEvents();
 
-        if (configured && !handle_request(progress))
+        if (link_lost) {
+            link_lost = false;
             configured = false;
+            header_posted = false;
+            header_ready = false;
+        }
+
+        /* Keep exactly one idle receive outstanding. */
+        if (configured && !header_posted && !header_ready) {
+            if (usb_ScheduleTransfer(endpoint_out, request_header, sizeof request_header,
+                                     request_arrived, NULL) == USB_SUCCESS) {
+                header_posted = true;
+            }
+        }
+
+        if (header_ready) {
+            header_ready = false;
+            if (!handle_request(progress))
+                configured = false;
+        }
 
         if (progress && !progress(configured ? "Connected" : "Waiting for computer",
                                   0, 0, 0))

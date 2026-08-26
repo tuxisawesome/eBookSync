@@ -31,7 +31,7 @@ payload:
 ```
 0  1  cmd
 1  1  seq      echoed in the reply
-2  2  status   0 in requests; a proto_status_t in replies
+2  2  arg      a command argument in requests; a proto_status_t in replies
 4  4  length   payload bytes that follow
 ```
 
@@ -39,10 +39,41 @@ The computer sends a request and waits for the reply carrying the same `cmd` and
 `seq`. There is exactly one request in flight at a time -- the calculator has no
 room to queue work, and a strict lockstep makes recovery after an unplug simple.
 
-Bulk endpoints are 64 bytes (the calculator is a full-speed device), so payloads
-larger than that are split across packets by the USB stack. A payload whose
-length is an exact multiple of 64 is *not* followed by a zero-length packet;
-both ends read exactly `length` bytes.
+## Packet rules, which are not optional
+
+Bulk endpoints move whole packets of at most 64 bytes -- the calculator is a
+full-speed device. A receive ends when its buffer fills or a short packet
+arrives, and **a receive posted shorter than the packet arriving into it keeps
+what fits and silently loses the rest**. Three rules follow, and breaking any of
+them wedges a sync in a way that is invisible from either end:
+
+1. **The header is a transfer of its own.** The calculator posts an 8-byte
+   receive for it. Bundling a payload behind it in the same transfer puts both
+   in one 64-byte packet, and everything past the header is dropped by the
+   endpoint.
+
+2. **Arguments live in the header, not at the front of the payload.** That is
+   what `arg` is for: `PUT_CHUNK` carries `slot | (index << 8)` there and `DEL`
+   carries the slot. A few argument bytes ahead of the chunk data would share a
+   packet with it and could not be read separately.
+
+3. **Payload transfers are capped at 512 bytes, on both sides.** The calculator
+   receives a payload in 512-byte posts (`STREAM_BUFFER` in `calc/src/usb.c`),
+   so the computer sends it in 512-byte transfers (`MAX_PAYLOAD_TRANSFER` in
+   `web/js/usb.js`). The two constants must match: a larger transfer on the
+   computer would leave a partial packet stranded between two posts.
+
+The calculator also never waits for a request with a blocking transfer.
+`usb_Transfer()` does not return until the transfer completes, so waiting that
+way would sit inside the driver with the computer idle -- the keypad would never
+be scanned again and the reader would be unrecoverable short of the reset
+button. The idle receive is scheduled instead, and delivered by
+`usb_HandleEvents()` while the loop keeps drawing and watching for `clear`.
+Once a header has arrived the computer is committed to the exchange, so the
+payload and reply do use blocking transfers.
+
+`tools/hosttest/check_usb.mjs` runs both ends against a model of these rules and
+fails on any overflow.
 
 ## Commands
 
@@ -50,8 +81,8 @@ both ends read exactly `length` bytes.
 |-----|------|---------|-------|
 | 0x01 | `HELLO` | - | `u8 protocol, u24 freeArchive, u8 maxChunks, u8 chunkSize/256` |
 | 0x02 | `LIST` | - | `u16 count`, then `count` x 14-byte strip records |
-| 0x03 | `PUT_CHUNK` | `u8 slot, u8 index, u24 length`, then the chunk | status only |
-| 0x04 | `DEL` | `u8 slot` | `u8 chunksRemoved` |
+| 0x03 | `PUT_CHUNK` | the chunk; `arg` = `slot \| (index << 8)` | status only |
+| 0x04 | `DEL` | none; `arg` = slot | `u8 chunksRemoved` |
 | 0x05 | `INDEX_GET` | - | the CSLIB bytes (empty if there is no index yet) |
 | 0x06 | `INDEX_PUT` | the CSLIB bytes | status only |
 | 0x07 | `SPACE` | - | `u24 freeArchive` |
