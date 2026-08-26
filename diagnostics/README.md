@@ -1,51 +1,44 @@
 # Where things stand
 
-Your last observation changed the picture. Holding `A` in `screen` made the
-request counter tick up; a single tap did nothing. That is exactly right: `A`
-held repeats the byte, and **eight bytes make a complete protocol header**,
-which the reader then dispatched and replied to. One tap is one byte, which is
-not a header.
+`probe.sh` freezes the calculator exactly as Chrome does. That settles two
+things:
 
-So the reader **is** running the protocol correctly over `screen`. `srl_Read` is
-documented and implemented as non-blocking -- it pops a ring buffer -- so the
-loop was never stalled there either.
+- **Chrome and `web/js/link.js` are innocent.** A shell script sending eight
+  bytes does it too.
+- **The fault is on the calculator, and it is the reply that triggers it.**
 
-Which means the comparison that looked decisive was confounded: echo mode was
-tested with `screen`, sync mode with Chrome. The variable was never echo versus
-sync. **It is `screen` versus Chrome.**
+Your keystroke experiment explains why that took so long to see. Holding `A`
+sends `41 41 41 41 41 41 41 41`, which the reader parses as a header with a
+payload length of `0x41414141` -- about a billion bytes. It then sits in
+`drain()` consuming them and **never reaches the code that writes a reply**. So
+every test with random keystrokes exercised the read path only. A real `HELLO`
+has a payload length of zero, so it goes straight to writing.
 
-## The first thing to check: cu, not tty
+Writing the reply is the one thing that had never actually been tested.
 
-On macOS, `/dev/tty.usbmodem*` **blocks on open waiting for carrier detect**,
-which a USB serial gadget never asserts. `/dev/cu.usbmodem*` is the call-out
-device and opens immediately. They are the same hardware behind different open
-semantics, and the tty one hanging on open would look exactly like a freeze.
+## This build says where it stops
 
-Chrome picks the device itself, so this may not be what it is doing -- but if
-any of your `screen` testing used `tty.*`, that alone muddies the results.
+The sync screen's status line now names the exact position, and it updates as
+the command runs. When it freezes, whatever it last displayed is where it died:
 
-## Test: the protocol, without a browser
+| status | meaning |
+|---|---|
+| `1 header in` | the eight header bytes arrived and were dispatched |
+| `2 in hello` | inside the HELLO handler, before anything is written |
+| `w: events` | inside `usb_HandleEvents()`, called before each write |
+| `w: srl_Write` | inside `srl_Write()` itself |
+| `3 header sent` | the 8-byte reply header went out |
+| `4 hello done` | the whole reply went out -- HELLO worked |
+| `Connected` | back in the main loop, waiting for the next command |
+
+## Run it
 
 ```sh
 diagnostics/probe.sh /dev/cu.usbmodem<whatever>
 ```
 
-Calculator on the **Sync** screen (`2nd`, not `alpha`). This sends one `HELLO`
-and prints the reply -- the same exchange the page makes on connect, with no
-browser in the way.
+Calculator on the Sync screen. Report the last status line shown.
 
-**It replies** (14 bytes starting `01 01 00 00 06 00 00 00 01`) -- the calculator
-and the protocol are both fine end to end, and the fault is in the page: either
-`web/js/link.js` or how Chrome drives the port. That is code I can test here,
-which would be a first.
-
-**It hangs or the calculator freezes** -- the fault is on the calculator after
-all, and it is provoked by real protocol traffic rather than by stray keystrokes.
-The `cmd` counter on screen will say which command was in flight.
-
-## Also worth noting
-
-If `probe.sh` works, try the page again straight afterwards **without
-re-running the program**. If the page then works too, something about the
-first connection after a fresh start is the trigger -- which would point at the
-`gather_state()` call that now runs before `usb_Init()`.
+`w: srl_Write` or `w: events` narrows this to a single function call, and one of
+those two is almost certainly it. `4 hello done` would mean HELLO now works and
+something later is at fault.

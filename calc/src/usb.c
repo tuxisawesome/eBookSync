@@ -95,6 +95,18 @@ static srl_error_t open_error;
  * screen alive and let the user give up. */
 static proto_progress_t active_progress;
 
+/*
+ * Announce where we are, so a freeze leaves its last position on screen.
+ *
+ * The sync screen redraws whenever this string changes, so setting it is enough
+ * to make it visible. A calculator that stops dead cannot be stepped through
+ * and prints nothing; this is the substitute.
+ */
+static void step(const char *where) {
+    if (active_progress)
+        active_progress(where, 0, 0, 0);
+}
+
 /* ---------------------------------------------------------------- transport */
 
 /*
@@ -130,10 +142,12 @@ static bool write_exact(const void *buffer, size_t length) {
     const uint8_t *in = buffer;
 
     while (length) {
+        step("w: events");
         usb_HandleEvents();
         if (!serial_open)
             return false;
 
+        step("w: srl_Write");
         int sent = srl_Write(&serial, in, length);
         if (sent < 0)
             return false;
@@ -192,6 +206,7 @@ static uint24_t archive_free(void) {
 }
 
 static bool cmd_hello(uint8_t seq) {
+    step("2 in hello");
     uint24_t space = cached_archive_free;
     uint8_t body[6];
     body[0] = PROTO_VERSION;
@@ -200,8 +215,15 @@ static bool cmd_hello(uint8_t seq) {
     body[3] = (uint8_t)(space >> 16);
     body[4] = CSX_MAX_CHUNKS;
     body[5] = CSX_CHUNK_SIZE / 256;
-    return send_header(PROTO_HELLO, seq, PROTO_OK, sizeof body)
-        && write_exact(body, sizeof body);
+    if (!send_header(PROTO_HELLO, seq, PROTO_OK, sizeof body))
+        return false;
+
+    step("3 header sent");
+    if (!write_exact(body, sizeof body))
+        return false;
+
+    step("4 hello done");
+    return true;
 }
 
 #define LIST_RECORD 14
@@ -377,6 +399,7 @@ static bool handle_request(proto_progress_t progress) {
 
     requests_handled++;
     last_command = cmd;
+    step("1 header in");
     uint32_t length = (uint32_t)header[4] | ((uint32_t)header[5] << 8)
                     | ((uint32_t)header[6] << 16) | ((uint32_t)header[7] << 24);
 
