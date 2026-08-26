@@ -5246,7 +5246,7 @@ _ui_about_screen:                       ; @ui_about_screen
 	ld	bc, (ix - 3)
 	push	bc
 	pop	hl
-	ld	de, 50
+	ld	de, 33
 	or	a, a
 	sbc	hl, de
 	call	pe, __setflag
@@ -5254,7 +5254,7 @@ _ui_about_screen:                       ; @ui_about_screen
 	pop	hl
 	jp	p, .LBB48_4
 ; %bb.3:                                ;   in Loop: Header=BB48_1 Depth=1
-	ld	hl, 49
+	ld	hl, 32
 	.local	.LBB48_4
 .LBB48_4:                               ;   in Loop: Header=BB48_1 Depth=1
 	ld	de, (ix - 3)
@@ -5317,15 +5317,15 @@ _ui_about_screen:                       ; @ui_about_screen
 	call	_gfx_SetColor
 	pop	hl
 	ld	hl, (ix - 3)
-	ld	bc, 154
+	ld	bc, 130
 	call	__imulu
-	ld	bc, 38
+	ld	bc, 21
 	call	__idivs
 	ld	e, 22
 	ld	a, l
 	add	a, e
 	ld	l, a
-	ld	de, 44
+	ld	de, 68
 	push	de
 	ld	de, 3
 	push	de
@@ -5376,7 +5376,7 @@ _ui_about_screen:                       ; @ui_about_screen
 	jr	z, .LBB48_17
 ; %bb.14:                               ;   in Loop: Header=BB48_1 Depth=1
 	ld	hl, (ix - 3)
-	ld	de, 38
+	ld	de, 21
 	or	a, a
 	sbc	hl, de
 	call	pe, __setflag
@@ -5428,7 +5428,7 @@ _ui_about_screen:                       ; @ui_about_screen
 	ld	bc, (ix - 3)
 	push	bc
 	pop	hl
-	ld	de, 27
+	ld	de, 10
 	or	a, a
 	sbc	hl, de
 	call	pe, __setflag
@@ -5436,7 +5436,7 @@ _ui_about_screen:                       ; @ui_about_screen
 	pop	hl
 	jp	m, .LBB48_24
 ; %bb.23:                               ;   in Loop: Header=BB48_1 Depth=1
-	ld	hl, 27
+	ld	hl, 10
 	.local	.LBB48_24
 .LBB48_24:                              ;   in Loop: Header=BB48_1 Depth=1
 	ld	de, 11
@@ -5947,7 +5947,7 @@ _sync_draw:                             ; @sync_draw
 	jr	.LBB52_3
 	.local	.LBB52_2
 .LBB52_2:
-	ld	hl, _.str.66
+	ld	hl, _.str.52
 	.local	.LBB52_3
 .LBB52_3:
 	push	hl
@@ -5972,7 +5972,7 @@ _sync_draw:                             ; @sync_draw
 	call	__ishru
 	push	hl
 	push	de
-	ld	hl, _.str.67
+	ld	hl, _.str.53
 	push	hl
 	ld	hl, (ix - 43)
 	push	hl
@@ -6007,7 +6007,7 @@ _sync_draw:                             ; @sync_draw
 	push	bc
 	push	iy
 	push	de
-	ld	hl, _.str.68
+	ld	hl, _.str.54
 	push	hl
 	ld	hl, (ix - 43)
 	push	hl
@@ -6030,7 +6030,7 @@ _sync_draw:                             ; @sync_draw
 	ld	de, (_loop_count)
 	push	de
 	push	hl
-	ld	hl, _.str.69
+	ld	hl, _.str.55
 	push	hl
 	ld	hl, (ix - 43)
 	push	hl
@@ -6051,7 +6051,7 @@ _sync_draw:                             ; @sync_draw
 	or	a, a
 	jr	z, .LBB52_5
 ; %bb.4:
-	ld	de, _.str.70
+	ld	de, _.str.56
 	ld	bc, 0
 	ld	c, l
 	push	bc
@@ -6075,11 +6075,11 @@ _sync_draw:                             ; @sync_draw
 	cp	a, 2
 	jr	z, .LBB52_7
 ; %bb.6:
-	ld	hl, _.str.4.87
+	ld	hl, _.str.4.73
 	jr	.LBB52_8
 	.local	.LBB52_7
 .LBB52_7:
-	ld	hl, _.str.71
+	ld	hl, _.str.57
 	.local	.LBB52_8
 .LBB52_8:
 	push	hl
@@ -6088,7 +6088,7 @@ _sync_draw:                             ; @sync_draw
 	call	_sync_line
 	pop	hl
 	pop	hl
-	ld	hl, _.str.72
+	ld	hl, _.str.58
 	push	hl
 	ld	hl, 8
 	push	hl
@@ -6161,7 +6161,7 @@ _sync_progress:                         ; @sync_progress
 .LBB53_5:
 	ld	hl, (ix + 6)
 	ld	de, 32
-	ld	bc, _.str.73
+	ld	bc, _.str.59
 	push	hl
 	push	bc
 	push	de
@@ -6208,7 +6208,7 @@ _sync_progress:                         ; @sync_progress
 ; %bb.11:
 	call	_lib_reset
 	ld	de, _sync_state
-	ld	hl, _.str.74
+	ld	hl, _.str.60
 	ld	bc, 21
 	ldir
 	call	_sync_draw
@@ -6577,12 +6577,12 @@ _proto_run:                             ; @proto_run
 	jr	z, .LBB63_4
 ; %bb.10:                               ;   in Loop: Header=BB63_4 Depth=1
 	bit	0, (ix + 9)
-	ld	hl, _.str.75
+	ld	hl, _.str.61
 	jr	nz, .LBB63_14
 ; %bb.11:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	a, (_serial_open)
 	bit	0, a
-	ld	hl, _.str.4.76
+	ld	hl, _.str.4.62
 	jr	z, .LBB63_14
 ; %bb.12:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	de, (_link_state)
@@ -6592,7 +6592,7 @@ _proto_run:                             ; @proto_run
 	ld	bc, 3
 	or	a, a
 	sbc	hl, bc
-	ld	hl, _.str.8.77
+	ld	hl, _.str.8.63
 	jr	nc, .LBB63_14
 ; %bb.13:                               ;   in Loop: Header=BB63_4 Depth=1
 	ex	de, hl
@@ -7929,7 +7929,7 @@ _store:                                 ; @store
 	push	hl
 	call	_ti_Delete
 	pop	hl
-	ld	hl, _.str.3.81
+	ld	hl, _.str.3.67
 	push	hl
 	ld	hl, (ix + 6)
 	push	hl
@@ -8427,10 +8427,10 @@ _viewer_run:                            ; @viewer_run
 	add	iy, de
 	pop	af
 	bit	0, (iy + 0)                     ; 1-byte Folded Reload
-	ld	hl, _.str.3.86
+	ld	hl, _.str.3.72
 	jr	nz, .LBB70_14
 ; %bb.13:                               ;   in Loop: Header=BB70_4 Depth=1
-	ld	hl, _.str.4.87
+	ld	hl, _.str.4.73
 	.local	.LBB70_14
 .LBB70_14:                              ;   in Loop: Header=BB70_4 Depth=1
 	push	hl
@@ -8445,7 +8445,7 @@ _viewer_run:                            ; @viewer_run
 	ld	hl, (iy + 0)
 	push	hl
 	push	bc
-	ld	hl, _.str.2.88
+	ld	hl, _.str.2.74
 	push	hl
 	ld	de, -362
 	lea	iy, ix + 0
@@ -9228,8 +9228,8 @@ _viewer_run:                            ; @viewer_run
 	jr	.LBB70_72
 	.local	.LBB70_70
 .LBB70_70:
-	ld	hl, _.str.84
-	ld	de, _.str.1.85
+	ld	hl, _.str.70
+	ld	de, _.str.1.71
 	push	de
 	push	hl
 	call	_ui_message
@@ -9708,54 +9708,37 @@ _.str.11:
 	.local	_about_text
 _about_text:
 	d24	_.str.27
-	d24	_.str.4.87
+	d24	_.str.4.73
 	d24	_.str.29
-	d24	_.str.4.87
+	d24	_.str.4.73
 	d24	_.str.30
 	d24	_.str.31
 	d24	_.str.32
+	d24	_.str.4.73
 	d24	_.str.33
+	d24	_.str.4.73
 	d24	_.str.34
-	d24	_.str.4.87
 	d24	_.str.35
-	d24	_.str.4.87
 	d24	_.str.36
 	d24	_.str.37
 	d24	_.str.38
 	d24	_.str.39
+	d24	_.str.4.73
 	d24	_.str.40
 	d24	_.str.41
-	d24	_.str.4.87
 	d24	_.str.42
 	d24	_.str.43
 	d24	_.str.44
 	d24	_.str.45
-	d24	_.str.4.87
+	d24	_.str.4.73
 	d24	_.str.46
-	d24	_.str.4.87
+	d24	_.str.4.73
 	d24	_.str.47
 	d24	_.str.48
 	d24	_.str.49
 	d24	_.str.50
+	d24	_.str.4.73
 	d24	_.str.51
-	d24	_.str.52
-	d24	_.str.4.87
-	d24	_.str.53
-	d24	_.str.54
-	d24	_.str.55
-	d24	_.str.56
-	d24	_.str.57
-	d24	_.str.58
-	d24	_.str.4.87
-	d24	_.str.59
-	d24	_.str.4.87
-	d24	_.str.60
-	d24	_.str.61
-	d24	_.str.62
-	d24	_.str.63
-	d24	_.str.4.87
-	d24	_.str.64
-	d24	_.str.65
 
 	.section	.rodata._.str.12,"a",@progbits
 	.balign	1
@@ -9900,246 +9883,162 @@ _.str.31:
 	.balign	1
 	.local	_.str.32
 _.str.32:
-	.asciz	"over a USB serial link. This program"
+	.asciz	"over a USB serial link."
 
 	.section	.rodata._.str.33,"a",@progbits
 	.balign	1
 	.local	_.str.33
 _.str.33:
-	.asciz	"lists what arrived, shows it, and"
+	.asciz	"KEYS"
 
 	.section	.rodata._.str.34,"a",@progbits
 	.balign	1
 	.local	_.str.34
 _.str.34:
-	.asciz	"remembers where you got to."
+	.asciz	"  Book list"
 
 	.section	.rodata._.str.35,"a",@progbits
 	.balign	1
 	.local	_.str.35
 _.str.35:
-	.asciz	"HOW IT WORKS"
+	.asciz	"    enter   open a book"
 
 	.section	.rodata._.str.36,"a",@progbits
 	.balign	1
 	.local	_.str.36
 _.str.36:
-	.asciz	"Each strip is stored at two zoom levels,"
+	.asciz	"    del     mark a book read"
 
 	.section	.rodata._.str.37,"a",@progbits
 	.balign	1
 	.local	_.str.37
 _.str.37:
-	.asciz	"16 colours, 4 bits per pixel, cut into"
+	.asciz	"    2nd     sync with a computer"
 
 	.section	.rodata._.str.38,"a",@progbits
 	.balign	1
 	.local	_.str.38
 _.str.38:
-	.asciz	"32-row bands and compressed with ZX0."
+	.asciz	"    mode    settings"
 
 	.section	.rodata._.str.39,"a",@progbits
 	.balign	1
 	.local	_.str.39
 _.str.39:
-	.asciz	"Only the bands on screen are unpacked,"
+	.asciz	"    clear   quit"
 
 	.section	.rodata._.str.40,"a",@progbits
 	.balign	1
 	.local	_.str.40
 _.str.40:
-	.asciz	"so a 400KB comic is read from flash a"
+	.asciz	"  Reading"
 
 	.section	.rodata._.str.41,"a",@progbits
 	.balign	1
 	.local	_.str.41
 _.str.41:
-	.asciz	"few kilobytes at a time."
+	.asciz	"    arrows  pan, hold to speed up"
 
 	.section	.rodata._.str.42,"a",@progbits
 	.balign	1
 	.local	_.str.42
 _.str.42:
-	.asciz	"Titles are pictures, not text. The"
+	.asciz	"    + -     zoom"
 
 	.section	.rodata._.str.43,"a",@progbits
 	.balign	1
 	.local	_.str.43
 _.str.43:
-	.asciz	"calculator has no Chinese font, so the"
+	.asciz	"    mode    fit width / full zoom"
 
 	.section	.rodata._.str.44,"a",@progbits
 	.balign	1
 	.local	_.str.44
 _.str.44:
-	.asciz	"computer draws each title once and sends"
+	.asciz	"    del     mark read"
 
 	.section	.rodata._.str.45,"a",@progbits
 	.balign	1
 	.local	_.str.45
 _.str.45:
-	.asciz	"the pixels."
+	.asciz	"    clear   back"
 
 	.section	.rodata._.str.46,"a",@progbits
 	.balign	1
 	.local	_.str.46
 _.str.46:
-	.asciz	"KEYS"
+	.asciz	"CREDITS"
 
 	.section	.rodata._.str.47,"a",@progbits
 	.balign	1
 	.local	_.str.47
 _.str.47:
-	.asciz	"  Book list"
+	.asciz	"ZX0 compression by Einar Saukas."
 
 	.section	.rodata._.str.48,"a",@progbits
 	.balign	1
 	.local	_.str.48
 _.str.48:
-	.asciz	"    enter   open a book"
+	.asciz	"Built with the CE C/C++ toolchain."
 
 	.section	.rodata._.str.49,"a",@progbits
 	.balign	1
 	.local	_.str.49
 _.str.49:
-	.asciz	"    del     mark a book read"
+	.asciz	"srldrvce and usbdrvce by the CE"
 
 	.section	.rodata._.str.50,"a",@progbits
 	.balign	1
 	.local	_.str.50
 _.str.50:
-	.asciz	"    2nd     sync with a computer"
+	.asciz	"Programming team."
 
 	.section	.rodata._.str.51,"a",@progbits
 	.balign	1
 	.local	_.str.51
 _.str.51:
-	.asciz	"    mode    settings"
+	.asciz	"Made with love by Walter Brobson"
 
 	.section	.rodata._.str.52,"a",@progbits
 	.balign	1
 	.local	_.str.52
 _.str.52:
-	.asciz	"    clear   quit"
+	.asciz	"eBookSync - ECHO TEST"
 
 	.section	.rodata._.str.53,"a",@progbits
 	.balign	1
 	.local	_.str.53
 _.str.53:
-	.asciz	"  Reading"
+	.asciz	"%u done, %uK moved"
 
 	.section	.rodata._.str.54,"a",@progbits
 	.balign	1
 	.local	_.str.54
 _.str.54:
-	.asciz	"    arrows  pan, hold to speed up"
+	.asciz	"req %u cmd %u err %u"
 
 	.section	.rodata._.str.55,"a",@progbits
 	.balign	1
 	.local	_.str.55
 _.str.55:
-	.asciz	"    + -     zoom"
+	.asciz	"open %u loops %u"
 
 	.section	.rodata._.str.56,"a",@progbits
 	.balign	1
 	.local	_.str.56
 _.str.56:
-	.asciz	"    mode    fit width / full zoom"
+	.asciz	"defragmented %u time(s)"
 
 	.section	.rodata._.str.57,"a",@progbits
 	.balign	1
 	.local	_.str.57
 _.str.57:
-	.asciz	"    del     mark read"
+	.asciz	"Different library! del=erase"
 
 	.section	.rodata._.str.58,"a",@progbits
 	.balign	1
 	.local	_.str.58
 _.str.58:
-	.asciz	"    clear   back"
-
-	.section	.rodata._.str.59,"a",@progbits
-	.balign	1
-	.local	_.str.59
-_.str.59:
-	.asciz	"CREDITS"
-
-	.section	.rodata._.str.60,"a",@progbits
-	.balign	1
-	.local	_.str.60
-_.str.60:
-	.asciz	"ZX0 compression by Einar Saukas."
-
-	.section	.rodata._.str.61,"a",@progbits
-	.balign	1
-	.local	_.str.61
-_.str.61:
-	.asciz	"Built with the CE C/C++ toolchain."
-
-	.section	.rodata._.str.62,"a",@progbits
-	.balign	1
-	.local	_.str.62
-_.str.62:
-	.asciz	"srldrvce and usbdrvce by the CE"
-
-	.section	.rodata._.str.63,"a",@progbits
-	.balign	1
-	.local	_.str.63
-_.str.63:
-	.asciz	"Programming team."
-
-	.section	.rodata._.str.64,"a",@progbits
-	.balign	1
-	.local	_.str.64
-_.str.64:
-	.asciz	"Edit about.txt in the repository to"
-
-	.section	.rodata._.str.65,"a",@progbits
-	.balign	1
-	.local	_.str.65
-_.str.65:
-	.asciz	"change this page."
-
-	.section	.rodata._.str.66,"a",@progbits
-	.balign	1
-	.local	_.str.66
-_.str.66:
-	.asciz	"eBookSync - ECHO TEST"
-
-	.section	.rodata._.str.67,"a",@progbits
-	.balign	1
-	.local	_.str.67
-_.str.67:
-	.asciz	"%u done, %uK moved"
-
-	.section	.rodata._.str.68,"a",@progbits
-	.balign	1
-	.local	_.str.68
-_.str.68:
-	.asciz	"req %u cmd %u err %u"
-
-	.section	.rodata._.str.69,"a",@progbits
-	.balign	1
-	.local	_.str.69
-_.str.69:
-	.asciz	"open %u loops %u"
-
-	.section	.rodata._.str.70,"a",@progbits
-	.balign	1
-	.local	_.str.70
-_.str.70:
-	.asciz	"defragmented %u time(s)"
-
-	.section	.rodata._.str.71,"a",@progbits
-	.balign	1
-	.local	_.str.71
-_.str.71:
-	.asciz	"Different library! del=erase"
-
-	.section	.rodata._.str.72,"a",@progbits
-	.balign	1
-	.local	_.str.72
-_.str.72:
 	.asciz	"[clear] stop syncing"
 
 	.section	.bss._sync_progress.poll,"aw",@nobits
@@ -10160,16 +10059,16 @@ _sync_progress.drawn_at:
 _sync_progress.drawn_requests:
 	.zero	2
 
-	.section	.rodata._.str.73,"a",@progbits
+	.section	.rodata._.str.59,"a",@progbits
 	.balign	1
-	.local	_.str.73
-_.str.73:
+	.local	_.str.59
+_.str.59:
 	.asciz	"%s"
 
-	.section	.rodata._.str.74,"a",@progbits
+	.section	.rodata._.str.60,"a",@progbits
 	.balign	1
-	.local	_.str.74
-_.str.74:
+	.local	_.str.60
+_.str.60:
 	.asciz	"Erased -- sync again"
 
 	.section	.bss._requests_handled,"aw",@nobits
@@ -10268,10 +10167,10 @@ _serial:
 _discard_scratch:
 	.zero	256
 
-	.section	.rodata._.str.75,"a",@progbits
+	.section	.rodata._.str.61,"a",@progbits
 	.balign	1
-	.local	_.str.75
-_.str.75:
+	.local	_.str.61
+_.str.61:
 	.asciz	"Echo"
 
 	.section	.bss._cached_archive_free,"aw",@nobits
@@ -10382,78 +10281,78 @@ _reply_body:
 _reply_small:
 	.zero	16
 
-	.section	.rodata._.str.3.81,"a",@progbits
+	.section	.rodata._.str.3.67,"a",@progbits
 	.balign	1
-	.local	_.str.3.81
-_.str.3.81:
+	.local	_.str.3.67
+_.str.3.67:
 	.asciz	"w"
 
-	.section	.rodata._.str.4.76,"a",@progbits
+	.section	.rodata._.str.4.62,"a",@progbits
 	.balign	1
-	.local	_.str.4.76
-_.str.4.76:
+	.local	_.str.4.62
+_.str.4.62:
 	.asciz	"Waiting for computer"
 
-	.section	.rodata._.str.5.78,"a",@progbits
+	.section	.rodata._.str.5.64,"a",@progbits
 	.balign	1
-	.local	_.str.5.78
-_.str.5.78:
+	.local	_.str.5.64
+_.str.5.64:
 	.asciz	"Receiving"
 
-	.section	.rodata._.str.6.79,"a",@progbits
+	.section	.rodata._.str.6.65,"a",@progbits
 	.balign	1
-	.local	_.str.6.79
-_.str.6.79:
+	.local	_.str.6.65
+_.str.6.65:
 	.asciz	"Skipping"
 
-	.section	.rodata._.str.7.80,"a",@progbits
+	.section	.rodata._.str.7.66,"a",@progbits
 	.balign	1
-	.local	_.str.7.80
-_.str.7.80:
+	.local	_.str.7.66
+_.str.7.66:
 	.asciz	"Replying"
 
-	.section	.rodata._.str.8.77,"a",@progbits
+	.section	.rodata._.str.8.63,"a",@progbits
 	.balign	1
-	.local	_.str.8.77
-_.str.8.77:
+	.local	_.str.8.63
+_.str.8.63:
 	.asciz	"Connected"
 
 	.section	.rodata._switch.table.proto_run,"a",@progbits
 	.balign	1
 	.local	_switch.table.proto_run
 _switch.table.proto_run:
-	d24	_.str.5.78
-	d24	_.str.6.79
-	d24	_.str.7.80
+	d24	_.str.5.64
+	d24	_.str.6.65
+	d24	_.str.7.66
 
-	.section	.rodata._.str.84,"a",@progbits
+	.section	.rodata._.str.70,"a",@progbits
 	.balign	1
-	.local	_.str.84
-_.str.84:
+	.local	_.str.70
+_.str.70:
 	.asciz	"Cannot open this strip."
 
-	.section	.rodata._.str.1.85,"a",@progbits
+	.section	.rodata._.str.1.71,"a",@progbits
 	.balign	1
-	.local	_.str.1.85
-_.str.1.85:
+	.local	_.str.1.71
+_.str.1.71:
 	.asciz	"Re-sync it from the computer."
 
-	.section	.rodata._.str.2.88,"a",@progbits
+	.section	.rodata._.str.2.74,"a",@progbits
 	.balign	1
-	.local	_.str.2.88
-_.str.2.88:
+	.local	_.str.2.74
+_.str.2.74:
 	.asciz	"%u.%ux %u%%%s"
 
-	.section	.rodata._.str.3.86,"a",@progbits
+	.section	.rodata._.str.3.72,"a",@progbits
 	.balign	1
-	.local	_.str.3.86
-_.str.3.86:
+	.local	_.str.3.72
+_.str.3.72:
 	.asciz	" read"
 
-	.section	.rodata._.str.4.87,"a",@progbits
+	.section	.rodata._.str.4.73,"a",@progbits
 	.balign	1
-	.local	_.str.4.87
-_.str.4.87:
+	.local	_.str.4.73
+_.str.4.73:
 	.zero	1
 
 	.ident	"clang version 19.1.0 (https://github.com/CE-Programming/llvm-project ef28e9c54cd1333a6091ab2ffbd315b465fc5090)"
@@ -10527,10 +10426,10 @@ _.str.4.87:
 	.extern	_gfx_FillRectangle_NoClip
 	.extern	__bshru
 	.extern	_gfx_PrintStringXY
+	.extern	_llvm.memset.p0.i24
 	.extern	_gfx_SetColor
 	.extern	_llvm.memcpy.p0.p0.i24
 	.extern	_gfx_End
-	.extern	_llvm.memset.p0.i24
 	.extern	_llvm.eh.sjlj.setup.dispatch
 	.extern	_time
 	.extern	_srl_Open

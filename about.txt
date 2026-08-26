@@ -4,23 +4,7 @@ A comic reader for the TI-84 Plus CE.
 
 Comics are converted on a computer into
 a format a 48MHz eZ80 can draw, and sent
-over a USB serial link. This program
-lists what arrived, shows it, and
-remembers where you got to.
-
-HOW IT WORKS
-
-Each strip is stored at two zoom levels,
-16 colours, 4 bits per pixel, cut into
-32-row bands and compressed with ZX0.
-Only the bands on screen are unpacked,
-so a 400KB comic is read from flash a
-few kilobytes at a time.
-
-Titles are pictures, not text. The
-calculator has no Chinese font, so the
-computer draws each title once and sends
-the pixels.
+over a USB serial link.
 
 KEYS
 
@@ -45,5 +29,4 @@ Built with the CE C/C++ toolchain.
 srldrvce and usbdrvce by the CE
 Programming team.
 
-Edit about.txt in the repository to
-change this page.
+Made with love by Walter Brobson

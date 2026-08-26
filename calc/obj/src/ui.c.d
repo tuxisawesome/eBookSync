@@ -1,33 +1,28 @@
-obj/src/ui.c.bc: src/ui.c src/ui.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/stdbool.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/stdint.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/cdefs.h \
-  src/input.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/keypadc.h \
-  src/about.h src/library.h src/proto.h src/render.h src/csx.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/graphx.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/stdlib.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/stdio.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/stdarg.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/time.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/tice.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/sys/basicusb.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/sys/lcd.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/sys/power.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/sys/rtc.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/sys/timers.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/sys/util.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/ti/error.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/ti/flags.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/ti/getcsc.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/ti/getkey.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/ti/graph.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/ti/real.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/ti/info.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/stddef.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/ti/python.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/ti/screen.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/ti/ui.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/ti/tokens.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/ti/vars.h \
-  /tmp/claude-1000/-home-walter-Documents-Git-eBookSync/72f27f4f-dd2a-4f0b-8ac7-4a2f6a2c0790/scratchpad/CEdev/include/string.h
+obj/src/ui.c.bc: src/ui.c src/ui.h /home/walter/CEdev/include/stdbool.h \
+  /home/walter/CEdev/include/stdint.h /home/walter/CEdev/include/cdefs.h \
+  src/input.h /home/walter/CEdev/include/keypadc.h src/about.h \
+  src/library.h src/proto.h src/render.h src/csx.h \
+  /home/walter/CEdev/include/graphx.h \
+  /home/walter/CEdev/include/stdlib.h /home/walter/CEdev/include/stdio.h \
+  /home/walter/CEdev/include/stdarg.h /home/walter/CEdev/include/time.h \
+  /home/walter/CEdev/include/tice.h \
+  /home/walter/CEdev/include/sys/basicusb.h \
+  /home/walter/CEdev/include/sys/lcd.h \
+  /home/walter/CEdev/include/sys/power.h \
+  /home/walter/CEdev/include/sys/rtc.h \
+  /home/walter/CEdev/include/sys/timers.h \
+  /home/walter/CEdev/include/sys/util.h \
+  /home/walter/CEdev/include/ti/error.h \
+  /home/walter/CEdev/include/ti/flags.h \
+  /home/walter/CEdev/include/ti/getcsc.h \
+  /home/walter/CEdev/include/ti/getkey.h \
+  /home/walter/CEdev/include/ti/graph.h \
+  /home/walter/CEdev/include/ti/real.h \
+  /home/walter/CEdev/include/ti/info.h \
+  /home/walter/CEdev/include/stddef.h \
+  /home/walter/CEdev/include/ti/python.h \
+  /home/walter/CEdev/include/ti/screen.h \
+  /home/walter/CEdev/include/ti/ui.h \
+  /home/walter/CEdev/include/ti/tokens.h \
+  /home/walter/CEdev/include/ti/vars.h \
+  /home/walter/CEdev/include/string.h
