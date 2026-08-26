@@ -15,6 +15,9 @@ tools/hosttest/lib_probe
 tools/hosttest/ui_probe
 tools/hosttest/usb_probe
 
+# Generated from about.txt on every build by tools/make_about.sh.
+calc/src/about.h
+
 __pycache__/
 *.pyc
 

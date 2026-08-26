@@ -135,9 +135,17 @@ Reaching the last 5% of a strip marks it read on its own.
 On the book list: `del` marks a whole book read or unread, `mode` opens
 settings, `2nd` opens the sync screen. On the strip list, `del` marks one strip.
 
-Settings has one thing in it: **erase the library**, which deletes every comic
-on the calculator. Your files on the computer are untouched, and syncing again
-refills it.
+Settings (`mode` from the book list) has two entries:
+
+- **Erase the library** — deletes every comic on the calculator. Your files on
+  the computer are untouched, and syncing again refills it.
+- **About** — the text of `about.txt`, scrollable with the arrow keys.
+
+`about.txt` lives at the root of the repository and is baked into the program on
+every build by `tools/make_about.sh`, since the calculator has no way to read
+the repository for itself. Edit the file and rebuild; there is nothing to
+regenerate by hand. It is drawn with the built-in font, so it is ASCII only and
+lines longer than 40 characters run off the side.
 
 ## Two libraries, one calculator
 

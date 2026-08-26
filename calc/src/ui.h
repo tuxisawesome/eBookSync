@@ -47,8 +47,11 @@ typedef enum {
  * the user presses clear. */
 void ui_sync_screen(void);
 
-/* Settings: free space, and resetting the library. */
+/* Settings: what is stored, resetting the library, and about. */
 void ui_setup_screen(void);
+
+/* The text of about.txt, baked in at build time and scrollable. */
+void ui_about_screen(void);
 
 /* Yes/no, drawn over a blank screen. Returns true for yes. */
 bool ui_confirm(const char *line1, const char *line2);

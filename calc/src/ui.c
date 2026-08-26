@@ -9,6 +9,7 @@
 #include "ui.h"
 
 #include "input.h"
+#include "about.h"
 #include "library.h"
 #include "proto.h"
 #include "render.h"
@@ -361,7 +362,86 @@ ui_result_t ui_strip_menu(uint16_t book_index, uint16_t *selection) {
     }
 }
 
+/*
+ * Scrollable text, drawn with the built-in font.
+ *
+ * The content comes from about.txt in the repository; tools/make_about.sh bakes
+ * it into about.h on every build, because the calculator has no way to read the
+ * repository for itself.
+ */
+void ui_about_screen(void) {
+    const int rows = 11;              /* lines that fit between the bars */
+    int first = 0;
+    bool dirty = true;
+    bool drew = false;
+
+    input_reset();
+    for (;;) {
+        if (dirty) {
+            gfx_FillScreen(UI_BG);
+            ui_header("About");
+
+            gfx_SetTextFGColor(UI_FG);
+            gfx_SetTextBGColor(UI_BG);
+            for (int row = 0; row < rows; row++) {
+                int line = first + row;
+                if (line >= (int)ABOUT_LINES)
+                    break;
+                gfx_PrintStringXY(about_text[line], 8, UI_LIST_TOP + row * 18);
+            }
+
+            if ((int)ABOUT_LINES > rows) {
+                int track = rows * 18;
+                int thumb = track * rows / (int)ABOUT_LINES;
+                if (thumb < 8)
+                    thumb = 8;
+                int span = (int)ABOUT_LINES - rows;
+                gfx_SetColor(UI_DIM);
+                gfx_FillRectangle_NoClip(GFX_LCD_WIDTH - 4,
+                                         UI_LIST_TOP + (track - thumb) * first / span,
+                                         3, thumb);
+            }
+
+            ui_footer("up/down  scroll        clear  back");
+            dirty = false;
+            drew = true;
+        }
+
+        ui_present(drew);
+        drew = false;
+        input_scan();
+
+        int last = (int)ABOUT_LINES - rows;
+        if (last < 0)
+            last = 0;
+
+        if (input_repeat(kb_KeyUp) && first > 0) {
+            first--;
+            dirty = true;
+        } else if (input_repeat(kb_KeyDown) && first < last) {
+            first++;
+            dirty = true;
+        } else if (input_repeat(kb_KeyLeft)) {
+            first = first > rows ? first - rows : 0;
+            dirty = true;
+        } else if (input_repeat(kb_KeyRight)) {
+            first = first + rows < last ? first + rows : last;
+            dirty = true;
+        }
+
+        if (input_pressed(kb_KeyClear))
+            return;
+    }
+}
+
 void ui_setup_screen(void) {
+    static const char *const entries[] = {
+        "Erase the library",
+        "About",
+    };
+    const uint8_t count = sizeof entries / sizeof *entries;
+
+    uint8_t selected = 0;
     bool dirty = true;
     bool drew = false;
     char line[40];
@@ -372,12 +452,8 @@ void ui_setup_screen(void) {
             gfx_FillScreen(UI_BG);
             ui_header("Settings");
 
-            gfx_SetTextFGColor(UI_FG);
+            gfx_SetTextFGColor(UI_DIM);
             gfx_SetTextBGColor(UI_BG);
-
-            sprintf(line, "%u books, %u strips",
-                    lib_book_count(), lib_strip_count());
-            gfx_PrintStringXY(line, 10, 40);
 
             uint16_t read = 0;
             for (uint16_t i = 0; i < lib_book_count(); i++) {
@@ -385,17 +461,28 @@ void ui_setup_screen(void) {
                 lib_get_book(i, &book);
                 read += lib_book_read_count(&book);
             }
-            sprintf(line, "%u read", read);
-            gfx_PrintStringXY(line, 10, 58);
+            sprintf(line, "%u books, %u strips, %u read",
+                    lib_book_count(), lib_strip_count(), read);
+            gfx_PrintStringXY(line, 10, 30);
 
-            gfx_SetTextFGColor(UI_ACCENT);
-            gfx_PrintStringXY("del   erase the whole library", 10, 92);
+            for (uint8_t i = 0; i < count; i++) {
+                int y = 70 + i * UI_ROW_HEIGHT;
+                gfx_SetColor(i == selected ? UI_SELECT_BG : UI_BG);
+                gfx_FillRectangle_NoClip(0, y - 4, GFX_LCD_WIDTH, UI_ROW_HEIGHT);
+                gfx_SetTextFGColor(UI_FG);
+                gfx_SetTextBGColor(i == selected ? UI_SELECT_BG : UI_BG);
+                gfx_PrintStringXY(entries[i], 16, y);
+            }
+
             gfx_SetTextFGColor(UI_DIM);
-            gfx_PrintStringXY("Deletes every comic on this", 10, 112);
-            gfx_PrintStringXY("calculator. The computer keeps", 10, 128);
-            gfx_PrintStringXY("its copies.", 10, 144);
+            gfx_SetTextBGColor(UI_BG);
+            if (selected == 0) {
+                gfx_PrintStringXY("Deletes every comic on this", 10, 140);
+                gfx_PrintStringXY("calculator. The computer keeps", 10, 158);
+                gfx_PrintStringXY("its copies.", 10, 176);
+            }
 
-            ui_footer("clear  back");
+            ui_footer("enter  choose          clear  back");
             dirty = false;
             drew = true;
         }
@@ -404,16 +491,29 @@ void ui_setup_screen(void) {
         drew = false;
         input_scan();
 
-        if (input_pressed(kb_KeyDel)) {
-            if (ui_confirm("Erase every comic on this", "calculator?")) {
-                uint16_t removed = lib_reset();
-                char message[40];
-                sprintf(message, "Removed %u strip(s).", removed);
-                ui_message(message, "Sync again to refill it.");
+        if (input_repeat(kb_KeyUp) && selected) {
+            selected--;
+            dirty = true;
+        } else if (input_repeat(kb_KeyDown) && selected + 1 < count) {
+            selected++;
+            dirty = true;
+        }
+
+        if (input_pressed(kb_KeyEnter)) {
+            if (selected == 0) {
+                if (ui_confirm("Erase every comic on this", "calculator?")) {
+                    uint16_t removed = lib_reset();
+                    char message[40];
+                    sprintf(message, "Removed %u strip(s).", removed);
+                    ui_message(message, "Sync again to refill it.");
+                }
+            } else {
+                ui_about_screen();
             }
             input_reset();
             dirty = true;
         }
+
         if (input_pressed(kb_KeyClear))
             return;
     }

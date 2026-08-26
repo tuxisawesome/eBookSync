@@ -5207,27 +5207,26 @@ _ui_strip_menu:                         ; @ui_strip_menu
 .Lfunc_end47:
 	.size	_ui_strip_menu, .Lfunc_end47-_ui_strip_menu
                                         ; -- End function
-	.section	.text._ui_setup_screen,"ax",@progbits
-	.globl	_ui_setup_screen                ; -- Begin function ui_setup_screen
-	.type	_ui_setup_screen,@function
-_ui_setup_screen:                       ; @ui_setup_screen
+	.section	.text._ui_about_screen,"ax",@progbits
+	.globl	_ui_about_screen                ; -- Begin function ui_about_screen
+	.type	_ui_about_screen,@function
+_ui_about_screen:                       ; @ui_about_screen
 ; %bb.0:
-	ld	hl, -96
+	ld	hl, -13
 	call	__frameset
-	lea	hl, ix - 40
-	ld	(ix - 84), hl
-	lea	hl, ix - 81
-	ld	(ix - 90), hl
 	call	_input_reset
-	ld	l, 1
+	ld	e, 1
+	or	a, a
+	sbc	hl, hl
+	ld	(ix - 3), hl
 	.local	.LBB48_1
-.LBB48_1:                               ; %input_pressed.exit1
+.LBB48_1:                               ; %input_pressed.exit
                                         ; =>This Loop Header: Depth=1
-                                        ;     Child Loop BB48_3 Depth 2
-	bit	0, l
-	jp	z, .LBB48_6
+                                        ;     Child Loop BB48_7 Depth 2
+	bit	0, e
+	jp	z, .LBB48_10
 ; %bb.2:                                ;   in Loop: Header=BB48_1 Depth=1
-	ld	(ix - 85), l                    ; 1-byte Folded Spill
+	ld	(ix - 7), e                     ; 1-byte Folded Spill
 	ld	hl, 248
 	push	hl
 	call	_gfx_FillScreen
@@ -5244,134 +5243,456 @@ _ui_setup_screen:                       ; @ui_setup_screen
 	push	hl
 	call	_gfx_SetTextBGColor
 	pop	hl
-	ld	hl, _book_count
-	ld	hl, (hl)
-	ld	de, 0
-	push	de
-	pop	bc
-	ld	c, l
-	ld	b, h
-	ld	hl, _strip_count
-	ld	hl, (hl)
-	ld	e, l
-	ld	d, h
-	push	de
+	ld	bc, (ix - 3)
 	push	bc
+	pop	hl
+	ld	de, 50
+	or	a, a
+	sbc	hl, de
+	call	pe, __setflag
+	push	bc
+	pop	hl
+	jp	p, .LBB48_4
+; %bb.3:                                ;   in Loop: Header=BB48_1 Depth=1
+	ld	hl, 49
+	.local	.LBB48_4
+.LBB48_4:                               ;   in Loop: Header=BB48_1 Depth=1
+	ld	de, (ix - 3)
+	or	a, a
+	sbc	hl, de
+	push	hl
+	pop	de
+	ld	bc, 11
+	or	a, a
+	sbc	hl, bc
+	jr	c, .LBB48_6
+; %bb.5:                                ;   in Loop: Header=BB48_1 Depth=1
+	ld	de, 11
+	.local	.LBB48_6
+.LBB48_6:                               ;   in Loop: Header=BB48_1 Depth=1
+	ex	de, hl
+	ld	bc, 18
+	call	__imulu
+	ld	(ix - 6), hl
+	ld	hl, (ix - 3)
+	ld	bc, 3
+	call	__imulu
+	ex	de, hl
+	ld	iy, _about_text
+	add	iy, de
+	ld	de, 0
+	.local	.LBB48_7
+.LBB48_7:                               ;   Parent Loop BB48_1 Depth=1
+                                        ; =>  This Inner Loop Header: Depth=2
+	ld	hl, (ix - 6)
+	or	a, a
+	sbc	hl, de
+	jr	z, .LBB48_9
+; %bb.8:                                ;   in Loop: Header=BB48_7 Depth=2
+	ld	(ix - 10), iy
+	ld	bc, (iy)
+	ex	de, hl
+	ld	(ix - 13), hl
+	ld	de, 22
+	add	hl, de
+	push	hl
+	ld	hl, 8
+	push	hl
+	push	bc
+	call	_gfx_PrintStringXY
+	pop	hl
+	pop	hl
+	pop	hl
+	ld	de, 18
+	ld	hl, (ix - 13)
+	add	hl, de
+	ld	iy, (ix - 10)
+	lea	iy, iy + 3
+	ex	de, hl
+	jr	.LBB48_7
+	.local	.LBB48_9
+.LBB48_9:                               ;   in Loop: Header=BB48_1 Depth=1
+	ld	hl, 251
+	push	hl
+	call	_gfx_SetColor
+	pop	hl
+	ld	hl, (ix - 3)
+	ld	bc, 154
+	call	__imulu
+	ld	bc, 38
+	call	__idivs
+	ld	e, 22
+	ld	a, l
+	add	a, e
+	ld	l, a
+	ld	de, 44
+	push	de
+	ld	de, 3
+	push	de
+	push	hl
+	ld	hl, 316
+	push	hl
+	call	_gfx_FillRectangle_NoClip
+	pop	hl
+	pop	hl
+	pop	hl
+	pop	hl
 	ld	hl, _.str.12
 	push	hl
-	ld	hl, (ix - 84)
-	push	hl
-	call	_sprintf
+	call	_ui_footer
 	pop	hl
-	pop	hl
-	pop	hl
-	pop	hl
-	ld	hl, 40
-	push	hl
-	ld	hl, 10
-	push	hl
-	ld	hl, (ix - 84)
-	push	hl
-	call	_gfx_PrintStringXY
-	pop	hl
-	pop	hl
-	pop	hl
-	ld	hl, _book_count
-	ld	de, (hl)
-	ld.sis	hl, 0
-	ld	(ix - 87), l
-	ld	(ix - 86), h
-	ex	de, hl
-	ld	iyl, e
-	ld	iyh, d
-	ex	de, hl
-	.local	.LBB48_3
-.LBB48_3:                               ;   Parent Loop BB48_1 Depth=1
-                                        ; =>  This Inner Loop Header: Depth=2
+	ld	e, (ix - 7)                     ; 1-byte Folded Reload
+	.local	.LBB48_10
+.LBB48_10:                              ;   in Loop: Header=BB48_1 Depth=1
 	ld	l, e
-	ld	h, d
-	lea	bc, iy + 0
+	push	hl
+	call	_ui_present
+	pop	hl
+	call	_input_scan
+	ld	hl, 1800
+	push	hl
+	call	_input_repeat
+	pop	hl
+	bit	0, a
+	jr	z, .LBB48_13
+; %bb.11:                               ;   in Loop: Header=BB48_1 Depth=1
+	ld	hl, (ix - 3)
+	ld	de, 1
 	or	a, a
-	sbc.sis	hl, bc
-	jr	z, .LBB48_5
-; %bb.4:                                ;   in Loop: Header=BB48_3 Depth=2
-	ld	hl, (ix - 90)
+	sbc	hl, de
+	call	pe, __setflag
+	jp	m, .LBB48_13
+; %bb.12:                               ;   in Loop: Header=BB48_1 Depth=1
+	ld	hl, (ix - 3)
+	dec	hl
+	jr	.LBB48_16
+	.local	.LBB48_13
+.LBB48_13:                              ;   in Loop: Header=BB48_1 Depth=1
+	ld	hl, 1793
 	push	hl
-	ld	(ix - 96), iy
-	push	iy
-	ld	(ix - 93), de
-	call	_lib_get_book
+	call	_input_repeat
 	pop	hl
-	pop	hl
-	ld	hl, (ix - 90)
-	push	hl
-	call	_lib_book_read_count
-	pop	de
-	ld	de, (ix - 93)
-	ld	c, (ix - 87)
-	ld	b, (ix - 86)
-	add.sis	hl, bc
-	ld	iy, (ix - 96)
-	inc.sis	iy
-	ld	(ix - 87), l
-	ld	(ix - 86), h
-	jr	.LBB48_3
-	.local	.LBB48_5
-.LBB48_5:                               ;   in Loop: Header=BB48_1 Depth=1
+	bit	0, a
+	jr	z, .LBB48_17
+; %bb.14:                               ;   in Loop: Header=BB48_1 Depth=1
+	ld	hl, (ix - 3)
+	ld	de, 38
 	or	a, a
-	sbc	hl, hl
-	ld	e, (ix - 87)
-	ld	d, (ix - 86)
-	ld	l, e
-	ld	h, d
+	sbc	hl, de
+	call	pe, __setflag
+	jp	p, .LBB48_17
+; %bb.15:                               ;   in Loop: Header=BB48_1 Depth=1
+	ld	hl, (ix - 3)
+	inc	hl
+	.local	.LBB48_16
+.LBB48_16:                              ;   in Loop: Header=BB48_1 Depth=1
+	ld	(ix - 3), hl
+	ld	a, 1
+	jr	.LBB48_26
+	.local	.LBB48_17
+.LBB48_17:                              ;   in Loop: Header=BB48_1 Depth=1
+	ld	hl, 1794
 	push	hl
-	ld	hl, _.str.13
-	push	hl
-	ld	hl, (ix - 84)
-	push	hl
-	call	_sprintf
+	call	_input_repeat
 	pop	hl
-	pop	hl
-	pop	hl
-	ld	hl, 58
+	bit	0, a
+	jr	z, .LBB48_21
+; %bb.18:                               ;   in Loop: Header=BB48_1 Depth=1
+	ld	hl, (ix - 3)
 	push	hl
-	ld	hl, 10
+	pop	iy
+	ld	de, -11
+	add	iy, de
+	ld	de, 12
+	or	a, a
+	sbc	hl, de
+	call	pe, __setflag
+	jp	p, .LBB48_20
+; %bb.19:                               ;   in Loop: Header=BB48_1 Depth=1
+	ld	iy, 0
+	.local	.LBB48_20
+.LBB48_20:                              ;   in Loop: Header=BB48_1 Depth=1
+	ld	a, 1
+	ld	e, a
+	ld	(ix - 3), iy
+	jr	.LBB48_27
+	.local	.LBB48_21
+.LBB48_21:                              ;   in Loop: Header=BB48_1 Depth=1
+	ld	hl, 1796
 	push	hl
-	ld	hl, (ix - 84)
-	push	hl
-	call	_gfx_PrintStringXY
+	call	_input_repeat
 	pop	hl
+	bit	0, a
+	jr	z, .LBB48_25
+; %bb.22:                               ;   in Loop: Header=BB48_1 Depth=1
+	ld	bc, (ix - 3)
+	push	bc
 	pop	hl
+	ld	de, 27
+	or	a, a
+	sbc	hl, de
+	call	pe, __setflag
+	push	bc
 	pop	hl
-	ld	hl, 250
+	jp	m, .LBB48_24
+; %bb.23:                               ;   in Loop: Header=BB48_1 Depth=1
+	ld	hl, 27
+	.local	.LBB48_24
+.LBB48_24:                              ;   in Loop: Header=BB48_1 Depth=1
+	ld	de, 11
+	add	hl, de
+	ld	a, 1
+	ld	e, a
+	ld	(ix - 3), hl
+	jr	.LBB48_27
+	.local	.LBB48_25
+.LBB48_25:                              ;   in Loop: Header=BB48_1 Depth=1
+	xor	a, a
+	.local	.LBB48_26
+.LBB48_26:                              ;   in Loop: Header=BB48_1 Depth=1
+	ld	e, a
+	.local	.LBB48_27
+.LBB48_27:                              ;   in Loop: Header=BB48_1 Depth=1
+	ld	a, (_current+6)
+	bit	6, a
+	jp	z, .LBB48_1
+; %bb.28:                               ;   in Loop: Header=BB48_1 Depth=1
+	ld	a, (_previous+6)
+	bit	6, a
+	jp	nz, .LBB48_1
+; %bb.29:
+	ld	sp, ix
+	pop	ix
+	ret
+	.local	.Lfunc_end48
+.Lfunc_end48:
+	.size	_ui_about_screen, .Lfunc_end48-_ui_about_screen
+                                        ; -- End function
+	.section	.text._ui_setup_screen,"ax",@progbits
+	.globl	_ui_setup_screen                ; -- Begin function ui_setup_screen
+	.type	_ui_setup_screen,@function
+_ui_setup_screen:                       ; @ui_setup_screen
+; %bb.0:
+	ld	hl, -107
+	call	__frameset
+	lea	hl, ix - 40
+	ld	(ix - 94), hl
+	lea	hl, ix - 81
+	ld	(ix - 91), hl
+	call	_input_reset
+	ld	h, 1
+	xor	a, a
+	ld	(ix - 82), a                    ; 1-byte Folded Spill
+	.local	.LBB49_1
+.LBB49_1:                               ; %input_pressed.exit4
+                                        ; =>This Loop Header: Depth=1
+                                        ;     Child Loop BB49_3 Depth 2
+                                        ;     Child Loop BB49_6 Depth 2
+	bit	0, h
+	jp	z, .LBB49_13
+; %bb.2:                                ;   in Loop: Header=BB49_1 Depth=1
+	ld	(ix - 95), h                    ; 1-byte Folded Spill
+	ld	hl, 248
 	push	hl
-	call	_gfx_SetTextFGColor
+	call	_gfx_FillScreen
 	pop	hl
-	ld	hl, 92
-	push	hl
-	ld	hl, 10
-	push	hl
 	ld	hl, _.str.14
 	push	hl
-	call	_gfx_PrintStringXY
-	pop	hl
-	pop	hl
+	call	_ui_header
 	pop	hl
 	ld	hl, 251
 	push	hl
 	call	_gfx_SetTextFGColor
 	pop	hl
-	ld	hl, 112
+	ld	hl, 248
+	push	hl
+	call	_gfx_SetTextBGColor
+	pop	hl
+	ld	hl, _book_count
+	ld	de, (hl)
+	ld.sis	hl, 0
+	ld	(ix - 85), l
+	ld	(ix - 84), h
+	ld	c, l
+	ld	b, h
+	.local	.LBB49_3
+.LBB49_3:                               ;   Parent Loop BB49_1 Depth=1
+                                        ; =>  This Inner Loop Header: Depth=2
+	ld	l, e
+	ld	h, d
+	or	a, a
+	sbc.sis	hl, bc
+	jr	z, .LBB49_5
+; %bb.4:                                ;   in Loop: Header=BB49_3 Depth=2
+	ld	hl, (ix - 91)
+	push	hl
+	push	bc
+	ld	(ix - 88), de
+	ld	(ix - 98), bc
+	call	_lib_get_book
+	pop	hl
+	pop	hl
+	ld	hl, (ix - 91)
+	push	hl
+	call	_lib_book_read_count
+	ld	bc, (ix - 98)
+	pop	de
+	ld	e, (ix - 85)
+	ld	d, (ix - 84)
+	add.sis	hl, de
+	ld	de, (ix - 88)
+	inc.sis	bc
+	ld	(ix - 85), l
+	ld	(ix - 84), h
+	jr	.LBB49_3
+	.local	.LBB49_5
+.LBB49_5:                               ;   in Loop: Header=BB49_1 Depth=1
+	ld	bc, 0
+	push	bc
+	pop	iy
+	ld	iyl, e
+	ld	iyh, d
+	ld	hl, _strip_count
+	ld	de, (hl)
+	push	bc
+	pop	hl
+	ld	c, e
+	ld	b, d
+	ex	de, hl
+	ld	l, (ix - 85)
+	ld	h, (ix - 84)
+	ld	e, l
+	ld	d, h
+	push	de
+	push	bc
+	push	iy
+	ld	hl, _.str.15.25
+	push	hl
+	ld	hl, (ix - 94)
+	push	hl
+	call	_sprintf
+	pop	hl
+	pop	hl
+	pop	hl
+	pop	hl
+	pop	hl
+	ld	hl, 30
 	push	hl
 	ld	hl, 10
 	push	hl
-	ld	hl, _.str.15.25
+	ld	hl, (ix - 94)
 	push	hl
 	call	_gfx_PrintStringXY
 	pop	hl
 	pop	hl
 	pop	hl
-	ld	hl, 128
+	or	a, a
+	sbc	hl, hl
+	ld	l, (ix - 82)                    ; 1-byte Folded Reload
+	ld	bc, 20
+	call	__imulu
+	ld	(ix - 98), hl
+	ld	hl, _ui_setup_screen.entries
+	ld	(ix - 85), hl
+	or	a, a
+	sbc	hl, hl
+	ld	a, 66
+	ld	c, a
+	.local	.LBB49_6
+.LBB49_6:                               ;   Parent Loop BB49_1 Depth=1
+                                        ; =>  This Inner Loop Header: Depth=2
+	push	bc
+	pop	iy
+	push	hl
+	pop	bc
+	ld	de, 40
+	or	a, a
+	sbc	hl, de
+	jp	z, .LBB49_10
+; %bb.7:                                ;   in Loop: Header=BB49_6 Depth=2
+	push	bc
+	pop	hl
+	ld	de, 70
+	add	hl, de
+	ld	(ix - 104), hl
+	ld	hl, (ix - 98)
+	ld	(ix - 101), bc
+	or	a, a
+	sbc	hl, bc
+	ld	a, -4
+	ld	l, a
+	ld	(ix - 88), iy
+	jr	z, .LBB49_9
+; %bb.8:                                ;   in Loop: Header=BB49_6 Depth=2
+	ld	a, -8
+	ld	l, a
+	.local	.LBB49_9
+.LBB49_9:                               ;   in Loop: Header=BB49_6 Depth=2
+	ld	(ix - 107), hl
+	push	hl
+	call	_gfx_SetColor
+	pop	hl
+	ld	hl, 20
+	push	hl
+	ld	hl, 320
+	push	hl
+	ld	hl, (ix - 88)
+	push	hl
+	or	a, a
+	sbc	hl, hl
+	push	hl
+	call	_gfx_FillRectangle_NoClip
+	pop	hl
+	pop	hl
+	pop	hl
+	pop	hl
+	ld	hl, 249
+	push	hl
+	call	_gfx_SetTextFGColor
+	pop	hl
+	ld	hl, (ix - 107)
+	push	hl
+	call	_gfx_SetTextBGColor
+	pop	hl
+	ld	hl, (ix - 85)
+	ld	bc, (hl)
+	ld	de, (ix - 104)
+	push	de
+	ld	de, 16
+	push	de
+	push	bc
+	call	_gfx_PrintStringXY
+	pop	hl
+	pop	hl
+	pop	hl
+	ld	l, 20
+	ld	iy, (ix - 88)
+	ld	a, iyl
+	add	a, l
+	ld	iyl, a
+	lea	bc, iy + 0
+	ld	hl, (ix - 101)
+	ld	de, 20
+	add	hl, de
+	ld	iy, (ix - 85)
+	lea	iy, iy + 3
+	ld	(ix - 85), iy
+	jp	.LBB49_6
+	.local	.LBB49_10
+.LBB49_10:                              ;   in Loop: Header=BB49_1 Depth=1
+	ld	hl, 251
+	push	hl
+	call	_gfx_SetTextFGColor
+	pop	hl
+	ld	hl, 248
+	push	hl
+	call	_gfx_SetTextBGColor
+	pop	hl
+	ld	a, (ix - 82)                    ; 1-byte Folded Reload
+	or	a, a
+	jr	nz, .LBB49_12
+; %bb.11:                               ;   in Loop: Header=BB49_1 Depth=1
+	ld	hl, 140
 	push	hl
 	ld	hl, 10
 	push	hl
@@ -5381,7 +5702,7 @@ _ui_setup_screen:                       ; @ui_setup_screen
 	pop	hl
 	pop	hl
 	pop	hl
-	ld	hl, 144
+	ld	hl, 158
 	push	hl
 	ld	hl, 10
 	push	hl
@@ -5391,95 +5712,146 @@ _ui_setup_screen:                       ; @ui_setup_screen
 	pop	hl
 	pop	hl
 	pop	hl
+	ld	hl, 176
+	push	hl
+	ld	hl, 10
+	push	hl
 	ld	hl, _.str.18
+	push	hl
+	call	_gfx_PrintStringXY
+	pop	hl
+	pop	hl
+	pop	hl
+	.local	.LBB49_12
+.LBB49_12:                              ;   in Loop: Header=BB49_1 Depth=1
+	ld	hl, _.str.19
 	push	hl
 	call	_ui_footer
 	pop	hl
-	ld	l, (ix - 85)                    ; 1-byte Folded Reload
-	.local	.LBB48_6
-.LBB48_6:                               ;   in Loop: Header=BB48_1 Depth=1
-                                        ; kill: def $l killed $l def $uhl
+	ld	h, (ix - 95)                    ; 1-byte Folded Reload
+	.local	.LBB49_13
+.LBB49_13:                              ;   in Loop: Header=BB49_1 Depth=1
+	ld	l, h
 	push	hl
 	call	_ui_present
 	pop	hl
 	call	_input_scan
-	ld	a, (_current+1)
-	ld	l, a
-	ld	a, (_previous+1)
-	cp	a, 0
-	call	pe, __setflag
-	ld	e, -1
-	jp	p, .LBB48_8
-; %bb.7:                                ;   in Loop: Header=BB48_1 Depth=1
-	ld	e, 0
-	.local	.LBB48_8
-.LBB48_8:                               ;   in Loop: Header=BB48_1 Depth=1
-	ld	a, l
-	cp	a, 0
-	call	pe, __setflag
-	ld	a, -1
-	jp	m, .LBB48_10
-; %bb.9:                                ;   in Loop: Header=BB48_1 Depth=1
-	ld	a, 0
-	.local	.LBB48_10
-.LBB48_10:                              ;   in Loop: Header=BB48_1 Depth=1
-	and	a, e
-	ld	l, a
-	bit	0, l
-	jr	z, .LBB48_14
-; %bb.11:                               ;   in Loop: Header=BB48_1 Depth=1
-	ld	(ix - 85), l                    ; 1-byte Folded Spill
-	ld	hl, _.str.20
+	ld	hl, 1800
 	push	hl
-	ld	hl, _.str.19
+	call	_input_repeat
+	pop	hl
+	bit	0, a
+	jr	z, .LBB49_15
+; %bb.14:                               ;   in Loop: Header=BB49_1 Depth=1
+	ld	a, (ix - 82)                    ; 1-byte Folded Reload
+	or	a, a
+	ld	a, 1
+	ld	h, a
+	ld	a, 0
+	jr	nz, .LBB49_19
+	.local	.LBB49_15
+.LBB49_15:                              ;   in Loop: Header=BB49_1 Depth=1
+	ld	hl, 1793
+	push	hl
+	call	_input_repeat
+	ld	l, a
+	pop	de
+	ld	a, (ix - 82)                    ; 1-byte Folded Reload
+	or	a, a
+	ld	e, -1
+	jr	z, .LBB49_17
+; %bb.16:                               ;   in Loop: Header=BB49_1 Depth=1
+	ld	e, 0
+	.local	.LBB49_17
+.LBB49_17:                              ;   in Loop: Header=BB49_1 Depth=1
+	ld	a, l
+	and	a, e
+	ld	h, a
+	bit	0, h
+	ld	a, 1
+	jr	nz, .LBB49_19
+; %bb.18:                               ;   in Loop: Header=BB49_1 Depth=1
+	ld	a, (ix - 82)                    ; 1-byte Folded Reload
+	.local	.LBB49_19
+.LBB49_19:                              ;   in Loop: Header=BB49_1 Depth=1
+	ld	(ix - 82), a                    ; 1-byte Folded Spill
+	ld	a, (_current+6)
+	ld	l, a
+	ld	c, 1
+	ld	a, l
+	and	a, c
+	ld	e, a
+	bit	0, e
+	jr	z, .LBB49_26
+; %bb.20:                               ; %input_pressed.exit
+                                        ;   in Loop: Header=BB49_1 Depth=1
+	ld	a, (_previous+6)
+	and	a, c
+	ld	e, a
+	bit	0, e
+	jr	nz, .LBB49_26
+; %bb.21:                               ;   in Loop: Header=BB49_1 Depth=1
+	ld	a, (ix - 82)                    ; 1-byte Folded Reload
+	or	a, a
+	jr	nz, .LBB49_24
+; %bb.22:                               ;   in Loop: Header=BB49_1 Depth=1
+	ld	hl, _.str.21
+	push	hl
+	ld	hl, _.str.20
 	push	hl
 	call	_ui_confirm
 	pop	hl
 	pop	hl
 	bit	0, a
-	jr	z, .LBB48_13
-; %bb.12:                               ;   in Loop: Header=BB48_1 Depth=1
+	jr	z, .LBB49_25
+; %bb.23:                               ;   in Loop: Header=BB49_1 Depth=1
 	call	_lib_reset
 	ld	de, 0
 	ld	e, l
 	ld	d, h
 	push	de
-	ld	hl, _.str.21
+	ld	hl, _.str.22
 	push	hl
-	ld	hl, (ix - 90)
+	ld	hl, (ix - 91)
 	push	hl
 	call	_sprintf
 	pop	hl
 	pop	hl
 	pop	hl
-	ld	hl, _.str.22
+	ld	hl, _.str.23
 	push	hl
-	ld	hl, (ix - 90)
+	ld	hl, (ix - 91)
 	push	hl
 	call	_ui_message
 	pop	hl
 	pop	hl
-	.local	.LBB48_13
-.LBB48_13:                              ;   in Loop: Header=BB48_1 Depth=1
+	jr	.LBB49_25
+	.local	.LBB49_24
+.LBB49_24:                              ;   in Loop: Header=BB49_1 Depth=1
+	call	_ui_about_screen
+	.local	.LBB49_25
+.LBB49_25:                              ;   in Loop: Header=BB49_1 Depth=1
 	call	_input_reset
-	ld	l, (ix - 85)                    ; 1-byte Folded Reload
-	.local	.LBB48_14
-.LBB48_14:                              ; %input_pressed.exit.thread
-                                        ;   in Loop: Header=BB48_1 Depth=1
 	ld	a, (_current+6)
-	bit	6, a
-	jp	z, .LBB48_1
-; %bb.15:                               ;   in Loop: Header=BB48_1 Depth=1
+	ld	l, a
+	ld	a, 1
+	ld	h, a
+	.local	.LBB49_26
+.LBB49_26:                              ; %input_pressed.exit.thread
+                                        ;   in Loop: Header=BB49_1 Depth=1
+	bit	6, l
+	jp	z, .LBB49_1
+; %bb.27:                               ;   in Loop: Header=BB49_1 Depth=1
 	ld	a, (_previous+6)
 	bit	6, a
-	jp	nz, .LBB48_1
-; %bb.16:
+	jp	nz, .LBB49_1
+; %bb.28:
 	ld	sp, ix
 	pop	ix
 	ret
-	.local	.Lfunc_end48
-.Lfunc_end48:
-	.size	_ui_setup_screen, .Lfunc_end48-_ui_setup_screen
+	.local	.Lfunc_end49
+.Lfunc_end49:
+	.size	_ui_setup_screen, .Lfunc_end49-_ui_setup_screen
                                         ; -- End function
 	.section	.text._ui_sync_screen,"ax",@progbits
 	.globl	_ui_sync_screen                 ; -- Begin function ui_sync_screen
@@ -5492,9 +5864,9 @@ _ui_sync_screen:                        ; @ui_sync_screen
 	call	_ui_sync_run
 	pop	hl
 	ret
-	.local	.Lfunc_end49
-.Lfunc_end49:
-	.size	_ui_sync_screen, .Lfunc_end49-_ui_sync_screen
+	.local	.Lfunc_end50
+.Lfunc_end50:
+	.size	_ui_sync_screen, .Lfunc_end50-_ui_sync_screen
                                         ; -- End function
 	.section	.text._ui_sync_run,"ax",@progbits
 	.globl	_ui_sync_run                    ; -- Begin function ui_sync_run
@@ -5513,7 +5885,7 @@ _ui_sync_run:                           ; @ui_sync_run
 	ld	(_sync_echo_mode), a
 	ld	a, iyl
 	ld	(_sync_chunks_received), a
-	ld	hl, _.str.23
+	ld	hl, _.str.24
 	ldir
 	call	_input_reset
 	call	_gfx_End
@@ -5541,23 +5913,23 @@ _ui_sync_run:                           ; @ui_sync_run
 	pop	hl
 	call	_ui_set_chrome_palette
 	bit	0, (ix - 1)                     ; 1-byte Folded Reload
-	jr	nz, .LBB50_2
+	jr	nz, .LBB51_2
 ; %bb.1:
-	ld	hl, _.str.24
-	ld	de, _.str.25
+	ld	hl, _.str.25
+	ld	de, _.str.26
 	push	de
 	push	hl
 	call	_ui_message
 	pop	hl
 	pop	hl
-	.local	.LBB50_2
-.LBB50_2:
+	.local	.LBB51_2
+.LBB51_2:
 	inc	sp
 	pop	ix
 	ret
-	.local	.Lfunc_end50
-.Lfunc_end50:
-	.size	_ui_sync_run, .Lfunc_end50-_ui_sync_run
+	.local	.Lfunc_end51
+.Lfunc_end51:
+	.size	_ui_sync_run, .Lfunc_end51-_ui_sync_run
                                         ; -- End function
 	.section	.text._sync_draw,"ax",@progbits
 	.type	_sync_draw,@function            ; -- Begin function sync_draw
@@ -5569,15 +5941,15 @@ _sync_draw:                             ; @sync_draw
 	ld	a, (_sync_echo_mode)
 	bit	0, a
 	ld	(ix - 43), hl
-	jr	nz, .LBB51_2
+	jr	nz, .LBB52_2
 ; %bb.1:
 	ld	hl, _.str.27
-	jr	.LBB51_3
-	.local	.LBB51_2
-.LBB51_2:
-	ld	hl, _.str.26
-	.local	.LBB51_3
-.LBB51_3:
+	jr	.LBB52_3
+	.local	.LBB52_2
+.LBB52_2:
+	ld	hl, _.str.66
+	.local	.LBB52_3
+.LBB52_3:
 	push	hl
 	or	a, a
 	sbc	hl, hl
@@ -5600,7 +5972,7 @@ _sync_draw:                             ; @sync_draw
 	call	__ishru
 	push	hl
 	push	de
-	ld	hl, _.str.28
+	ld	hl, _.str.67
 	push	hl
 	ld	hl, (ix - 43)
 	push	hl
@@ -5635,7 +6007,7 @@ _sync_draw:                             ; @sync_draw
 	push	bc
 	push	iy
 	push	de
-	ld	hl, _.str.29
+	ld	hl, _.str.68
 	push	hl
 	ld	hl, (ix - 43)
 	push	hl
@@ -5658,7 +6030,7 @@ _sync_draw:                             ; @sync_draw
 	ld	de, (_loop_count)
 	push	de
 	push	hl
-	ld	hl, _.str.30
+	ld	hl, _.str.69
 	push	hl
 	ld	hl, (ix - 43)
 	push	hl
@@ -5677,9 +6049,9 @@ _sync_draw:                             ; @sync_draw
 	ld	a, (_gc_count)
 	ld	l, a
 	or	a, a
-	jr	z, .LBB51_5
+	jr	z, .LBB52_5
 ; %bb.4:
-	ld	de, _.str.31
+	ld	de, _.str.70
 	ld	bc, 0
 	ld	c, l
 	push	bc
@@ -5697,26 +6069,26 @@ _sync_draw:                             ; @sync_draw
 	call	_sync_line
 	pop	hl
 	pop	hl
-	.local	.LBB51_5
-.LBB51_5:
+	.local	.LBB52_5
+.LBB52_5:
 	ld	a, (_library_state)
 	cp	a, 2
-	jr	z, .LBB51_7
+	jr	z, .LBB52_7
 ; %bb.6:
-	ld	hl, _.str.4.62
-	jr	.LBB51_8
-	.local	.LBB51_7
-.LBB51_7:
-	ld	hl, _.str.32
-	.local	.LBB51_8
-.LBB51_8:
+	ld	hl, _.str.4.87
+	jr	.LBB52_8
+	.local	.LBB52_7
+.LBB52_7:
+	ld	hl, _.str.71
+	.local	.LBB52_8
+.LBB52_8:
 	push	hl
 	ld	hl, 7
 	push	hl
 	call	_sync_line
 	pop	hl
 	pop	hl
-	ld	hl, _.str.34
+	ld	hl, _.str.72
 	push	hl
 	ld	hl, 8
 	push	hl
@@ -5724,9 +6096,9 @@ _sync_draw:                             ; @sync_draw
 	ld	sp, ix
 	pop	ix
 	ret
-	.local	.Lfunc_end51
-.Lfunc_end51:
-	.size	_sync_draw, .Lfunc_end51-_sync_draw
+	.local	.Lfunc_end52
+.Lfunc_end52:
+	.size	_sync_draw, .Lfunc_end52-_sync_draw
                                         ; -- End function
 	.section	.text._sync_progress,"ax",@progbits
 	.type	_sync_progress,@function        ; -- Begin function sync_progress
@@ -5747,7 +6119,7 @@ _sync_progress:                         ; @sync_progress
 	ld	(ix - 3), de
 	or	a, a
 	sbc.sis	hl, de
-	jr	z, .LBB52_2
+	jr	z, .LBB53_2
 ; %bb.1:
 	push	bc
 	pop	hl
@@ -5760,8 +6132,8 @@ _sync_progress:                         ; @sync_progress
 	pop	de
 	ld	a, iyl
 	ld	(_sync_chunks_received), a
-	.local	.LBB52_2
-.LBB52_2:
+	.local	.LBB53_2
+.LBB53_2:
 	ld	bc, (_loop_count)
 	ld	de, (_sync_progress.drawn_at)
 	push	bc
@@ -5771,12 +6143,12 @@ _sync_progress:                         ; @sync_progress
 	ld	de, 4096
 	or	a, a
 	sbc	hl, de
-	jr	c, .LBB52_4
+	jr	c, .LBB53_4
 ; %bb.3:
 	ld	(_sync_progress.drawn_at), bc
-	jr	.LBB52_5
-	.local	.LBB52_4
-.LBB52_4:
+	jr	.LBB53_5
+	.local	.LBB53_4
+.LBB53_4:
 	ex	de, hl
 	ld	e, iyl
 	ld	d, iyh
@@ -5784,12 +6156,12 @@ _sync_progress:                         ; @sync_progress
 	ld	de, (ix - 3)
 	or	a, a
 	sbc.sis	hl, de
-	jr	z, .LBB52_6
-	.local	.LBB52_5
-.LBB52_5:
+	jr	z, .LBB53_6
+	.local	.LBB53_5
+.LBB53_5:
 	ld	hl, (ix + 6)
 	ld	de, 32
-	ld	bc, _.str.35
+	ld	bc, _.str.73
 	push	hl
 	push	bc
 	push	de
@@ -5801,25 +6173,25 @@ _sync_progress:                         ; @sync_progress
 	pop	hl
 	pop	hl
 	call	_sync_draw
-	.local	.LBB52_6
-.LBB52_6:
+	.local	.LBB53_6
+.LBB53_6:
 	ld	hl, _sync_progress.poll
 	inc	(hl)
 	ld	a, (hl)
 	cp	a, 32
-	jr	nc, .LBB52_8
+	jr	nc, .LBB53_8
 ; %bb.7:
 	ld	l, 1
-	jr	.LBB52_17
-	.local	.LBB52_8
-.LBB52_8:
+	jr	.LBB53_17
+	.local	.LBB53_8
+.LBB53_8:
 	xor	a, a
 	ld	(_sync_progress.poll), a
 	call	_input_scan
 	ld	a, (_current+1)
 	cp	a, 0
 	call	pe, __setflag
-	jp	p, .LBB52_12
+	jp	p, .LBB53_12
 ; %bb.9:                                ; %input_pressed.exit
 	ld	a, (_previous+1)
 	ld	e, a
@@ -5828,20 +6200,20 @@ _sync_progress:                         ; @sync_progress
 	ld	a, e
 	cp	a, 0
 	call	pe, __setflag
-	jp	m, .LBB52_12
+	jp	m, .LBB53_12
 ; %bb.10:                               ; %input_pressed.exit
 	ld	a, l
 	cp	a, 2
-	jr	nz, .LBB52_12
+	jr	nz, .LBB53_12
 ; %bb.11:
 	call	_lib_reset
 	ld	de, _sync_state
-	ld	hl, _.str.36
+	ld	hl, _.str.74
 	ld	bc, 21
 	ldir
 	call	_sync_draw
-	.local	.LBB52_12
-.LBB52_12:                              ; %input_pressed.exit.thread
+	.local	.LBB53_12
+.LBB53_12:                              ; %input_pressed.exit.thread
 	ld	a, (_current+6)
 	ld	l, a
 	ld	a, (_previous+6)
@@ -5849,28 +6221,28 @@ _sync_progress:                         ; @sync_progress
 	ld	a, -1
 	ld	c, 0
 	ld	e, a
-	jr	nz, .LBB52_14
+	jr	nz, .LBB53_14
 ; %bb.13:                               ; %input_pressed.exit.thread
 	ld	e, c
-	.local	.LBB52_14
-.LBB52_14:                              ; %input_pressed.exit.thread
+	.local	.LBB53_14
+.LBB53_14:                              ; %input_pressed.exit.thread
 	bit	6, l
-	jr	z, .LBB52_16
+	jr	z, .LBB53_16
 ; %bb.15:                               ; %input_pressed.exit.thread
 	ld	a, c
-	.local	.LBB52_16
-.LBB52_16:                              ; %input_pressed.exit.thread
+	.local	.LBB53_16
+.LBB53_16:                              ; %input_pressed.exit.thread
 	or	a, e
 	ld	l, a
-	.local	.LBB52_17
-.LBB52_17:
+	.local	.LBB53_17
+.LBB53_17:
 	ld	a, l
 	pop	hl
 	pop	ix
 	ret
-	.local	.Lfunc_end52
-.Lfunc_end52:
-	.size	_sync_progress, .Lfunc_end52-_sync_progress
+	.local	.Lfunc_end53
+.Lfunc_end53:
+	.size	_sync_progress, .Lfunc_end53-_sync_progress
                                         ; -- End function
 	.section	.text._sync_line,"ax",@progbits
 	.type	_sync_line,@function            ; -- Begin function sync_line
@@ -5883,22 +6255,22 @@ _sync_line:                             ; @sync_line
 	lea	iy, ix - 27
 	ld	bc, 26
 	ld	(ix - 30), iy
-	.local	.LBB53_1
-.LBB53_1:                               ; =>This Inner Loop Header: Depth=1
+	.local	.LBB54_1
+.LBB54_1:                               ; =>This Inner Loop Header: Depth=1
 	push	de
 	pop	hl
 	or	a, a
 	sbc	hl, bc
-	jr	z, .LBB53_6
-; %bb.2:                                ;   in Loop: Header=BB53_1 Depth=1
+	jr	z, .LBB54_6
+; %bb.2:                                ;   in Loop: Header=BB54_1 Depth=1
 	ld	c, a
 	ld	hl, (ix + 9)
 	add	hl, de
 	ld	l, (hl)
 	ld	a, l
 	or	a, a
-	jr	z, .LBB53_4
-; %bb.3:                                ;   in Loop: Header=BB53_1 Depth=1
+	jr	z, .LBB54_4
+; %bb.3:                                ;   in Loop: Header=BB54_1 Depth=1
 	ld	iy, (ix - 30)
 	add	iy, de
 	ld	(iy), l
@@ -5906,25 +6278,25 @@ _sync_line:                             ; @sync_line
 	inc	de
 	ld	a, c
 	ld	bc, 26
-	jr	.LBB53_1
-	.local	.LBB53_4
-.LBB53_4:
+	jr	.LBB54_1
+	.local	.LBB54_4
+.LBB54_4:
 	ld	a, c
 	ld	bc, 26
-	jr	.LBB53_6
-	.local	.LBB53_5
-.LBB53_5:                               ;   in Loop: Header=BB53_6 Depth=1
+	jr	.LBB54_6
+	.local	.LBB54_5
+.LBB54_5:                               ;   in Loop: Header=BB54_6 Depth=1
 	lea	hl, iy + 0
 	add	hl, de
 	inc	de
 	ld	(hl), 32
-	.local	.LBB53_6
-.LBB53_6:                               ; =>This Inner Loop Header: Depth=1
+	.local	.LBB54_6
+.LBB54_6:                               ; =>This Inner Loop Header: Depth=1
 	push	de
 	pop	hl
 	or	a, a
 	sbc	hl, bc
-	jr	nz, .LBB53_5
+	jr	nz, .LBB54_5
 ; %bb.7:
 	ld	(ix - 1), 0
 	or	a, a
@@ -5941,9 +6313,9 @@ _sync_line:                             ; @sync_line
 	ld	sp, ix
 	pop	ix
 	ret
-	.local	.Lfunc_end53
-.Lfunc_end53:
-	.size	_sync_line, .Lfunc_end53-_sync_line
+	.local	.Lfunc_end54
+.Lfunc_end54:
+	.size	_sync_line, .Lfunc_end54-_sync_line
                                         ; -- End function
 	.section	.text._proto_requests,"ax",@progbits
 	.globl	_proto_requests                 ; -- Begin function proto_requests
@@ -5954,9 +6326,9 @@ _proto_requests:                        ; @proto_requests
 	ld	hl, (hl)
                                         ; kill: def $hl killed $hl killed $uhl
 	ret
-	.local	.Lfunc_end54
-.Lfunc_end54:
-	.size	_proto_requests, .Lfunc_end54-_proto_requests
+	.local	.Lfunc_end55
+.Lfunc_end55:
+	.size	_proto_requests, .Lfunc_end55-_proto_requests
                                         ; -- End function
 	.section	.text._proto_last_command,"ax",@progbits
 	.globl	_proto_last_command             ; -- Begin function proto_last_command
@@ -5965,9 +6337,9 @@ _proto_last_command:                    ; @proto_last_command
 ; %bb.0:
 	ld	a, (_last_command)
 	ret
-	.local	.Lfunc_end55
-.Lfunc_end55:
-	.size	_proto_last_command, .Lfunc_end55-_proto_last_command
+	.local	.Lfunc_end56
+.Lfunc_end56:
+	.size	_proto_last_command, .Lfunc_end56-_proto_last_command
                                         ; -- End function
 	.section	.text._proto_errors,"ax",@progbits
 	.globl	_proto_errors                   ; -- Begin function proto_errors
@@ -5978,9 +6350,9 @@ _proto_errors:                          ; @proto_errors
 	ld	hl, (hl)
                                         ; kill: def $hl killed $hl killed $uhl
 	ret
-	.local	.Lfunc_end56
-.Lfunc_end56:
-	.size	_proto_errors, .Lfunc_end56-_proto_errors
+	.local	.Lfunc_end57
+.Lfunc_end57:
+	.size	_proto_errors, .Lfunc_end57-_proto_errors
                                         ; -- End function
 	.section	.text._proto_open_error,"ax",@progbits
 	.globl	_proto_open_error               ; -- Begin function proto_open_error
@@ -5989,9 +6361,9 @@ _proto_open_error:                      ; @proto_open_error
 ; %bb.0:
 	ld	a, (_open_error)
 	ret
-	.local	.Lfunc_end57
-.Lfunc_end57:
-	.size	_proto_open_error, .Lfunc_end57-_proto_open_error
+	.local	.Lfunc_end58
+.Lfunc_end58:
+	.size	_proto_open_error, .Lfunc_end58-_proto_open_error
                                         ; -- End function
 	.section	.text._proto_loops,"ax",@progbits
 	.globl	_proto_loops                    ; -- Begin function proto_loops
@@ -6000,9 +6372,9 @@ _proto_loops:                           ; @proto_loops
 ; %bb.0:
 	ld	hl, (_loop_count)
 	ret
-	.local	.Lfunc_end58
-.Lfunc_end58:
-	.size	_proto_loops, .Lfunc_end58-_proto_loops
+	.local	.Lfunc_end59
+.Lfunc_end59:
+	.size	_proto_loops, .Lfunc_end59-_proto_loops
                                         ; -- End function
 	.section	.text._proto_bytes,"ax",@progbits
 	.globl	_proto_bytes                    ; -- Begin function proto_bytes
@@ -6011,9 +6383,9 @@ _proto_bytes:                           ; @proto_bytes
 ; %bb.0:
 	ld	hl, (_bytes_moved)
 	ret
-	.local	.Lfunc_end59
-.Lfunc_end59:
-	.size	_proto_bytes, .Lfunc_end59-_proto_bytes
+	.local	.Lfunc_end60
+.Lfunc_end60:
+	.size	_proto_bytes, .Lfunc_end60-_proto_bytes
                                         ; -- End function
 	.section	.text._proto_library_state,"ax",@progbits
 	.globl	_proto_library_state            ; -- Begin function proto_library_state
@@ -6022,9 +6394,9 @@ _proto_library_state:                   ; @proto_library_state
 ; %bb.0:
 	ld	a, (_library_state)
 	ret
-	.local	.Lfunc_end60
-.Lfunc_end60:
-	.size	_proto_library_state, .Lfunc_end60-_proto_library_state
+	.local	.Lfunc_end61
+.Lfunc_end61:
+	.size	_proto_library_state, .Lfunc_end61-_proto_library_state
                                         ; -- End function
 	.section	.text._proto_collections,"ax",@progbits
 	.globl	_proto_collections              ; -- Begin function proto_collections
@@ -6033,9 +6405,9 @@ _proto_collections:                     ; @proto_collections
 ; %bb.0:
 	ld	a, (_gc_count)
 	ret
-	.local	.Lfunc_end61
-.Lfunc_end61:
-	.size	_proto_collections, .Lfunc_end61-_proto_collections
+	.local	.Lfunc_end62
+.Lfunc_end62:
+	.size	_proto_collections, .Lfunc_end62-_proto_collections
                                         ; -- End function
 	.section	.text._proto_run,"ax",@progbits
 	.globl	_proto_run                      ; -- Begin function proto_run
@@ -6092,7 +6464,7 @@ _proto_run:                             ; @proto_run
 	pop	hl
 	pop	hl
 	or	a, a
-	jr	z, .LBB62_2
+	jr	z, .LBB63_2
 ; %bb.1:
 	push	de
 	ld	(ix - 7), de
@@ -6110,8 +6482,8 @@ _proto_run:                             ; @proto_run
 	push	hl
 	call	_ti_Close
 	pop	hl
-	.local	.LBB62_2
-.LBB62_2:
+	.local	.LBB63_2
+.LBB63_2:
 	xor	a, a
 	ld	(_gc_count), a
 	ld	hl, _gc_after.49
@@ -6144,28 +6516,28 @@ _proto_run:                             ; @proto_run
 	add	hl, bc
 	or	a, a
 	sbc	hl, bc
-	jp	nz, .LBB62_46
+	jp	nz, .LBB63_46
 ; %bb.3:
 	ld	iy, _reply_body_sent
 	lea	hl, iy + 3
 	ld	(ix - 12), hl
-	.local	.LBB62_4
-.LBB62_4:                               ; =>This Inner Loop Header: Depth=1
+	.local	.LBB63_4
+.LBB63_4:                               ; =>This Inner Loop Header: Depth=1
 	ld	a, (_finished)
 	bit	0, a
-	jp	nz, .LBB62_46
-; %bb.5:                                ;   in Loop: Header=BB62_4 Depth=1
+	jp	nz, .LBB63_46
+; %bb.5:                                ;   in Loop: Header=BB63_4 Depth=1
 	ld	hl, (_loop_count)
 	inc	hl
 	ld	(_loop_count), hl
 	call	_usb_HandleEvents
 	ld	a, (_serial_open)
 	bit	0, a
-	jr	z, .LBB62_9
-; %bb.6:                                ;   in Loop: Header=BB62_4 Depth=1
+	jr	z, .LBB63_9
+; %bb.6:                                ;   in Loop: Header=BB63_4 Depth=1
 	bit	0, (ix + 9)
-	jp	z, .LBB62_15
-; %bb.7:                                ;   in Loop: Header=BB62_4 Depth=1
+	jp	z, .LBB63_15
+; %bb.7:                                ;   in Loop: Header=BB63_4 Depth=1
 	ld	hl, 256
 	push	hl
 	ld	hl, _discard_scratch
@@ -6183,9 +6555,9 @@ _proto_run:                             ; @proto_run
 	or	a, a
 	sbc	hl, bc
 	call	pe, __setflag
-	jp	p, .LBB62_20
-	.local	.LBB62_8
-.LBB62_8:                               ;   in Loop: Header=BB62_4 Depth=1
+	jp	p, .LBB63_20
+	.local	.LBB63_8
+.LBB63_8:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	iy, _link_errors
 	ld	hl, (iy)
 	inc.sis	hl
@@ -6196,23 +6568,23 @@ _proto_run:                             ; @proto_run
 	sbc	hl, hl
 	ld	(_link_state), hl
 	ld	(_header_have), a
-	.local	.LBB62_9
-.LBB62_9:                               ;   in Loop: Header=BB62_4 Depth=1
+	.local	.LBB63_9
+.LBB63_9:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	hl, (ix + 6)
 	add	hl, bc
 	or	a, a
 	sbc	hl, bc
-	jr	z, .LBB62_4
-; %bb.10:                               ;   in Loop: Header=BB62_4 Depth=1
+	jr	z, .LBB63_4
+; %bb.10:                               ;   in Loop: Header=BB63_4 Depth=1
 	bit	0, (ix + 9)
-	ld	hl, _.str.50
-	jr	nz, .LBB62_14
-; %bb.11:                               ;   in Loop: Header=BB62_4 Depth=1
+	ld	hl, _.str.75
+	jr	nz, .LBB63_14
+; %bb.11:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	a, (_serial_open)
 	bit	0, a
-	ld	hl, _.str.4.51
-	jr	z, .LBB62_14
-; %bb.12:                               ;   in Loop: Header=BB62_4 Depth=1
+	ld	hl, _.str.4.76
+	jr	z, .LBB63_14
+; %bb.12:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	de, (_link_state)
 	dec	de
 	push	de
@@ -6220,17 +6592,17 @@ _proto_run:                             ; @proto_run
 	ld	bc, 3
 	or	a, a
 	sbc	hl, bc
-	ld	hl, _.str.8.52
-	jr	nc, .LBB62_14
-; %bb.13:                               ;   in Loop: Header=BB62_4 Depth=1
+	ld	hl, _.str.8.77
+	jr	nc, .LBB63_14
+; %bb.13:                               ;   in Loop: Header=BB63_4 Depth=1
 	ex	de, hl
 	call	__imulu
 	ex	de, hl
 	ld	hl, _switch.table.proto_run
 	add	hl, de
 	ld	hl, (hl)
-	.local	.LBB62_14
-.LBB62_14:                              ;   in Loop: Header=BB62_4 Depth=1
+	.local	.LBB63_14
+.LBB63_14:                              ;   in Loop: Header=BB63_4 Depth=1
 	ld	de, 0
 	push	de
 	push	de
@@ -6243,12 +6615,12 @@ _proto_run:                             ; @proto_run
 	pop	hl
 	pop	hl
 	bit	0, a
-	jp	nz, .LBB62_4
-	jp	.LBB62_46
-	.local	.LBB62_15
-.LBB62_15:                              ;   in Loop: Header=BB62_4 Depth=1
+	jp	nz, .LBB63_4
+	jp	.LBB63_46
+	.local	.LBB63_15
+.LBB63_15:                              ;   in Loop: Header=BB63_4 Depth=1
 	ld	de, (_link_state)
-	ld	hl, JTI62_0
+	ld	hl, JTI63_0
 	add	hl, de
 	add	hl, de
 	add	hl, de
@@ -6257,8 +6629,8 @@ _proto_run:                             ; @proto_run
 	ld	iy, _payload_have
 	lea	bc, iy + 3
 	jp	(hl)
-	.local	.LBB62_16
-.LBB62_16:                              ;   in Loop: Header=BB62_4 Depth=1
+	.local	.LBB63_16
+.LBB63_16:                              ;   in Loop: Header=BB63_4 Depth=1
 	ld	(ix - 13), e                    ; 1-byte Folded Spill
 	ld	a, (_header_have)
 	ld	de, 0
@@ -6283,16 +6655,16 @@ _proto_run:                             ; @proto_run
 	or	a, a
 	sbc	hl, bc
 	call	pe, __setflag
-	jp	m, .LBB62_8
-; %bb.17:                               ;   in Loop: Header=BB62_4 Depth=1
+	jp	m, .LBB63_8
+; %bb.17:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	a, (_header_have)
 	ld	l, e
 	add	a, l
 	ld	l, a
 	ld	(_header_have), a
 	cp	a, 8
-	jp	c, .LBB62_9
-; %bb.18:                               ;   in Loop: Header=BB62_4 Depth=1
+	jp	c, .LBB63_9
+; %bb.18:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	d, 0
 	ld	a, d
 	ld	(_header_have), a
@@ -6372,16 +6744,16 @@ _proto_run:                             ; @proto_run
 	ld	a, d
 	ld	(_payload_have+3), a
 	call	__lcmpzero
-	jp	nz, .LBB62_41
-; %bb.19:                               ;   in Loop: Header=BB62_4 Depth=1
+	jp	nz, .LBB63_41
+; %bb.19:                               ;   in Loop: Header=BB63_4 Depth=1
 	call	_execute
-	jp	.LBB62_9
-	.local	.LBB62_20
-.LBB62_20:                              ;   in Loop: Header=BB62_4 Depth=1
+	jp	.LBB63_9
+	.local	.LBB63_20
+.LBB63_20:                              ;   in Loop: Header=BB63_4 Depth=1
 	sbc	hl, hl
 	adc	hl, de
-	jp	z, .LBB62_9
-; %bb.21:                               ;   in Loop: Header=BB62_4 Depth=1
+	jp	z, .LBB63_9
+; %bb.21:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	iy, _requests_handled
 	ld	hl, (iy)
 	inc.sis	hl
@@ -6402,10 +6774,10 @@ _proto_run:                             ; @proto_run
 	or	a, a
 	sbc	hl, de
 	call	pe, __setflag
-	jp	m, .LBB62_8
-	jp	.LBB62_9
-	.local	.LBB62_22
-.LBB62_22:                              ;   in Loop: Header=BB62_4 Depth=1
+	jp	m, .LBB63_8
+	jp	.LBB63_9
+	.local	.LBB63_22
+.LBB63_22:                              ;   in Loop: Header=BB63_4 Depth=1
 	ld	(ix - 16), bc
 	ld	(ix - 13), e                    ; 1-byte Folded Spill
 	ld	hl, (_payload_want)
@@ -6417,11 +6789,11 @@ _proto_run:                             ; @proto_run
 	ld	bc, 256
 	xor	a, a
 	call	__lcmpu
-	jr	c, .LBB62_24
-; %bb.23:                               ;   in Loop: Header=BB62_4 Depth=1
+	jr	c, .LBB63_24
+; %bb.23:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	hl, 256
-	.local	.LBB62_24
-.LBB62_24:                              ;   in Loop: Header=BB62_4 Depth=1
+	.local	.LBB63_24
+.LBB63_24:                              ;   in Loop: Header=BB63_4 Depth=1
 	push	hl
 	ld	hl, _discard_scratch
 	push	hl
@@ -6439,8 +6811,8 @@ _proto_run:                             ; @proto_run
 	or	a, a
 	sbc	hl, de
 	call	pe, __setflag
-	jp	m, .LBB62_8
-; %bb.25:                               ;   in Loop: Header=BB62_4 Depth=1
+	jp	m, .LBB63_8
+; %bb.25:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	hl, (_payload_have)
 	ld	iy, (ix - 16)
 	ld	e, (iy)
@@ -6452,8 +6824,8 @@ _proto_run:                             ; @proto_run
 	ld	bc, (_payload_want)
 	ld	a, (_payload_want+3)
 	call	__lcmpu
-	jp	c, .LBB62_9
-; %bb.26:                               ;   in Loop: Header=BB62_4 Depth=1
+	jp	c, .LBB63_9
+; %bb.26:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	iy, _requests_handled
 	ld	hl, (iy)
 	inc.sis	hl
@@ -6474,13 +6846,13 @@ _proto_run:                             ; @proto_run
 	pop	hl
 	pop	hl
 	pop	hl
-	jp	.LBB62_9
-	.local	.LBB62_27
-.LBB62_27:                              ;   in Loop: Header=BB62_4 Depth=1
+	jp	.LBB63_9
+	.local	.LBB63_27
+.LBB63_27:                              ;   in Loop: Header=BB63_4 Depth=1
 	ld	a, (_reply_header_sent)
 	cp	a, 8
-	jp	nc, .LBB62_34
-; %bb.28:                               ;   in Loop: Header=BB62_4 Depth=1
+	jp	nc, .LBB63_34
+; %bb.28:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	de, 0
 	ld	e, a
 	ld	iy, _reply_header
@@ -6503,16 +6875,16 @@ _proto_run:                             ; @proto_run
 	or	a, a
 	sbc	hl, bc
 	call	pe, __setflag
-	jp	m, .LBB62_8
-; %bb.29:                               ;   in Loop: Header=BB62_4 Depth=1
+	jp	m, .LBB63_8
+; %bb.29:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	a, (_reply_header_sent)
 	ld	l, e
 	add	a, l
 	ld	l, a
 	ld	(_reply_header_sent), a
-	jp	.LBB62_9
-	.local	.LBB62_30
-.LBB62_30:                              ;   in Loop: Header=BB62_4 Depth=1
+	jp	.LBB63_9
+	.local	.LBB63_30
+.LBB63_30:                              ;   in Loop: Header=BB63_4 Depth=1
 	ld	(ix - 16), bc
 	ld	(ix - 13), e                    ; 1-byte Folded Spill
 	ld	hl, (_payload_want)
@@ -6525,11 +6897,11 @@ _proto_run:                             ; @proto_run
 	ld	bc, 2048
 	xor	a, a
 	call	__lcmpu
-	jr	c, .LBB62_32
-; %bb.31:                               ;   in Loop: Header=BB62_4 Depth=1
+	jr	c, .LBB63_32
+; %bb.31:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	hl, 2048
-	.local	.LBB62_32
-.LBB62_32:                              ;   in Loop: Header=BB62_4 Depth=1
+	.local	.LBB63_32
+.LBB63_32:                              ;   in Loop: Header=BB63_4 Depth=1
 	ld	iy, (_payload)
 	ld	de, (ix - 19)
 	add	iy, de
@@ -6549,8 +6921,8 @@ _proto_run:                             ; @proto_run
 	or	a, a
 	sbc	hl, de
 	call	pe, __setflag
-	jp	m, .LBB62_8
-; %bb.33:                               ;   in Loop: Header=BB62_4 Depth=1
+	jp	m, .LBB63_8
+; %bb.33:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	hl, (_payload_have)
 	ld	iy, (ix - 16)
 	ld	e, (iy)
@@ -6566,9 +6938,9 @@ _proto_run:                             ; @proto_run
 	ld	a, (_payload_want+3)
 	call	__lcmpu
 	call	nc, _execute
-	jp	.LBB62_9
-	.local	.LBB62_34
-.LBB62_34:                              ;   in Loop: Header=BB62_4 Depth=1
+	jp	.LBB63_9
+	.local	.LBB63_34
+.LBB63_34:                              ;   in Loop: Header=BB63_4 Depth=1
 	ld	(ix - 13), e                    ; 1-byte Folded Spill
 	ld	iy, (_reply_body_sent)
 	ld	a, (_reply_body_sent+3)
@@ -6578,8 +6950,8 @@ _proto_run:                             ; @proto_run
 	lea	hl, iy + 0
 	ld	e, d
 	call	__lcmpu
-	jr	nc, .LBB62_39
-; %bb.35:                               ;   in Loop: Header=BB62_4 Depth=1
+	jr	nc, .LBB63_39
+; %bb.35:                               ;   in Loop: Header=BB63_4 Depth=1
 	push	bc
 	pop	hl
 	ld	e, a
@@ -6590,11 +6962,11 @@ _proto_run:                             ; @proto_run
 	ld	bc, 2048
 	xor	a, a
 	call	__lcmpu
-	jr	c, .LBB62_37
-; %bb.36:                               ;   in Loop: Header=BB62_4 Depth=1
+	jr	c, .LBB63_37
+; %bb.36:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	hl, 2048
-	.local	.LBB62_37
-.LBB62_37:                              ;   in Loop: Header=BB62_4 Depth=1
+	.local	.LBB63_37
+.LBB63_37:                              ;   in Loop: Header=BB63_4 Depth=1
 	ld	iy, (_reply_body)
 	ld	de, (ix - 16)
 	add	iy, de
@@ -6614,8 +6986,8 @@ _proto_run:                             ; @proto_run
 	or	a, a
 	sbc	hl, de
 	call	pe, __setflag
-	jp	m, .LBB62_8
-; %bb.38:                               ;   in Loop: Header=BB62_4 Depth=1
+	jp	m, .LBB63_8
+; %bb.38:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	hl, (_reply_body_sent)
 	ld	iy, (ix - 12)
 	ld	e, (iy)
@@ -6627,44 +6999,44 @@ _proto_run:                             ; @proto_run
 	ld	hl, (_bytes_moved)
 	add	hl, bc
 	ld	(_bytes_moved), hl
-	jp	.LBB62_9
-	.local	.LBB62_39
-.LBB62_39:                              ;   in Loop: Header=BB62_4 Depth=1
+	jp	.LBB63_9
+	.local	.LBB63_39
+.LBB63_39:                              ;   in Loop: Header=BB63_4 Depth=1
 	or	a, a
 	sbc	hl, hl
 	ld	(_link_state), hl
 	ld	a, (_closing)
 	bit	0, a
-	jp	z, .LBB62_9
-; %bb.40:                               ;   in Loop: Header=BB62_4 Depth=1
+	jp	z, .LBB63_9
+; %bb.40:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	a, 1
 	ld	(_finished), a
-	jp	.LBB62_9
-	.local	.LBB62_41
-.LBB62_41:                              ;   in Loop: Header=BB62_4 Depth=1
+	jp	.LBB63_9
+	.local	.LBB63_41
+.LBB63_41:                              ;   in Loop: Header=BB63_4 Depth=1
 	ld	iy, (_payload)
 	ld	bc, 16385
 	ld	a, d
 	call	__lcmpu
-	jr	nc, .LBB62_44
-; %bb.42:                               ;   in Loop: Header=BB62_4 Depth=1
+	jr	nc, .LBB63_44
+; %bb.42:                               ;   in Loop: Header=BB63_4 Depth=1
 	lea	hl, iy + 0
 	add	hl, bc
 	or	a, a
 	sbc	hl, bc
-	jr	z, .LBB62_44
-; %bb.43:                               ;   in Loop: Header=BB62_4 Depth=1
+	jr	z, .LBB63_44
+; %bb.43:                               ;   in Loop: Header=BB63_4 Depth=1
 	ld	hl, 1
-	jr	.LBB62_45
-	.local	.LBB62_44
-.LBB62_44:                              ;   in Loop: Header=BB62_4 Depth=1
+	jr	.LBB63_45
+	.local	.LBB63_44
+.LBB63_44:                              ;   in Loop: Header=BB63_4 Depth=1
 	ld	hl, 2
-	.local	.LBB62_45
-.LBB62_45:                              ;   in Loop: Header=BB62_4 Depth=1
+	.local	.LBB63_45
+.LBB63_45:                              ;   in Loop: Header=BB63_4 Depth=1
 	ld	(_link_state), hl
-	jp	.LBB62_9
-	.local	.LBB62_46
-.LBB62_46:                              ; %.loopexit
+	jp	.LBB63_9
+	.local	.LBB63_46
+.LBB63_46:                              ; %.loopexit
 	call	_usb_Cleanup
 	or	a, a
 	sbc	hl, hl
@@ -6684,27 +7056,27 @@ _proto_run:                             ; @proto_run
 	add	hl, bc
 	or	a, a
 	sbc	hl, bc
-	jr	z, .LBB62_48
+	jr	z, .LBB63_48
 ; %bb.47:                               ; %.loopexit
 	ld	a, 0
-	jr	.LBB62_49
-	.local	.LBB62_48
-.LBB62_48:
+	jr	.LBB63_49
+	.local	.LBB63_48
+.LBB63_48:
 	ld	a, -1
-	.local	.LBB62_49
-.LBB62_49:                              ; %.loopexit
+	.local	.LBB63_49
+.LBB63_49:                              ; %.loopexit
 	ld	sp, ix
 	pop	ix
 	ret
-	.local	.Lfunc_end62
-.Lfunc_end62:
-	.size	_proto_run, .Lfunc_end62-_proto_run
+	.local	.Lfunc_end63
+.Lfunc_end63:
+	.size	_proto_run, .Lfunc_end63-_proto_run
 	.section	.rodata._proto_run,"a",@progbits
-JTI62_0:
-	d24	.LBB62_16
-	d24	.LBB62_30
-	d24	.LBB62_22
-	d24	.LBB62_27
+JTI63_0:
+	d24	.LBB63_16
+	d24	.LBB63_30
+	d24	.LBB63_22
+	d24	.LBB63_27
                                         ; -- End function
 	.section	.text._gc_before.48,"ax",@progbits
 	.type	_gc_before.48,@function         ; -- Begin function gc_before.48
@@ -6716,7 +7088,7 @@ _gc_before.48:                          ; @gc_before.48
 	inc	(hl)
 	ld	a, (_serial_open)
 	bit	0, a
-	jp	z, .LBB63_6
+	jp	z, .LBB64_6
 ; %bb.1:
 	or	a, a
 	sbc	hl, hl
@@ -6736,19 +7108,19 @@ _gc_before.48:                          ; @gc_before.48
 	ld	bc, 5
 	ldir
 	ld	bc, 4096
-	.local	.LBB63_2
-.LBB63_2:                               ; =>This Inner Loop Header: Depth=1
+	.local	.LBB64_2
+.LBB64_2:                               ; =>This Inner Loop Header: Depth=1
 	ld	hl, (ix - 11)
 	or	a, a
 	sbc	hl, bc
-	jr	nc, .LBB63_6
-; %bb.3:                                ;   in Loop: Header=BB63_2 Depth=1
+	jr	nc, .LBB64_6
+; %bb.3:                                ;   in Loop: Header=BB64_2 Depth=1
 	ld	hl, (ix - 14)
 	add	hl, bc
 	or	a, a
 	sbc	hl, bc
-	jr	z, .LBB63_6
-; %bb.4:                                ;   in Loop: Header=BB63_2 Depth=1
+	jr	z, .LBB64_6
+; %bb.4:                                ;   in Loop: Header=BB64_2 Depth=1
 	call	_usb_HandleEvents
 	ld	hl, (ix - 14)
 	push	hl
@@ -6767,8 +7139,8 @@ _gc_before.48:                          ; @gc_before.48
 	or	a, a
 	sbc	hl, de
 	call	pe, __setflag
-	jp	m, .LBB63_6
-; %bb.5:                                ;   in Loop: Header=BB63_2 Depth=1
+	jp	m, .LBB64_6
+; %bb.5:                                ;   in Loop: Header=BB64_2 Depth=1
 	ld	hl, (ix - 14)
 	lea	de, iy + 0
 	or	a, a
@@ -6780,15 +7152,15 @@ _gc_before.48:                          ; @gc_before.48
 	ld	hl, (ix - 11)
 	inc	hl
 	ld	(ix - 11), hl
-	jr	.LBB63_2
-	.local	.LBB63_6
-.LBB63_6:
+	jr	.LBB64_2
+	.local	.LBB64_6
+.LBB64_6:
 	ld	sp, ix
 	pop	ix
 	ret
-	.local	.Lfunc_end63
-.Lfunc_end63:
-	.size	_gc_before.48, .Lfunc_end63-_gc_before.48
+	.local	.Lfunc_end64
+.Lfunc_end64:
+	.size	_gc_before.48, .Lfunc_end64-_gc_before.48
                                         ; -- End function
 	.section	.text._gc_after.49,"ax",@progbits
 	.type	_gc_after.49,@function          ; -- Begin function gc_after.49
@@ -6812,7 +7184,7 @@ _gc_after.49:                           ; @gc_after.49
 	pop	hl
 	pop	hl
 	or	a, a
-	jr	z, .LBB64_2
+	jr	z, .LBB65_2
 ; %bb.1:
 	push	de
 	ld	(ix - 3), de
@@ -6830,8 +7202,8 @@ _gc_after.49:                           ; @gc_after.49
 	push	hl
 	call	_ti_Close
 	pop	hl
-	.local	.LBB64_2
-.LBB64_2:
+	.local	.LBB65_2
+.LBB65_2:
 	ld	iy, -3145600
 	call	_os_ArcChk
 	ld	hl, (-3135915)
@@ -6839,9 +7211,9 @@ _gc_after.49:                           ; @gc_after.49
 	pop	hl
 	pop	ix
 	ret
-	.local	.Lfunc_end64
-.Lfunc_end64:
-	.size	_gc_after.49, .Lfunc_end64-_gc_after.49
+	.local	.Lfunc_end65
+.Lfunc_end65:
+	.size	_gc_after.49, .Lfunc_end65-_gc_after.49
                                         ; -- End function
 	.section	.text._handle_event,"ax",@progbits
 	.type	_handle_event,@function         ; -- Begin function handle_event
@@ -6863,54 +7235,54 @@ _handle_event:                          ; @handle_event
 	pop	hl
 	sbc	hl, hl
 	adc	hl, bc
-	jr	nz, .LBB65_5
+	jr	nz, .LBB66_5
 ; %bb.1:
 	ld	de, 1
 	ld	iy, (ix + 6)
 	lea	hl, iy + 0
 	or	a, a
 	sbc	hl, de
-	jr	z, .LBB65_4
+	jr	z, .LBB66_4
 ; %bb.2:
 	ld	de, 3
 	lea	hl, iy + 0
 	or	a, a
 	sbc	hl, de
-	jr	z, .LBB65_4
+	jr	z, .LBB66_4
 ; %bb.3:
 	ld	de, 8
 	lea	hl, iy + 0
 	or	a, a
 	sbc	hl, de
-	jr	nz, .LBB65_6
-	.local	.LBB65_4
-.LBB65_4:
+	jr	nz, .LBB66_6
+	.local	.LBB66_4
+.LBB66_4:
 	or	a, a
 	sbc	hl, hl
 	xor	a, a
 	ld	(_serial_open), a
 	ld	(_link_state), hl
 	ld	(_header_have), a
-	.local	.LBB65_5
-.LBB65_5:
+	.local	.LBB66_5
+.LBB66_5:
 	push	bc
 	pop	hl
 	ld	sp, ix
 	pop	ix
 	ret
-	.local	.LBB65_6
-.LBB65_6:
+	.local	.LBB66_6
+.LBB66_6:
 	ld	(ix - 3), bc
 	ld	bc, 12
 	lea	hl, iy + 0
 	or	a, a
 	sbc	hl, bc
 	ld	bc, (ix - 3)
-	jr	nz, .LBB65_5
+	jr	nz, .LBB66_5
 ; %bb.7:
 	ld	a, (_serial_open)
 	bit	0, a
-	jr	nz, .LBB65_5
+	jr	nz, .LBB66_5
 ; %bb.8:
 	push	de
 	or	a, a
@@ -6925,7 +7297,7 @@ _handle_event:                          ; @handle_event
 	pop	hl
 	sbc	hl, hl
 	adc	hl, de
-	jr	z, .LBB65_5
+	jr	z, .LBB66_5
 ; %bb.9:
 	ld	iy, _serial_buffer
 	ld	bc, 2048
@@ -6949,21 +7321,21 @@ _handle_event:                          ; @handle_event
 	add	hl, bc
 	or	a, a
 	sbc	hl, bc
-	jr	z, .LBB65_11
+	jr	z, .LBB66_11
 ; %bb.10:
 	ld	a, 0
-	jr	.LBB65_12
-	.local	.LBB65_11
-.LBB65_11:
+	jr	.LBB66_12
+	.local	.LBB66_11
+.LBB66_11:
 	ld	a, 1
-	.local	.LBB65_12
-.LBB65_12:
+	.local	.LBB66_12
+.LBB66_12:
 	ld	(_serial_open), a
 	ld	bc, (ix - 3)
-	jr	.LBB65_5
-	.local	.Lfunc_end65
-.Lfunc_end65:
-	.size	_handle_event, .Lfunc_end65-_handle_event
+	jr	.LBB66_5
+	.local	.Lfunc_end66
+.Lfunc_end66:
+	.size	_handle_event, .Lfunc_end66-_handle_event
                                         ; -- End function
 	.section	.text._execute,"ax",@progbits
 	.type	_execute,@function              ; -- Begin function execute
@@ -6985,22 +7357,22 @@ _execute:                               ; @execute
 	or	a, a
 	sbc	hl, hl
 	cp	a, 9
-	jr	c, .LBB66_6
+	jr	c, .LBB67_6
 ; %bb.1:
 	push	hl
 	push	bc
-	.local	.LBB66_2
-.LBB66_2:
+	.local	.LBB67_2
+.LBB67_2:
 	or	a, a
 	sbc	hl, hl
-	.local	.LBB66_3
-.LBB66_3:
+	.local	.LBB67_3
+.LBB67_3:
 	push	hl
-	.local	.LBB66_4
-.LBB66_4:
+	.local	.LBB67_4
+.LBB67_4:
 	push	iy
-	.local	.LBB66_5
-.LBB66_5:
+	.local	.LBB67_5
+.LBB67_5:
 	call	_answer
 	pop	hl
 	pop	hl
@@ -7009,21 +7381,21 @@ _execute:                               ; @execute
 	ld	sp, ix
 	pop	ix
 	ret
-	.local	.LBB66_6
-.LBB66_6:
+	.local	.LBB67_6
+.LBB67_6:
 	ld	bc, _reply_small
 	push	hl
 	pop	iy
 	lea	de, iy + 0
 	ld	e, a
-	ld	hl, JTI66_0
+	ld	hl, JTI67_0
 	add	hl, de
 	add	hl, de
 	add	hl, de
 	ld	hl, (hl)
 	jp	(hl)
-	.local	.LBB66_7
-.LBB66_7:
+	.local	.LBB67_7
+.LBB67_7:
 	ld	e, 0
 	ld	c, 1
 	ld	d, 64
@@ -7033,13 +7405,13 @@ _execute:                               ; @execute
 	add	hl, bc
 	or	a, a
 	sbc	hl, bc
-	jp	z, .LBB66_43
+	jp	z, .LBB67_43
 ; %bb.8:
 	ld	hl, 15
 	ld	bc, (_payload_want)
 	ld	a, (_payload_want+3)
 	call	__lcmpu
-	jp	nc, .LBB66_36
+	jp	nc, .LBB67_36
 ; %bb.9:
 	ld	hl, 16
 	ld	de, (_payload)
@@ -7053,32 +7425,32 @@ _execute:                               ; @execute
 	add	hl, bc
 	or	a, a
 	sbc	hl, bc
-	jp	z, .LBB66_41
+	jp	z, .LBB67_41
 ; %bb.10:
 	ld	a, 0
-	jp	.LBB66_42
-	.local	.LBB66_11
-.LBB66_11:
+	jp	.LBB67_42
+	.local	.LBB67_11
+.LBB67_11:
 	ld	bc, _cached_index_size
 	ld	de, (_cached_index)
 	sbc	hl, hl
 	adc	hl, de
-	jp	z, .LBB66_20
+	jp	z, .LBB67_20
 ; %bb.12:
 	push	bc
 	pop	hl
 	ld	bc, (hl)
 	sbc.sis	hl, hl
 	adc.sis	hl, bc
-	jr	z, .LBB66_20
+	jr	z, .LBB67_20
 ; %bb.13:
 	lea	hl, iy + 0
 	ld	l, c
 	ld	h, b
 	push	iy
-	jp	.LBB66_28
-	.local	.LBB66_14
-.LBB66_14:
+	jp	.LBB67_28
+	.local	.LBB67_14
+.LBB67_14:
 	ld	hl, _argument
 	lea	bc, ix - 17
 	ld	(ix - 21), bc
@@ -7104,18 +7476,18 @@ _execute:                               ; @execute
 	pop	hl
 	bit	0, a
 	ld.sis	de, 0
-	jr	nz, .LBB66_16
+	jr	nz, .LBB67_16
 ; %bb.15:
 	ld.sis	de, 3
-	.local	.LBB66_16
-.LBB66_16:
+	.local	.LBB67_16
+.LBB67_16:
 	or	a, a
 	sbc	hl, hl
 	push	hl
 	push	hl
-	jp	.LBB66_30
-	.local	.LBB66_17
-.LBB66_17:
+	jp	.LBB67_30
+	.local	.LBB67_17
+.LBB67_17:
 	ld	a, (_argument)
 	ld	l, a
 	push	hl
@@ -7123,27 +7495,27 @@ _execute:                               ; @execute
 	pop	hl
 	ld	(_reply_small), a
 	or	a, a
-	jp	z, .LBB66_31
+	jp	z, .LBB67_31
 ; %bb.18:
 	or	a, a
 	sbc	hl, hl
 	ld.sis	de, 0
 	push	de
 	pop	iy
-	jp	.LBB66_32
-	.local	.LBB66_19
-.LBB66_19:
+	jp	.LBB67_32
+	.local	.LBB67_19
+.LBB67_19:
 	ld	a, 1
 	ld	(_closing), a
-	.local	.LBB66_20
-.LBB66_20:
+	.local	.LBB67_20
+.LBB67_20:
 	push	iy
 	or	a, a
 	sbc	hl, hl
 	push	hl
-	jp	.LBB66_2
-	.local	.LBB66_21
-.LBB66_21:
+	jp	.LBB67_2
+	.local	.LBB67_21
+.LBB67_21:
 	ld.sis	hl, 0
 	ld	(ix - 21), hl
 	ld	hl, _strip_count
@@ -7169,7 +7541,7 @@ _execute:                               ; @execute
 	add	hl, bc
 	or	a, a
 	sbc	hl, bc
-	jr	z, .LBB66_23
+	jr	z, .LBB67_23
 ; %bb.22:
 	ld.sis	de, 1171
 	ex	de, hl
@@ -7178,18 +7550,18 @@ _execute:                               ; @execute
 	ex	de, hl
 	or	a, a
 	sbc.sis	hl, de
-	jp	c, .LBB66_37
-	.local	.LBB66_23
-.LBB66_23:
+	jp	c, .LBB67_37
+	.local	.LBB67_23
+.LBB67_23:
 	or	a, a
 	sbc	hl, hl
 	push	hl
 	push	hl
 	push	hl
 	ld	hl, 4
-	jp	.LBB66_35
-	.local	.LBB66_24
-.LBB66_24:
+	jp	.LBB67_35
+	.local	.LBB67_24
+.LBB67_24:
 	ld	bc, _.str.1.46
 	ld	hl, (_payload_want)
 	ld	a, (_payload_want+3)
@@ -7202,7 +7574,7 @@ _execute:                               ; @execute
 	pop	hl
 	pop	hl
 	bit	0, a
-	jp	z, .LBB66_33
+	jp	z, .LBB67_33
 ; %bb.25:
 	call	_lib_open
 	or	a, a
@@ -7225,7 +7597,7 @@ _execute:                               ; @execute
 	ld	bc, 0
 	push	bc
 	pop	hl
-	jp	z, .LBB66_34
+	jp	z, .LBB67_34
 ; %bb.26:
 	push	de
 	ld	(ix - 21), de
@@ -7246,9 +7618,9 @@ _execute:                               ; @execute
 	pop	hl
 	push	bc
 	pop	hl
-	jr	.LBB66_34
-	.local	.LBB66_27
-.LBB66_27:
+	jr	.LBB67_34
+	.local	.LBB67_27
+.LBB67_27:
 	ld	hl, (_cached_archive_free)
 	ld	a, l
 	ld	(_reply_small), a
@@ -7262,13 +7634,13 @@ _execute:                               ; @execute
 	ld	(_reply_small+2), a
 	push	iy
 	ld	hl, 3
-	.local	.LBB66_28
-.LBB66_28:
+	.local	.LBB67_28
+.LBB67_28:
 	push	hl
 	push	de
-	jp	.LBB66_4
-	.local	.LBB66_29
-.LBB66_29:
+	jp	.LBB67_4
+	.local	.LBB67_29
+.LBB67_29:
 	call	_lib_reset
 	xor	a, a
 	ld	(_library_state), a
@@ -7285,45 +7657,45 @@ _execute:                               ; @execute
 	ld	hl, 2
 	push	hl
 	ld	hl, _reply_small
-	.local	.LBB66_30
-.LBB66_30:
+	.local	.LBB67_30
+.LBB67_30:
 	push	hl
 	push	de
-	jp	.LBB66_5
-	.local	.LBB66_31
-.LBB66_31:
+	jp	.LBB67_5
+	.local	.LBB67_31
+.LBB67_31:
 	ld.sis	iy, 5
 	or	a, a
 	sbc	hl, hl
-	.local	.LBB66_32
-.LBB66_32:
+	.local	.LBB67_32
+.LBB67_32:
 	ld	bc, _reply_small
 	ld	de, 1
 	push	hl
 	push	de
 	push	bc
-	jp	.LBB66_4
-	.local	.LBB66_33
-.LBB66_33:
+	jp	.LBB67_4
+	.local	.LBB67_33
+.LBB67_33:
 	ld	hl, 4
 	ld	bc, 0
-	.local	.LBB66_34
-.LBB66_34:
+	.local	.LBB67_34
+.LBB67_34:
 	ld	de, 0
 	push	de
 	push	bc
 	push	de
-	.local	.LBB66_35
-.LBB66_35:
+	.local	.LBB67_35
+.LBB67_35:
 	push	hl
-	jp	.LBB66_5
-	.local	.LBB66_36
-.LBB66_36:
+	jp	.LBB67_5
+	.local	.LBB67_36
+.LBB67_36:
 	ld	e, 2
 	ld	c, 1
-	jp	.LBB66_43
-	.local	.LBB66_37
-.LBB66_37:
+	jp	.LBB67_43
+	.local	.LBB67_37
+.LBB67_37:
 	ld	(ix - 33), bc
 	ld	a, iyl
 	ld	de, (ix - 24)
@@ -7344,14 +7716,14 @@ _execute:                               ; @execute
 	push	hl
 	pop	bc
 	ld	de, 0
-	.local	.LBB66_38
-.LBB66_38:                              ; =>This Inner Loop Header: Depth=1
+	.local	.LBB67_38
+.LBB67_38:                              ; =>This Inner Loop Header: Depth=1
 	push	bc
 	pop	hl
 	or	a, a
 	sbc	hl, de
-	jp	z, .LBB66_40
-; %bb.39:                               ;   in Loop: Header=BB66_38 Depth=1
+	jp	z, .LBB67_40
+; %bb.39:                               ;   in Loop: Header=BB67_38 Depth=1
 	pea	ix - 17
 	ld	hl, (ix - 21)
 	push	hl
@@ -7418,9 +7790,9 @@ _execute:                               ; @execute
 	ld	de, 14
 	add	hl, de
 	ex	de, hl
-	jp	.LBB66_38
-	.local	.LBB66_40
-.LBB66_40:
+	jp	.LBB67_38
+	.local	.LBB67_40
+.LBB67_40:
 	ld	hl, (ix - 27)
 	push	hl
 	ld	hl, (ix - 33)
@@ -7429,19 +7801,19 @@ _execute:                               ; @execute
 	push	hl
 	or	a, a
 	sbc	hl, hl
-	jp	.LBB66_35
-	.local	.LBB66_41
-.LBB66_41:
+	jp	.LBB67_35
+	.local	.LBB67_41
+.LBB67_41:
 	ld	a, -1
-	.local	.LBB66_42
-.LBB66_42:
+	.local	.LBB67_42
+.LBB67_42:
 	ld	d, 64
 	ld	c, 1
 	ld	l, 2
 	add	a, l
 	ld	e, a
-	.local	.LBB66_43
-.LBB66_43:
+	.local	.LBB67_43
+.LBB67_43:
 	ld	a, e
 	ld	(_library_state), a
 	ld	a, c
@@ -7465,21 +7837,21 @@ _execute:                               ; @execute
 	ld	hl, 7
 	push	hl
 	ld	hl, _reply_small
-	jp	.LBB66_3
-	.local	.Lfunc_end66
-.Lfunc_end66:
-	.size	_execute, .Lfunc_end66-_execute
+	jp	.LBB67_3
+	.local	.Lfunc_end67
+.Lfunc_end67:
+	.size	_execute, .Lfunc_end67-_execute
 	.section	.rodata._execute,"a",@progbits
-JTI66_0:
-	d24	.LBB66_7
-	d24	.LBB66_21
-	d24	.LBB66_14
-	d24	.LBB66_17
-	d24	.LBB66_11
-	d24	.LBB66_24
-	d24	.LBB66_27
-	d24	.LBB66_19
-	d24	.LBB66_29
+JTI67_0:
+	d24	.LBB67_7
+	d24	.LBB67_21
+	d24	.LBB67_14
+	d24	.LBB67_17
+	d24	.LBB67_11
+	d24	.LBB67_24
+	d24	.LBB67_27
+	d24	.LBB67_19
+	d24	.LBB67_29
                                         ; -- End function
 	.section	.text._answer,"ax",@progbits
 	.type	_answer,@function               ; -- Begin function answer
@@ -7509,32 +7881,32 @@ _answer:                                ; @answer
 	ld	(_reply_body), bc
 	sbc	hl, hl
 	adc	hl, bc
-	jr	z, .LBB67_2
+	jr	z, .LBB68_2
 ; %bb.1:
 	ld	a, 0
-	jr	.LBB67_3
-	.local	.LBB67_2
-.LBB67_2:
+	jr	.LBB68_3
+	.local	.LBB68_2
+.LBB68_2:
 	ld	a, -1
-	.local	.LBB67_3
-.LBB67_3:
+	.local	.LBB68_3
+.LBB68_3:
 	ld	bc, 0
 	bit	0, a
 	push	bc
 	pop	hl
-	jr	nz, .LBB67_5
+	jr	nz, .LBB68_5
 ; %bb.4:
 	lea	hl, iy + 0
-	.local	.LBB67_5
-.LBB67_5:
+	.local	.LBB68_5
+.LBB68_5:
 	ld	iy, 3
 	bit	0, a
 	ld	a, e
-	jr	nz, .LBB67_7
+	jr	nz, .LBB68_7
 ; %bb.6:
 	ld	a, (ix + 15)
-	.local	.LBB67_7
-.LBB67_7:
+	.local	.LBB68_7
+.LBB68_7:
 	ld	(_reply_body_len), hl
 	ld	(_reply_body_len+3), a
 	ld	(_reply_body_sent), bc
@@ -7543,9 +7915,9 @@ _answer:                                ; @answer
 	ld	(_link_state), iy
 	pop	ix
 	ret
-	.local	.Lfunc_end67
-.Lfunc_end67:
-	.size	_answer, .Lfunc_end67-_answer
+	.local	.Lfunc_end68
+.Lfunc_end68:
+	.size	_answer, .Lfunc_end68-_answer
                                         ; -- End function
 	.section	.text._store,"ax",@progbits
 	.type	_store,@function                ; -- Begin function store
@@ -7557,7 +7929,7 @@ _store:                                 ; @store
 	push	hl
 	call	_ti_Delete
 	pop	hl
-	ld	hl, _.str.3.56
+	ld	hl, _.str.3.81
 	push	hl
 	ld	hl, (ix + 6)
 	push	hl
@@ -7566,7 +7938,7 @@ _store:                                 ; @store
 	pop	hl
 	pop	hl
 	or	a, a
-	jr	z, .LBB68_6
+	jr	z, .LBB69_6
 ; %bb.1:
 	ld	iy, (ix + 9)
 	ld	hl, 1
@@ -7584,7 +7956,7 @@ _store:                                 ; @store
 	ld	de, 1
 	or	a, a
 	sbc	hl, de
-	jr	nz, .LBB68_4
+	jr	nz, .LBB69_4
 ; %bb.2:
 	ld	hl, (ix - 3)
 	push	hl
@@ -7601,33 +7973,33 @@ _store:                                 ; @store
 	add	hl, bc
 	or	a, a
 	sbc	hl, bc
-	jr	z, .LBB68_5
+	jr	z, .LBB69_5
 ; %bb.3:
 	ld	a, 1
-	jr	.LBB68_7
-	.local	.LBB68_4
-.LBB68_4:
+	jr	.LBB69_7
+	.local	.LBB69_4
+.LBB69_4:
 	ld	hl, (ix - 3)
 	push	hl
 	call	_ti_Close
 	pop	hl
-	.local	.LBB68_5
-.LBB68_5:
+	.local	.LBB69_5
+.LBB69_5:
 	ld	hl, (ix + 6)
 	push	hl
 	call	_ti_Delete
 	pop	hl
-	.local	.LBB68_6
-.LBB68_6:
+	.local	.LBB69_6
+.LBB69_6:
 	xor	a, a
-	.local	.LBB68_7
-.LBB68_7:
+	.local	.LBB69_7
+.LBB69_7:
 	ld	sp, ix
 	pop	ix
 	ret
-	.local	.Lfunc_end68
-.Lfunc_end68:
-	.size	_store, .Lfunc_end68-_store
+	.local	.Lfunc_end69
+.Lfunc_end69:
+	.size	_store, .Lfunc_end69-_store
                                         ; -- End function
 	.section	.text._viewer_run,"ax",@progbits
 	.globl	_viewer_run                     ; -- Begin function viewer_run
@@ -7677,7 +8049,7 @@ _viewer_run:                            ; @viewer_run
 	add	iy, de
 	ld	(iy + 0), a                     ; 1-byte Folded Spill
 	bit	0, a
-	jp	z, .LBB69_70
+	jp	z, .LBB70_70
 ; %bb.1:
 	ld	de, -344
 	lea	hl, ix + 0
@@ -7716,11 +8088,11 @@ _viewer_run:                            ; @viewer_run
 	ld	(iy + 9), hl
 	ld	l, (iy + 14)
 	cp	a, l
-	jr	c, .LBB69_3
+	jr	c, .LBB70_3
 ; %bb.2:
 	ld	(iy + 5), 0
-	.local	.LBB69_3
-.LBB69_3:
+	.local	.LBB70_3
+.LBB70_3:
 	lea	hl, ix - 31
 	ld	de, -362
 	lea	iy, ix + 0
@@ -7749,8 +8121,8 @@ _viewer_run:                            ; @viewer_run
 	ld	(iy + 0), a                     ; 1-byte Folded Spill
 	ld	l, 1
 	ld	bc, 60
-	.local	.LBB69_4
-.LBB69_4:                               ; %input_pressed.exit7
+	.local	.LBB70_4
+.LBB70_4:                               ; %input_pressed.exit7
                                         ; =>This Inner Loop Header: Depth=1
 	ld	de, -354
 	lea	iy, ix + 0
@@ -7765,8 +8137,8 @@ _viewer_run:                            ; @viewer_run
 	add	iy, de
 	pop	af
 	ld	(iy + 0), a
-	jp	z, .LBB69_16
-; %bb.5:                                ;   in Loop: Header=BB69_4 Depth=1
+	jp	z, .LBB70_16
+; %bb.5:                                ;   in Loop: Header=BB70_4 Depth=1
 	ld	de, -344
 	lea	hl, ix + 0
 	add	hl, de
@@ -7803,8 +8175,8 @@ _viewer_run:                            ; @viewer_run
 	add	hl, bc
 	or	a, a
 	sbc	hl, bc
-	jp	z, .LBB69_15
-; %bb.6:                                ;   in Loop: Header=BB69_4 Depth=1
+	jp	z, .LBB70_15
+; %bb.6:                                ;   in Loop: Header=BB70_4 Depth=1
 	ld	de, -344
 	lea	hl, ix + 0
 	add	hl, de
@@ -7850,8 +8222,8 @@ _viewer_run:                            ; @viewer_run
 	ld	(ix + 0), hl
 	pop	ix
 	ld	hl, 0
-	jr	c, .LBB69_10
-; %bb.7:                                ;   in Loop: Header=BB69_4 Depth=1
+	jr	c, .LBB70_10
+; %bb.7:                                ;   in Loop: Header=BB70_4 Depth=1
 	lea	hl, iy + 0
 	ld	de, -240
 	add	hl, de
@@ -7868,13 +8240,13 @@ _viewer_run:                            ; @viewer_run
 	ld	de, 11
 	or	a, a
 	sbc	hl, de
-	jr	nc, .LBB69_9
-; %bb.8:                                ;   in Loop: Header=BB69_4 Depth=1
+	jr	nc, .LBB70_9
+; %bb.8:                                ;   in Loop: Header=BB70_4 Depth=1
 	ld	hl, 10
 	push	hl
 	pop	bc
-	.local	.LBB69_9
-.LBB69_9:                               ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_9
+.LBB70_9:                               ;   in Loop: Header=BB70_4 Depth=1
 	ld	hl, 240
 	ld	de, -365
 	lea	iy, ix + 0
@@ -7899,8 +8271,8 @@ _viewer_run:                            ; @viewer_run
 	lea	iy, iy - 121
 	ld	bc, (iy + 0)
 	call	__ldivu
-	.local	.LBB69_10
-.LBB69_10:                              ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_10
+.LBB70_10:                              ;   in Loop: Header=BB70_4 Depth=1
 	ld	de, -377
 	lea	iy, ix + 0
 	add	iy, de
@@ -7980,8 +8352,8 @@ _viewer_run:                            ; @viewer_run
 	or	a, a
 	sbc	hl, de
 	ld	hl, 100
-	jr	c, .LBB69_12
-; %bb.11:                               ;   in Loop: Header=BB69_4 Depth=1
+	jr	c, .LBB70_12
+; %bb.11:                               ;   in Loop: Header=BB70_4 Depth=1
 	ld	de, -240
 	add	iy, de
 	push	ix
@@ -8001,8 +8373,8 @@ _viewer_run:                            ; @viewer_run
 	lea	bc, iy + 0
 	ld	a, d
 	call	__ldivu
-	.local	.LBB69_12
-.LBB69_12:                              ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_12
+.LBB70_12:                              ;   in Loop: Header=BB70_4 Depth=1
 	ld	de, -351
 	lea	iy, ix + 0
 	add	iy, de
@@ -8055,12 +8427,12 @@ _viewer_run:                            ; @viewer_run
 	add	iy, de
 	pop	af
 	bit	0, (iy + 0)                     ; 1-byte Folded Reload
-	ld	hl, _.str.3.61
-	jr	nz, .LBB69_14
-; %bb.13:                               ;   in Loop: Header=BB69_4 Depth=1
-	ld	hl, _.str.4.62
-	.local	.LBB69_14
-.LBB69_14:                              ;   in Loop: Header=BB69_4 Depth=1
+	ld	hl, _.str.3.86
+	jr	nz, .LBB70_14
+; %bb.13:                               ;   in Loop: Header=BB70_4 Depth=1
+	ld	hl, _.str.4.87
+	.local	.LBB70_14
+.LBB70_14:                              ;   in Loop: Header=BB70_4 Depth=1
 	push	hl
 	ld	de, -351
 	lea	iy, ix + 0
@@ -8073,7 +8445,7 @@ _viewer_run:                            ; @viewer_run
 	ld	hl, (iy + 0)
 	push	hl
 	push	bc
-	ld	hl, _.str.2.63
+	ld	hl, _.str.2.88
 	push	hl
 	ld	de, -362
 	lea	iy, ix + 0
@@ -8136,11 +8508,11 @@ _viewer_run:                            ; @viewer_run
 	pop	hl
 	pop	hl
 	pop	hl
-	.local	.LBB69_15
-.LBB69_15:                              ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_15
+.LBB70_15:                              ;   in Loop: Header=BB70_4 Depth=1
 	call	_gfx_SwapDraw
-	.local	.LBB69_16
-.LBB69_16:                              ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_16
+.LBB70_16:                              ;   in Loop: Header=BB70_4 Depth=1
 	call	_input_scan
 	ld	de, (_repeat_frames)
 	push	de
@@ -8149,22 +8521,22 @@ _viewer_run:                            ; @viewer_run
 	or	a, a
 	sbc	hl, bc
 	ld	bc, 14
-	jr	nc, .LBB69_18
-; %bb.17:                               ;   in Loop: Header=BB69_4 Depth=1
+	jr	nc, .LBB70_18
+; %bb.17:                               ;   in Loop: Header=BB70_4 Depth=1
 	ld	bc, 6
-	.local	.LBB69_18
-.LBB69_18:                              ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_18
+.LBB70_18:                              ;   in Loop: Header=BB70_4 Depth=1
 	ex	de, hl
 	ld	de, 24
 	or	a, a
 	sbc	hl, de
 	ld	hl, 26
-	jr	nc, .LBB69_20
-; %bb.19:                               ;   in Loop: Header=BB69_4 Depth=1
+	jr	nc, .LBB70_20
+; %bb.19:                               ;   in Loop: Header=BB70_4 Depth=1
 	push	bc
 	pop	hl
-	.local	.LBB69_20
-.LBB69_20:                              ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_20
+.LBB70_20:                              ;   in Loop: Header=BB70_4 Depth=1
 	ld	de, -351
 	lea	iy, ix + 0
 	add	iy, de
@@ -8174,34 +8546,34 @@ _viewer_run:                            ; @viewer_run
 	call	_input_repeat
 	pop	hl
 	bit	0, a
-	jr	z, .LBB69_22
-; %bb.21:                               ;   in Loop: Header=BB69_4 Depth=1
+	jr	z, .LBB70_22
+; %bb.21:                               ;   in Loop: Header=BB70_4 Depth=1
 	ld	de, -351
 	lea	iy, ix + 0
 	add	iy, de
 	ld	hl, (iy + 0)
-	jr	.LBB69_24
-	.local	.LBB69_22
-.LBB69_22:                              ;   in Loop: Header=BB69_4 Depth=1
+	jr	.LBB70_24
+	.local	.LBB70_22
+.LBB70_22:                              ;   in Loop: Header=BB70_4 Depth=1
 	ld	hl, 1800
 	push	hl
 	call	_input_repeat
 	pop	hl
 	bit	0, a
-	jp	z, .LBB69_37
-; %bb.23:                               ;   in Loop: Header=BB69_4 Depth=1
+	jp	z, .LBB70_37
+; %bb.23:                               ;   in Loop: Header=BB70_4 Depth=1
 	ld	de, -351
 	lea	iy, ix + 0
 	add	iy, de
 	ld	hl, (iy + 0)
 	call	__ineg
-	.local	.LBB69_24
-.LBB69_24:                              ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_24
+.LBB70_24:                              ;   in Loop: Header=BB70_4 Depth=1
 	push	hl
 	or	a, a
 	sbc	hl, hl
-	.local	.LBB69_25
-.LBB69_25:                              ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_25
+.LBB70_25:                              ;   in Loop: Header=BB70_4 Depth=1
 	push	hl
 	ld	de, -358
 	lea	iy, ix + 0
@@ -8214,18 +8586,18 @@ _viewer_run:                            ; @viewer_run
 	pop	hl
 	ld	a, 1
 	ld	c, a
-	.local	.LBB69_26
-.LBB69_26:                              ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_26
+.LBB70_26:                              ;   in Loop: Header=BB70_4 Depth=1
 	ld	a, (_current+6)
 	ld	h, a
 	bit	1, h
-	jr	z, .LBB69_29
+	jr	z, .LBB70_29
 ; %bb.27:                               ; %input_pressed.exit
-                                        ;   in Loop: Header=BB69_4 Depth=1
+                                        ;   in Loop: Header=BB70_4 Depth=1
 	ld	a, (_previous+6)
 	bit	1, a
-	jr	nz, .LBB69_29
-; %bb.28:                               ;   in Loop: Header=BB69_4 Depth=1
+	jr	nz, .LBB70_29
+; %bb.28:                               ;   in Loop: Header=BB70_4 Depth=1
 	push	ix
 	ld	de, -344
 	add	ix, de
@@ -8234,18 +8606,18 @@ _viewer_run:                            ; @viewer_run
 	ld	e, (iy + 5)
 	ld	d, e
 	inc	d
-	jp	.LBB69_43
-	.local	.LBB69_29
-.LBB69_29:                              ; %input_pressed.exit.thread
-                                        ;   in Loop: Header=BB69_4 Depth=1
+	jp	.LBB70_43
+	.local	.LBB70_29
+.LBB70_29:                              ; %input_pressed.exit.thread
+                                        ;   in Loop: Header=BB70_4 Depth=1
 	bit	2, h
-	jr	z, .LBB69_33
+	jr	z, .LBB70_33
 ; %bb.30:                               ; %input_pressed.exit4
-                                        ;   in Loop: Header=BB69_4 Depth=1
+                                        ;   in Loop: Header=BB70_4 Depth=1
 	ld	a, (_previous+6)
 	bit	2, a
-	jr	nz, .LBB69_33
-; %bb.31:                               ;   in Loop: Header=BB69_4 Depth=1
+	jr	nz, .LBB70_33
+; %bb.31:                               ;   in Loop: Header=BB70_4 Depth=1
 	push	ix
 	ld	de, -344
 	add	ix, de
@@ -8256,22 +8628,22 @@ _viewer_run:                            ; @viewer_run
 	or	a, a
 	ld	a, 1
 	ld	c, a
-	jp	z, .LBB69_50
-; %bb.32:                               ;   in Loop: Header=BB69_4 Depth=1
+	jp	z, .LBB70_50
+; %bb.32:                               ;   in Loop: Header=BB70_4 Depth=1
 	ld	d, e
-	jp	.LBB69_42
-	.local	.LBB69_33
-.LBB69_33:                              ; %input_pressed.exit4.thread
-                                        ;   in Loop: Header=BB69_4 Depth=1
+	jp	.LBB70_42
+	.local	.LBB70_33
+.LBB70_33:                              ; %input_pressed.exit4.thread
+                                        ;   in Loop: Header=BB70_4 Depth=1
 	ld	a, (_current+1)
 	bit	6, a
-	jp	z, .LBB69_50
+	jp	z, .LBB70_50
 ; %bb.34:                               ; %input_pressed.exit5
-                                        ;   in Loop: Header=BB69_4 Depth=1
+                                        ;   in Loop: Header=BB70_4 Depth=1
 	ld	a, (_previous+1)
 	bit	6, a
-	jp	nz, .LBB69_50
-; %bb.35:                               ;   in Loop: Header=BB69_4 Depth=1
+	jp	nz, .LBB70_50
+; %bb.35:                               ;   in Loop: Header=BB70_4 Depth=1
 	push	ix
 	ld	de, -344
 	add	ix, de
@@ -8280,19 +8652,19 @@ _viewer_run:                            ; @viewer_run
 	ld	e, (iy + 5)
 	ld	a, e
 	or	a, a
-	jr	z, .LBB69_41
-; %bb.36:                               ;   in Loop: Header=BB69_4 Depth=1
+	jr	z, .LBB70_41
+; %bb.36:                               ;   in Loop: Header=BB70_4 Depth=1
 	ld	d, 0
-	jr	.LBB69_43
-	.local	.LBB69_37
-.LBB69_37:                              ;   in Loop: Header=BB69_4 Depth=1
+	jr	.LBB70_43
+	.local	.LBB70_37
+.LBB70_37:                              ;   in Loop: Header=BB70_4 Depth=1
 	ld	hl, 1796
 	push	hl
 	call	_input_repeat
 	pop	hl
 	bit	0, a
-	jr	z, .LBB69_39
-; %bb.38:                               ;   in Loop: Header=BB69_4 Depth=1
+	jr	z, .LBB70_39
+; %bb.38:                               ;   in Loop: Header=BB70_4 Depth=1
 	or	a, a
 	sbc	hl, hl
 	push	hl
@@ -8300,9 +8672,9 @@ _viewer_run:                            ; @viewer_run
 	lea	iy, ix + 0
 	add	iy, de
 	ld	hl, (iy + 0)
-	jp	.LBB69_25
-	.local	.LBB69_39
-.LBB69_39:                              ;   in Loop: Header=BB69_4 Depth=1
+	jp	.LBB70_25
+	.local	.LBB70_39
+.LBB70_39:                              ;   in Loop: Header=BB70_4 Depth=1
 	ld	hl, 1794
 	push	hl
 	call	_input_repeat
@@ -8310,8 +8682,8 @@ _viewer_run:                            ; @viewer_run
 	bit	0, a
 	ld	a, 0
 	ld	c, a
-	jp	z, .LBB69_26
-; %bb.40:                               ;   in Loop: Header=BB69_4 Depth=1
+	jp	z, .LBB70_26
+; %bb.40:                               ;   in Loop: Header=BB70_4 Depth=1
 	ld	de, -351
 	lea	iy, ix + 0
 	add	iy, de
@@ -8319,20 +8691,20 @@ _viewer_run:                            ; @viewer_run
 	call	__ineg
 	ld	de, 0
 	push	de
-	jp	.LBB69_25
-	.local	.LBB69_41
-.LBB69_41:                              ;   in Loop: Header=BB69_4 Depth=1
+	jp	.LBB70_25
+	.local	.LBB70_41
+.LBB70_41:                              ;   in Loop: Header=BB70_4 Depth=1
 	push	ix
 	ld	bc, -344
 	add	ix, bc
 	ld	iy, (ix + 0)
 	pop	ix
 	ld	d, (iy + 14)
-	.local	.LBB69_42
-.LBB69_42:                              ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_42
+.LBB70_42:                              ;   in Loop: Header=BB70_4 Depth=1
 	dec	d
-	.local	.LBB69_43
-.LBB69_43:                              ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_43
+.LBB70_43:                              ;   in Loop: Header=BB70_4 Depth=1
 	push	ix
 	ld	bc, -344
 	add	ix, bc
@@ -8349,14 +8721,14 @@ _viewer_run:                            ; @viewer_run
 	cp	a, l
 	ld	a, 1
 	ld	c, a
-	jp	nc, .LBB69_50
-; %bb.44:                               ;   in Loop: Header=BB69_4 Depth=1
+	jp	nc, .LBB70_50
+; %bb.44:                               ;   in Loop: Header=BB70_4 Depth=1
 	ld	a, e
 	cp	a, d
 	ld	a, 1
 	ld	c, a
-	jp	z, .LBB69_50
-; %bb.45:                               ;   in Loop: Header=BB69_4 Depth=1
+	jp	z, .LBB70_50
+; %bb.45:                               ;   in Loop: Header=BB70_4 Depth=1
 	ld	bc, -351
 	lea	iy, ix + 0
 	add	iy, bc
@@ -8550,12 +8922,12 @@ _viewer_run:                            ; @viewer_run
 	pop	hl
 	add	hl, de
 	bit	0, a
-	jr	nz, .LBB69_47
-; %bb.46:                               ;   in Loop: Header=BB69_4 Depth=1
+	jr	nz, .LBB70_47
+; %bb.46:                               ;   in Loop: Header=BB70_4 Depth=1
 	or	a, a
 	sbc	hl, hl
-	.local	.LBB69_47
-.LBB69_47:                              ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_47
+.LBB70_47:                              ;   in Loop: Header=BB70_4 Depth=1
 	push	ix
 	ld	de, -344
 	add	ix, de
@@ -8585,12 +8957,12 @@ _viewer_run:                            ; @viewer_run
 	add	iy, de
 	bit	0, a
 	lea	hl, iy + 0
-	jr	nz, .LBB69_49
-; %bb.48:                               ;   in Loop: Header=BB69_4 Depth=1
+	jr	nz, .LBB70_49
+; %bb.48:                               ;   in Loop: Header=BB70_4 Depth=1
 	or	a, a
 	sbc	hl, hl
-	.local	.LBB69_49
-.LBB69_49:                              ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_49
+.LBB70_49:                              ;   in Loop: Header=BB70_4 Depth=1
 	push	ix
 	ld	de, -344
 	add	ix, de
@@ -8610,33 +8982,33 @@ _viewer_run:                            ; @viewer_run
 	lea	iy, ix + 0
 	add	iy, de
 	ld	h, (iy + 0)                     ; 1-byte Folded Reload
-	.local	.LBB69_50
-.LBB69_50:                              ; %set_layer.exit
-                                        ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_50
+.LBB70_50:                              ; %set_layer.exit
+                                        ;   in Loop: Header=BB70_4 Depth=1
 	ld	a, (_current+1)
 	ld	l, a
 	ld	a, (_previous+1)
 	cp	a, 0
 	call	pe, __setflag
 	ld	e, -1
-	jp	p, .LBB69_52
+	jp	p, .LBB70_52
 ; %bb.51:                               ; %set_layer.exit
-                                        ;   in Loop: Header=BB69_4 Depth=1
+                                        ;   in Loop: Header=BB70_4 Depth=1
 	ld	e, 0
-	.local	.LBB69_52
-.LBB69_52:                              ; %set_layer.exit
-                                        ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_52
+.LBB70_52:                              ; %set_layer.exit
+                                        ;   in Loop: Header=BB70_4 Depth=1
 	ld	a, l
 	cp	a, 0
 	call	pe, __setflag
 	ld	a, -1
-	jp	m, .LBB69_54
+	jp	m, .LBB70_54
 ; %bb.53:                               ; %set_layer.exit
-                                        ;   in Loop: Header=BB69_4 Depth=1
+                                        ;   in Loop: Header=BB70_4 Depth=1
 	ld	a, 0
-	.local	.LBB69_54
-.LBB69_54:                              ; %set_layer.exit
-                                        ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_54
+.LBB70_54:                              ; %set_layer.exit
+                                        ;   in Loop: Header=BB70_4 Depth=1
 	and	a, e
 	ld	d, a
 	ld	l, 1
@@ -8657,8 +9029,8 @@ _viewer_run:                            ; @viewer_run
 	lea	iy, iy - 89
 	ld	(iy + 0), e                     ; 1-byte Folded Spill
 	bit	0, e
-	jp	nz, .LBB69_58
-; %bb.55:                               ;   in Loop: Header=BB69_4 Depth=1
+	jp	nz, .LBB70_58
+; %bb.55:                               ;   in Loop: Header=BB70_4 Depth=1
 	lea	iy, ix + 0
 	lea	iy, iy - 128
 	lea	iy, iy - 128
@@ -8740,15 +9112,15 @@ _viewer_run:                            ; @viewer_run
 	lea	iy, iy - 118
 	ld	e, (iy + 0)                     ; 1-byte Folded Reload
 	call	__lcmpu
-	jr	c, .LBB69_57
-; %bb.56:                               ;   in Loop: Header=BB69_4 Depth=1
+	jr	c, .LBB70_57
+; %bb.56:                               ;   in Loop: Header=BB70_4 Depth=1
 	ld	a, 1
 	ld	de, -345
 	lea	iy, ix + 0
 	add	iy, de
 	ld	(iy + 0), a                     ; 1-byte Folded Spill
-	.local	.LBB69_57
-.LBB69_57:                              ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_57
+.LBB70_57:                              ;   in Loop: Header=BB70_4 Depth=1
 	ld	de, -351
 	lea	iy, ix + 0
 	add	iy, de
@@ -8762,16 +9134,16 @@ _viewer_run:                            ; @viewer_run
 	lea	iy, iy - 128
 	lea	iy, iy - 112
 	ld	d, (iy + 0)                     ; 1-byte Folded Reload
-	.local	.LBB69_58
-.LBB69_58:                              ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_58
+.LBB70_58:                              ;   in Loop: Header=BB70_4 Depth=1
 	bit	0, c
 	ld	l, 1
 	ld	bc, 60
-	jr	nz, .LBB69_64
-; %bb.59:                               ;   in Loop: Header=BB69_4 Depth=1
+	jr	nz, .LBB70_64
+; %bb.59:                               ;   in Loop: Header=BB70_4 Depth=1
 	bit	0, d
-	jr	nz, .LBB69_64
-; %bb.60:                               ;   in Loop: Header=BB69_4 Depth=1
+	jr	nz, .LBB70_64
+; %bb.60:                               ;   in Loop: Header=BB70_4 Depth=1
 	ld	a, h
 	ld	de, -354
 	lea	iy, ix + 0
@@ -8783,8 +9155,8 @@ _viewer_run:                            ; @viewer_run
 	ld	h, a
 	ld	l, 0
 	ld	bc, 0
-	jr	z, .LBB69_64
-; %bb.61:                               ;   in Loop: Header=BB69_4 Depth=1
+	jr	z, .LBB70_64
+; %bb.61:                               ;   in Loop: Header=BB70_4 Depth=1
 	ld	bc, -354
 	lea	iy, ix + 0
 	add	iy, bc
@@ -8795,20 +9167,20 @@ _viewer_run:                            ; @viewer_run
 	sbc	hl, hl
 	adc	hl, de
 	ld	l, -1
-	jr	z, .LBB69_63
-; %bb.62:                               ;   in Loop: Header=BB69_4 Depth=1
+	jr	z, .LBB70_63
+; %bb.62:                               ;   in Loop: Header=BB70_4 Depth=1
 	ld	l, 0
-	.local	.LBB69_63
-.LBB69_63:                              ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_63
+.LBB70_63:                              ;   in Loop: Header=BB70_4 Depth=1
 	ld	h, a
-	.local	.LBB69_64
-.LBB69_64:                              ;   in Loop: Header=BB69_4 Depth=1
+	.local	.LBB70_64
+.LBB70_64:                              ;   in Loop: Header=BB70_4 Depth=1
 	bit	6, h
-	jp	z, .LBB69_4
-; %bb.65:                               ;   in Loop: Header=BB69_4 Depth=1
+	jp	z, .LBB70_4
+; %bb.65:                               ;   in Loop: Header=BB70_4 Depth=1
 	ld	a, (_previous+6)
 	bit	6, a
-	jp	nz, .LBB69_4
+	jp	nz, .LBB70_4
 ; %bb.66:
 	ld	de, -344
 	lea	hl, ix + 0
@@ -8826,7 +9198,7 @@ _viewer_run:                            ; @viewer_run
 	add	iy, de
 	pop	af
 	bit	0, (iy + 0)                     ; 1-byte Folded Reload
-	jr	z, .LBB69_71
+	jr	z, .LBB70_71
 ; %bb.67:
 	ld	l, 1
 	ld	de, -378
@@ -8836,7 +9208,7 @@ _viewer_run:                            ; @viewer_run
 	and	a, l
 	ld	l, a
 	bit	0, l
-	jr	nz, .LBB69_69
+	jr	nz, .LBB70_69
 ; %bb.68:
 	or	a, a
 	sbc	hl, hl
@@ -8845,35 +9217,35 @@ _viewer_run:                            ; @viewer_run
 	pop	bc
 	ld	(ix - 41), hl
 	ld	(ix - 38), e
-	.local	.LBB69_69
-.LBB69_69:
+	.local	.LBB70_69
+.LBB70_69:
 	ld	l, 1
 	ld	de, -378
 	lea	iy, ix + 0
 	add	iy, de
 	ld	a, (iy + 0)
 	or	a, l
-	jr	.LBB69_72
-	.local	.LBB69_70
-.LBB69_70:
-	ld	hl, _.str.59
-	ld	de, _.str.1.60
+	jr	.LBB70_72
+	.local	.LBB70_70
+.LBB70_70:
+	ld	hl, _.str.84
+	ld	de, _.str.1.85
 	push	de
 	push	hl
 	call	_ui_message
 	pop	hl
 	pop	hl
-	jr	.LBB69_73
-	.local	.LBB69_71
-.LBB69_71:
+	jr	.LBB70_73
+	.local	.LBB70_71
+.LBB70_71:
 	ld	de, -378
 	lea	iy, ix + 0
 	add	iy, de
 	ld	a, (iy + 0)
 	ld	l, d
 	and	a, l
-	.local	.LBB69_72
-.LBB69_72:
+	.local	.LBB70_72
+.LBB70_72:
 	ld	l, a
 	ld	(ix - 42), l
 	ld	de, -381
@@ -8887,8 +9259,8 @@ _viewer_run:                            ; @viewer_run
 	pop	hl
 	pop	hl
 	call	_render_reset
-	.local	.LBB69_73
-.LBB69_73:
+	.local	.LBB70_73
+.LBB70_73:
 	ld	de, -359
 	lea	iy, ix + 0
 	add	iy, de
@@ -8896,9 +9268,9 @@ _viewer_run:                            ; @viewer_run
 	ld	sp, ix
 	pop	ix
 	ret
-	.local	.Lfunc_end69
-.Lfunc_end69:
-	.size	_viewer_run, .Lfunc_end69-_viewer_run
+	.local	.Lfunc_end70
+.Lfunc_end70:
+	.size	_viewer_run, .Lfunc_end70-_viewer_run
                                         ; -- End function
 	.section	.text._clamp,"ax",@progbits
 	.type	_clamp,@function                ; -- Begin function clamp
@@ -8934,12 +9306,12 @@ _clamp:                                 ; @clamp
 	sbc	hl, bc
 	push	de
 	pop	bc
-	jr	c, .LBB70_2
+	jr	c, .LBB71_2
 ; %bb.1:
 	push	hl
 	pop	bc
-	.local	.LBB70_2
-.LBB70_2:
+	.local	.LBB71_2
+.LBB71_2:
 	ld	(ix - 3), bc
 	ld	bc, 204
 	add	iy, bc
@@ -8947,11 +9319,11 @@ _clamp:                                 ; @clamp
 	or	a, a
 	ld	bc, 240
 	sbc	hl, bc
-	jr	c, .LBB70_4
+	jr	c, .LBB71_4
 ; %bb.3:
 	ex	de, hl
-	.local	.LBB70_4
-.LBB70_4:
+	.local	.LBB71_4
+.LBB71_4:
 	ld	(ix - 6), de
 	ld	iy, (ix + 6)
 	ld	bc, (iy + 4)
@@ -8960,28 +9332,28 @@ _clamp:                                 ; @clamp
 	pop	hl
 	or	a, a
 	sbc	hl, bc
-	jr	nc, .LBB70_6
+	jr	nc, .LBB71_6
 ; %bb.5:
 	ld	(iy + 4), de
-	.local	.LBB70_6
-.LBB70_6:
+	.local	.LBB71_6
+.LBB71_6:
 	ld	bc, (iy + 7)
 	ld	de, (ix - 6)
 	push	de
 	pop	hl
 	or	a, a
 	sbc	hl, bc
-	jr	nc, .LBB70_8
+	jr	nc, .LBB71_8
 ; %bb.7:
 	ld	(iy + 7), de
-	.local	.LBB70_8
-.LBB70_8:
+	.local	.LBB71_8
+.LBB71_8:
 	ld	sp, ix
 	pop	ix
 	ret
-	.local	.Lfunc_end70
-.Lfunc_end70:
-	.size	_clamp, .Lfunc_end70-_clamp
+	.local	.Lfunc_end71
+.Lfunc_end71:
+	.size	_clamp, .Lfunc_end71-_clamp
                                         ; -- End function
 	.section	.text._pan,"ax",@progbits
 	.type	_pan,@function                  ; -- Begin function pan
@@ -9016,11 +9388,11 @@ _pan:                                   ; @pan
 	sbc	hl, de
 	ld	de, 0
 	ld	(ix - 3), de
-	jr	c, .LBB71_2
+	jr	c, .LBB72_2
 ; %bb.1:
 	ex	de, hl
-	.local	.LBB71_2
-.LBB71_2:
+	.local	.LBB72_2
+.LBB72_2:
 	ld	(ix - 9), de
 	ld	de, (ix + 9)
 	ld	bc, 204
@@ -9030,12 +9402,12 @@ _pan:                                   ; @pan
 	ld	bc, 240
 	sbc	hl, bc
 	ld	bc, 0
-	jr	c, .LBB71_4
+	jr	c, .LBB72_4
 ; %bb.3:
 	push	hl
 	pop	bc
-	.local	.LBB71_4
-.LBB71_4:
+	.local	.LBB72_4
+.LBB72_4:
 	ld	(ix - 6), bc
 	ld	bc, 0
 	push	de
@@ -9043,7 +9415,7 @@ _pan:                                   ; @pan
 	or	a, a
 	sbc	hl, bc
 	call	pe, __setflag
-	jp	p, .LBB71_7
+	jp	p, .LBB72_7
 ; %bb.5:
 	push	de
 	pop	hl
@@ -9058,15 +9430,15 @@ _pan:                                   ; @pan
 	or	a, a
 	sbc	hl, bc
 	ld	hl, 0
-	jr	c, .LBB71_10
+	jr	c, .LBB72_10
 ; %bb.6:
 	lea	hl, iy + 0
-	jr	.LBB71_10
-	.local	.LBB71_7
-.LBB71_7:
+	jr	.LBB72_10
+	.local	.LBB72_7
+.LBB72_7:
 	sbc	hl, hl
 	adc	hl, de
-	jr	z, .LBB71_11
+	jr	z, .LBB72_11
 ; %bb.8:
 	ld	iy, (ix + 6)
 	ld	iy, (iy + 4)
@@ -9076,15 +9448,15 @@ _pan:                                   ; @pan
 	or	a, a
 	sbc	hl, de
 	lea	hl, iy + 0
-	jr	c, .LBB71_10
+	jr	c, .LBB72_10
 ; %bb.9:
 	ex	de, hl
-	.local	.LBB71_10
-.LBB71_10:
+	.local	.LBB72_10
+.LBB72_10:
 	ld	iy, (ix + 6)
 	ld	(iy + 4), hl
-	.local	.LBB71_11
-.LBB71_11:
+	.local	.LBB72_11
+.LBB72_11:
 	ld	bc, (ix + 12)
 	push	bc
 	pop	hl
@@ -9092,7 +9464,7 @@ _pan:                                   ; @pan
 	or	a, a
 	sbc	hl, de
 	call	pe, __setflag
-	jp	p, .LBB71_15
+	jp	p, .LBB72_15
 ; %bb.12:
 	push	bc
 	pop	hl
@@ -9105,19 +9477,19 @@ _pan:                                   ; @pan
 	add	iy, bc
 	or	a, a
 	sbc	hl, de
-	jr	c, .LBB71_14
+	jr	c, .LBB72_14
 ; %bb.13:
 	ld	(ix - 3), iy
-	.local	.LBB71_14
-.LBB71_14:
+	.local	.LBB72_14
+.LBB72_14:
 	ld	iy, (ix + 6)
 	ld	hl, (ix - 3)
-	jr	.LBB71_19
-	.local	.LBB71_15
-.LBB71_15:
+	jr	.LBB72_19
+	.local	.LBB72_15
+.LBB72_15:
 	sbc	hl, hl
 	adc	hl, bc
-	jr	z, .LBB71_20
+	jr	z, .LBB72_20
 ; %bb.16:
 	ld	iy, (ix + 6)
 	ld	iy, (iy + 7)
@@ -9127,23 +9499,23 @@ _pan:                                   ; @pan
 	or	a, a
 	sbc	hl, de
 	lea	hl, iy + 0
-	jr	c, .LBB71_18
+	jr	c, .LBB72_18
 ; %bb.17:
 	ex	de, hl
-	.local	.LBB71_18
-.LBB71_18:
+	.local	.LBB72_18
+.LBB72_18:
 	ld	iy, (ix + 6)
-	.local	.LBB71_19
-.LBB71_19:
+	.local	.LBB72_19
+.LBB72_19:
 	ld	(iy + 7), hl
-	.local	.LBB71_20
-.LBB71_20:
+	.local	.LBB72_20
+.LBB72_20:
 	ld	sp, ix
 	pop	ix
 	ret
-	.local	.Lfunc_end71
-.Lfunc_end71:
-	.size	_pan, .Lfunc_end71-_pan
+	.local	.Lfunc_end72
+.Lfunc_end72:
+	.size	_pan, .Lfunc_end72-_pan
                                         ; -- End function
 	.section	.rodata._.str,"a",@progbits
 	.balign	1
@@ -9329,72 +9701,139 @@ _.str.10:
 	.balign	1
 	.local	_.str.11
 _.str.11:
-	.asciz	"Settings"
+	.asciz	"About"
+
+	.section	.rodata._about_text,"a",@progbits
+	.balign	1
+	.local	_about_text
+_about_text:
+	d24	_.str.27
+	d24	_.str.4.87
+	d24	_.str.29
+	d24	_.str.4.87
+	d24	_.str.30
+	d24	_.str.31
+	d24	_.str.32
+	d24	_.str.33
+	d24	_.str.34
+	d24	_.str.4.87
+	d24	_.str.35
+	d24	_.str.4.87
+	d24	_.str.36
+	d24	_.str.37
+	d24	_.str.38
+	d24	_.str.39
+	d24	_.str.40
+	d24	_.str.41
+	d24	_.str.4.87
+	d24	_.str.42
+	d24	_.str.43
+	d24	_.str.44
+	d24	_.str.45
+	d24	_.str.4.87
+	d24	_.str.46
+	d24	_.str.4.87
+	d24	_.str.47
+	d24	_.str.48
+	d24	_.str.49
+	d24	_.str.50
+	d24	_.str.51
+	d24	_.str.52
+	d24	_.str.4.87
+	d24	_.str.53
+	d24	_.str.54
+	d24	_.str.55
+	d24	_.str.56
+	d24	_.str.57
+	d24	_.str.58
+	d24	_.str.4.87
+	d24	_.str.59
+	d24	_.str.4.87
+	d24	_.str.60
+	d24	_.str.61
+	d24	_.str.62
+	d24	_.str.63
+	d24	_.str.4.87
+	d24	_.str.64
+	d24	_.str.65
 
 	.section	.rodata._.str.12,"a",@progbits
 	.balign	1
 	.local	_.str.12
 _.str.12:
-	.asciz	"%u books, %u strips"
+	.asciz	"up/down  scroll        clear  back"
+
+	.section	.rodata._ui_setup_screen.entries,"a",@progbits
+	.balign	1
+	.local	_ui_setup_screen.entries
+_ui_setup_screen.entries:
+	d24	_.str.13
+	d24	_.str.11
 
 	.section	.rodata._.str.13,"a",@progbits
 	.balign	1
 	.local	_.str.13
 _.str.13:
-	.asciz	"%u read"
+	.asciz	"Erase the library"
 
 	.section	.rodata._.str.14,"a",@progbits
 	.balign	1
 	.local	_.str.14
 _.str.14:
-	.asciz	"del   erase the whole library"
+	.asciz	"Settings"
 
 	.section	.rodata._.str.15.25,"a",@progbits
 	.balign	1
 	.local	_.str.15.25
 _.str.15.25:
-	.asciz	"Deletes every comic on this"
+	.asciz	"%u books, %u strips, %u read"
 
 	.section	.rodata._.str.16,"a",@progbits
 	.balign	1
 	.local	_.str.16
 _.str.16:
-	.asciz	"calculator. The computer keeps"
+	.asciz	"Deletes every comic on this"
 
 	.section	.rodata._.str.17,"a",@progbits
 	.balign	1
 	.local	_.str.17
 _.str.17:
-	.asciz	"its copies."
+	.asciz	"calculator. The computer keeps"
 
 	.section	.rodata._.str.18,"a",@progbits
 	.balign	1
 	.local	_.str.18
 _.str.18:
-	.asciz	"clear  back"
+	.asciz	"its copies."
 
 	.section	.rodata._.str.19,"a",@progbits
 	.balign	1
 	.local	_.str.19
 _.str.19:
-	.asciz	"Erase every comic on this"
+	.asciz	"enter  choose          clear  back"
 
 	.section	.rodata._.str.20,"a",@progbits
 	.balign	1
 	.local	_.str.20
 _.str.20:
-	.asciz	"calculator?"
+	.asciz	"Erase every comic on this"
 
 	.section	.rodata._.str.21,"a",@progbits
 	.balign	1
 	.local	_.str.21
 _.str.21:
-	.asciz	"Removed %u strip(s)."
+	.asciz	"calculator?"
 
 	.section	.rodata._.str.22,"a",@progbits
 	.balign	1
 	.local	_.str.22
 _.str.22:
+	.asciz	"Removed %u strip(s)."
+
+	.section	.rodata._.str.23,"a",@progbits
+	.balign	1
+	.local	_.str.23
+_.str.23:
 	.asciz	"Sync again to refill it."
 
 	.section	.bss._sync_echo_mode,"aw",@nobits
@@ -9415,29 +9854,23 @@ _sync_chunks_received:
 _sync_state:
 	.zero	32
 
-	.section	.rodata._.str.23,"a",@progbits
-	.balign	1
-	.local	_.str.23
-_.str.23:
-	.asciz	"Starting..."
-
 	.section	.rodata._.str.24,"a",@progbits
 	.balign	1
 	.local	_.str.24
 _.str.24:
-	.asciz	"Could not take over USB."
+	.asciz	"Starting..."
 
 	.section	.rodata._.str.25,"a",@progbits
 	.balign	1
 	.local	_.str.25
 _.str.25:
-	.asciz	"Unplug the cable and retry."
+	.asciz	"Could not take over USB."
 
 	.section	.rodata._.str.26,"a",@progbits
 	.balign	1
 	.local	_.str.26
 _.str.26:
-	.asciz	"eBookSync - ECHO TEST"
+	.asciz	"Unplug the cable and retry."
 
 	.section	.rodata._.str.27,"a",@progbits
 	.balign	1
@@ -9445,40 +9878,268 @@ _.str.26:
 _.str.27:
 	.asciz	"eBookSync"
 
-	.section	.rodata._.str.28,"a",@progbits
-	.balign	1
-	.local	_.str.28
-_.str.28:
-	.asciz	"%u done, %uK moved"
-
 	.section	.rodata._.str.29,"a",@progbits
 	.balign	1
 	.local	_.str.29
 _.str.29:
-	.asciz	"req %u cmd %u err %u"
+	.asciz	"A comic reader for the TI-84 Plus CE."
 
 	.section	.rodata._.str.30,"a",@progbits
 	.balign	1
 	.local	_.str.30
 _.str.30:
-	.asciz	"open %u loops %u"
+	.asciz	"Comics are converted on a computer into"
 
 	.section	.rodata._.str.31,"a",@progbits
 	.balign	1
 	.local	_.str.31
 _.str.31:
-	.asciz	"defragmented %u time(s)"
+	.asciz	"a format a 48MHz eZ80 can draw, and sent"
 
 	.section	.rodata._.str.32,"a",@progbits
 	.balign	1
 	.local	_.str.32
 _.str.32:
-	.asciz	"Different library! del=erase"
+	.asciz	"over a USB serial link. This program"
+
+	.section	.rodata._.str.33,"a",@progbits
+	.balign	1
+	.local	_.str.33
+_.str.33:
+	.asciz	"lists what arrived, shows it, and"
 
 	.section	.rodata._.str.34,"a",@progbits
 	.balign	1
 	.local	_.str.34
 _.str.34:
+	.asciz	"remembers where you got to."
+
+	.section	.rodata._.str.35,"a",@progbits
+	.balign	1
+	.local	_.str.35
+_.str.35:
+	.asciz	"HOW IT WORKS"
+
+	.section	.rodata._.str.36,"a",@progbits
+	.balign	1
+	.local	_.str.36
+_.str.36:
+	.asciz	"Each strip is stored at two zoom levels,"
+
+	.section	.rodata._.str.37,"a",@progbits
+	.balign	1
+	.local	_.str.37
+_.str.37:
+	.asciz	"16 colours, 4 bits per pixel, cut into"
+
+	.section	.rodata._.str.38,"a",@progbits
+	.balign	1
+	.local	_.str.38
+_.str.38:
+	.asciz	"32-row bands and compressed with ZX0."
+
+	.section	.rodata._.str.39,"a",@progbits
+	.balign	1
+	.local	_.str.39
+_.str.39:
+	.asciz	"Only the bands on screen are unpacked,"
+
+	.section	.rodata._.str.40,"a",@progbits
+	.balign	1
+	.local	_.str.40
+_.str.40:
+	.asciz	"so a 400KB comic is read from flash a"
+
+	.section	.rodata._.str.41,"a",@progbits
+	.balign	1
+	.local	_.str.41
+_.str.41:
+	.asciz	"few kilobytes at a time."
+
+	.section	.rodata._.str.42,"a",@progbits
+	.balign	1
+	.local	_.str.42
+_.str.42:
+	.asciz	"Titles are pictures, not text. The"
+
+	.section	.rodata._.str.43,"a",@progbits
+	.balign	1
+	.local	_.str.43
+_.str.43:
+	.asciz	"calculator has no Chinese font, so the"
+
+	.section	.rodata._.str.44,"a",@progbits
+	.balign	1
+	.local	_.str.44
+_.str.44:
+	.asciz	"computer draws each title once and sends"
+
+	.section	.rodata._.str.45,"a",@progbits
+	.balign	1
+	.local	_.str.45
+_.str.45:
+	.asciz	"the pixels."
+
+	.section	.rodata._.str.46,"a",@progbits
+	.balign	1
+	.local	_.str.46
+_.str.46:
+	.asciz	"KEYS"
+
+	.section	.rodata._.str.47,"a",@progbits
+	.balign	1
+	.local	_.str.47
+_.str.47:
+	.asciz	"  Book list"
+
+	.section	.rodata._.str.48,"a",@progbits
+	.balign	1
+	.local	_.str.48
+_.str.48:
+	.asciz	"    enter   open a book"
+
+	.section	.rodata._.str.49,"a",@progbits
+	.balign	1
+	.local	_.str.49
+_.str.49:
+	.asciz	"    del     mark a book read"
+
+	.section	.rodata._.str.50,"a",@progbits
+	.balign	1
+	.local	_.str.50
+_.str.50:
+	.asciz	"    2nd     sync with a computer"
+
+	.section	.rodata._.str.51,"a",@progbits
+	.balign	1
+	.local	_.str.51
+_.str.51:
+	.asciz	"    mode    settings"
+
+	.section	.rodata._.str.52,"a",@progbits
+	.balign	1
+	.local	_.str.52
+_.str.52:
+	.asciz	"    clear   quit"
+
+	.section	.rodata._.str.53,"a",@progbits
+	.balign	1
+	.local	_.str.53
+_.str.53:
+	.asciz	"  Reading"
+
+	.section	.rodata._.str.54,"a",@progbits
+	.balign	1
+	.local	_.str.54
+_.str.54:
+	.asciz	"    arrows  pan, hold to speed up"
+
+	.section	.rodata._.str.55,"a",@progbits
+	.balign	1
+	.local	_.str.55
+_.str.55:
+	.asciz	"    + -     zoom"
+
+	.section	.rodata._.str.56,"a",@progbits
+	.balign	1
+	.local	_.str.56
+_.str.56:
+	.asciz	"    mode    fit width / full zoom"
+
+	.section	.rodata._.str.57,"a",@progbits
+	.balign	1
+	.local	_.str.57
+_.str.57:
+	.asciz	"    del     mark read"
+
+	.section	.rodata._.str.58,"a",@progbits
+	.balign	1
+	.local	_.str.58
+_.str.58:
+	.asciz	"    clear   back"
+
+	.section	.rodata._.str.59,"a",@progbits
+	.balign	1
+	.local	_.str.59
+_.str.59:
+	.asciz	"CREDITS"
+
+	.section	.rodata._.str.60,"a",@progbits
+	.balign	1
+	.local	_.str.60
+_.str.60:
+	.asciz	"ZX0 compression by Einar Saukas."
+
+	.section	.rodata._.str.61,"a",@progbits
+	.balign	1
+	.local	_.str.61
+_.str.61:
+	.asciz	"Built with the CE C/C++ toolchain."
+
+	.section	.rodata._.str.62,"a",@progbits
+	.balign	1
+	.local	_.str.62
+_.str.62:
+	.asciz	"srldrvce and usbdrvce by the CE"
+
+	.section	.rodata._.str.63,"a",@progbits
+	.balign	1
+	.local	_.str.63
+_.str.63:
+	.asciz	"Programming team."
+
+	.section	.rodata._.str.64,"a",@progbits
+	.balign	1
+	.local	_.str.64
+_.str.64:
+	.asciz	"Edit about.txt in the repository to"
+
+	.section	.rodata._.str.65,"a",@progbits
+	.balign	1
+	.local	_.str.65
+_.str.65:
+	.asciz	"change this page."
+
+	.section	.rodata._.str.66,"a",@progbits
+	.balign	1
+	.local	_.str.66
+_.str.66:
+	.asciz	"eBookSync - ECHO TEST"
+
+	.section	.rodata._.str.67,"a",@progbits
+	.balign	1
+	.local	_.str.67
+_.str.67:
+	.asciz	"%u done, %uK moved"
+
+	.section	.rodata._.str.68,"a",@progbits
+	.balign	1
+	.local	_.str.68
+_.str.68:
+	.asciz	"req %u cmd %u err %u"
+
+	.section	.rodata._.str.69,"a",@progbits
+	.balign	1
+	.local	_.str.69
+_.str.69:
+	.asciz	"open %u loops %u"
+
+	.section	.rodata._.str.70,"a",@progbits
+	.balign	1
+	.local	_.str.70
+_.str.70:
+	.asciz	"defragmented %u time(s)"
+
+	.section	.rodata._.str.71,"a",@progbits
+	.balign	1
+	.local	_.str.71
+_.str.71:
+	.asciz	"Different library! del=erase"
+
+	.section	.rodata._.str.72,"a",@progbits
+	.balign	1
+	.local	_.str.72
+_.str.72:
 	.asciz	"[clear] stop syncing"
 
 	.section	.bss._sync_progress.poll,"aw",@nobits
@@ -9499,16 +10160,16 @@ _sync_progress.drawn_at:
 _sync_progress.drawn_requests:
 	.zero	2
 
-	.section	.rodata._.str.35,"a",@progbits
+	.section	.rodata._.str.73,"a",@progbits
 	.balign	1
-	.local	_.str.35
-_.str.35:
+	.local	_.str.73
+_.str.73:
 	.asciz	"%s"
 
-	.section	.rodata._.str.36,"a",@progbits
+	.section	.rodata._.str.74,"a",@progbits
 	.balign	1
-	.local	_.str.36
-_.str.36:
+	.local	_.str.74
+_.str.74:
 	.asciz	"Erased -- sync again"
 
 	.section	.bss._requests_handled,"aw",@nobits
@@ -9607,10 +10268,10 @@ _serial:
 _discard_scratch:
 	.zero	256
 
-	.section	.rodata._.str.50,"a",@progbits
+	.section	.rodata._.str.75,"a",@progbits
 	.balign	1
-	.local	_.str.50
-_.str.50:
+	.local	_.str.75
+_.str.75:
 	.asciz	"Echo"
 
 	.section	.bss._cached_archive_free,"aw",@nobits
@@ -9721,78 +10382,78 @@ _reply_body:
 _reply_small:
 	.zero	16
 
-	.section	.rodata._.str.3.56,"a",@progbits
+	.section	.rodata._.str.3.81,"a",@progbits
 	.balign	1
-	.local	_.str.3.56
-_.str.3.56:
+	.local	_.str.3.81
+_.str.3.81:
 	.asciz	"w"
 
-	.section	.rodata._.str.4.51,"a",@progbits
+	.section	.rodata._.str.4.76,"a",@progbits
 	.balign	1
-	.local	_.str.4.51
-_.str.4.51:
+	.local	_.str.4.76
+_.str.4.76:
 	.asciz	"Waiting for computer"
 
-	.section	.rodata._.str.5.53,"a",@progbits
+	.section	.rodata._.str.5.78,"a",@progbits
 	.balign	1
-	.local	_.str.5.53
-_.str.5.53:
+	.local	_.str.5.78
+_.str.5.78:
 	.asciz	"Receiving"
 
-	.section	.rodata._.str.6.54,"a",@progbits
+	.section	.rodata._.str.6.79,"a",@progbits
 	.balign	1
-	.local	_.str.6.54
-_.str.6.54:
+	.local	_.str.6.79
+_.str.6.79:
 	.asciz	"Skipping"
 
-	.section	.rodata._.str.7.55,"a",@progbits
+	.section	.rodata._.str.7.80,"a",@progbits
 	.balign	1
-	.local	_.str.7.55
-_.str.7.55:
+	.local	_.str.7.80
+_.str.7.80:
 	.asciz	"Replying"
 
-	.section	.rodata._.str.8.52,"a",@progbits
+	.section	.rodata._.str.8.77,"a",@progbits
 	.balign	1
-	.local	_.str.8.52
-_.str.8.52:
+	.local	_.str.8.77
+_.str.8.77:
 	.asciz	"Connected"
 
 	.section	.rodata._switch.table.proto_run,"a",@progbits
 	.balign	1
 	.local	_switch.table.proto_run
 _switch.table.proto_run:
-	d24	_.str.5.53
-	d24	_.str.6.54
-	d24	_.str.7.55
+	d24	_.str.5.78
+	d24	_.str.6.79
+	d24	_.str.7.80
 
-	.section	.rodata._.str.59,"a",@progbits
+	.section	.rodata._.str.84,"a",@progbits
 	.balign	1
-	.local	_.str.59
-_.str.59:
+	.local	_.str.84
+_.str.84:
 	.asciz	"Cannot open this strip."
 
-	.section	.rodata._.str.1.60,"a",@progbits
+	.section	.rodata._.str.1.85,"a",@progbits
 	.balign	1
-	.local	_.str.1.60
-_.str.1.60:
+	.local	_.str.1.85
+_.str.1.85:
 	.asciz	"Re-sync it from the computer."
 
-	.section	.rodata._.str.2.63,"a",@progbits
+	.section	.rodata._.str.2.88,"a",@progbits
 	.balign	1
-	.local	_.str.2.63
-_.str.2.63:
+	.local	_.str.2.88
+_.str.2.88:
 	.asciz	"%u.%ux %u%%%s"
 
-	.section	.rodata._.str.3.61,"a",@progbits
+	.section	.rodata._.str.3.86,"a",@progbits
 	.balign	1
-	.local	_.str.3.61
-_.str.3.61:
+	.local	_.str.3.86
+_.str.3.86:
 	.asciz	" read"
 
-	.section	.rodata._.str.4.62,"a",@progbits
+	.section	.rodata._.str.4.87,"a",@progbits
 	.balign	1
-	.local	_.str.4.62
-_.str.4.62:
+	.local	_.str.4.87
+_.str.4.87:
 	.zero	1
 
 	.ident	"clang version 19.1.0 (https://github.com/CE-Programming/llvm-project ef28e9c54cd1333a6091ab2ffbd315b465fc5090)"
@@ -9805,12 +10466,14 @@ _.str.4.62:
 	.ident	"clang version 19.1.0 (https://github.com/CE-Programming/llvm-project ef28e9c54cd1333a6091ab2ffbd315b465fc5090)"
 	.section	".note.GNU-stack","",@progbits
 	.extern	__ldivu
+	.extern	_llvm.smin.i24
 	.extern	_llvm.lifetime.end.p0
 	.extern	_srl_Write
 	.extern	__ishru
 	.extern	__Unwind_SjLj_Unregister
 	.extern	__sor
 	.extern	_llvm.usub.sat.i16
+	.extern	__idivs
 	.extern	_kb_Scan
 	.extern	_usb_Init
 	.extern	_llvm.memset.p0.i64
@@ -9844,8 +10507,8 @@ _.str.4.62:
 	.extern	_os_ClrLCD
 	.extern	_llvm.stacksave.p0
 	.extern	_ti_Close
-	.extern	_llvm.lifetime.start.p0
 	.extern	_memcmp
+	.extern	_llvm.lifetime.start.p0
 	.extern	_llvm.umin.i16
 	.extern	__lshru
 	.extern	_gfx_Blit
@@ -9864,10 +10527,10 @@ _.str.4.62:
 	.extern	_gfx_FillRectangle_NoClip
 	.extern	__bshru
 	.extern	_gfx_PrintStringXY
-	.extern	_llvm.memset.p0.i24
-	.extern	_llvm.memcpy.p0.p0.i24
 	.extern	_gfx_SetColor
+	.extern	_llvm.memcpy.p0.p0.i24
 	.extern	_gfx_End
+	.extern	_llvm.memset.p0.i24
 	.extern	_llvm.eh.sjlj.setup.dispatch
 	.extern	_time
 	.extern	_srl_Open

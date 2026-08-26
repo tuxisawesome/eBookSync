@@ -4,6 +4,9 @@ set -e
 dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 root=$(CDPATH= cd -- "$dir/../.." && pwd)
 
+# ui.c includes about.h, which is generated from about.txt.
+sh "$root/tools/make_about.sh" "$root/about.txt" "$root/calc/src/about.h"
+
 common="$dir/shim/shim.c $dir/appvar.c"
 flags="-O1 -g -Wall -Wextra -std=c11 -I$dir/shim -I$root/calc/src -include $dir/shim/shim.h"
 
