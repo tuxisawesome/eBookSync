@@ -78,8 +78,8 @@ function fakeRender(text, maxWidth) {
   return { width, height: 16, packed: new Uint8Array(stride * 16).fill(0x1b) };
 }
 
-function startProbe(libraryDir) {
-  const args = libraryDir ? ['--lib', libraryDir] : [];
+function startProbe(libraryDir, extra = []) {
+  const args = (libraryDir ? ['--lib', libraryDir] : []).concat(extra);
   const child = spawn(join(HERE, 'usb_probe'), args, {
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -88,8 +88,8 @@ function startProbe(libraryDir) {
   return { child, getStderr: () => stderr };
 }
 
-async function session(libraryDir, body) {
-  const { child, getStderr } = startProbe(libraryDir);
+async function session(libraryDir, body, extra = []) {
+  const { child, getStderr } = startProbe(libraryDir, extra);
   const calculator = new Calculator(makePort(child));
   await calculator.open();
 
@@ -212,6 +212,40 @@ async function session(libraryDir, body) {
   check('unknown command is refused', result.refused, 1);
   check('the link survives it', result.stillAlive, 1);
   check('unknown-command session: link used correctly', status, 0);
+}
+
+/*
+ * --- a defragment in the middle of a sync ---------------------------------
+ *
+ * The OS defragments the archive when it runs out of room. It asks the user
+ * first, so it takes as long as it takes, and it moves every archived variable,
+ * which invalidates every pointer the reader is holding. Left unhandled the
+ * computer times out and abandons a strip half-written; handled badly, the
+ * reader carries on reading from where the index used to be.
+ */
+{
+  const chunk = Uint8Array.from({ length: 4096 }, (_, i) => i & 0xff);
+  let busy = 0;
+
+  const { result, status } = await session(null, async (calculator) => {
+    calculator.onBusy = () => { busy++; };
+
+    /* The forced collect fires on this chunk's archive. */
+    await calculator.putChunk(9, 0, chunk);
+
+    /* The link must still work afterwards, with everything re-fetched. */
+    return {
+      hello: (await calculator.hello()).version,
+      list: (await calculator.list()).length,
+      index: (await calculator.getIndex()).length,
+    };
+  }, ['--gc']);
+
+  check('a chunk written across a defragment is accepted', result.hello, 1);
+  check('the computer was told to keep waiting', busy >= 1, true);
+  check('the link still works afterwards', result.list >= 0, true);
+  check('cached pointers were refetched, not reused', result.index, 0);
+  check('defragment session: link used correctly', status, 0);
 }
 
 console.log(`${checks - failures}/${checks} usb protocol checks pass`);

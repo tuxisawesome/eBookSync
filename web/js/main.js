@@ -656,6 +656,15 @@ async function connect() {
     const calculator = await Calculator.request();
     await calculator.open();
 
+    /* The OS asks before defragmenting, so this can sit for a long time. Say
+     * what is happening rather than letting the page look wedged. */
+    calculator.onBusy = () => {
+      setStatus('The calculator is defragmenting its archive. Answer the prompt '
+        + 'on it to continue — this can take a while.', 'busy');
+      ui.progressStatus.textContent = 'Calculator is defragmenting — answer the '
+        + 'prompt on it. Waiting…';
+    };
+
     const hello = await calculator.hello(metaStore.libraryIdBytes(state.meta));
     state.calculator = calculator;
     state.library = hello.library;

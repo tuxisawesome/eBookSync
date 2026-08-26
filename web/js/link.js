@@ -27,12 +27,23 @@ const HEADER_SIZE = 8;
 const BAUD_RATE = 115200;
 
 /*
- * How long to wait for a reply before giving up. Archiving a chunk takes a
- * while and a garbage collect longer, so this is generous; it exists so a
- * calculator that is wedged or not on its Sync screen produces an error you can
- * act on rather than a page that waits forever.
+ * How long to wait for a reply before giving up.
+ *
+ * Long enough that a slow flash write does not look like a death, short enough
+ * that a calculator which is not on its Sync screen tells you so promptly.
  */
-const REPLY_TIMEOUT_MS = 20000;
+const REPLY_TIMEOUT_MS = 30000;
+
+/*
+ * How long to wait once the calculator has said it is busy.
+ *
+ * The OS defragments the archive when it runs out of room, and it asks the user
+ * to confirm first -- so this is bounded by a person noticing the calculator
+ * and pressing a key, not by anything technical. Giving up during that would
+ * abandon a strip half-written, leaving the two ends disagreeing about what is
+ * stored. Waiting is always the safer error.
+ */
+const BUSY_TIMEOUT_MS = 15 * 60 * 1000;
 
 export const CMD = {
   HELLO: 0x01,
@@ -45,6 +56,9 @@ export const CMD = {
   BYE: 0x08,
   RESET: 0x09,
 };
+
+/* Not a reply: "still alive, the OS is defragmenting". See docs/PROTOCOL.md. */
+const BUSY = 0xfe;
 
 /* What HELLO reports about the library already on the calculator. */
 export const LIBRARY = { EMPTY: 0, SAME: 1, DIFFERENT: 2 };
@@ -78,6 +92,9 @@ export class Calculator {
     this.seq = 0;
     this.reader = null;
     this.writer = null;
+    /* Called when the calculator says it is defragmenting, so the page can say
+     * so rather than looking stuck. */
+    this.onBusy = null;
     /* Whatever arrived but has not been consumed yet: a stream gives no
      * guarantee about where reads land relative to messages. */
     this.pending = new Uint8Array(0);
@@ -128,22 +145,22 @@ export class Calculator {
   }
 
   /* Reject rather than hang, so a wedged calculator is reportable. */
-  static #withTimeout(promise, what) {
+  static #withTimeout(promise, what, limit) {
     let timer;
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(
         () => reject(new Error(`the calculator did not respond to ${what} within `
-          + `${REPLY_TIMEOUT_MS / 1000}s -- check it is on the Sync screen`)),
-        REPLY_TIMEOUT_MS,
+          + `${Math.round(limit / 1000)}s -- check it is on the Sync screen`)),
+        limit,
       );
     });
     return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
   }
 
   /** Read exactly `length` bytes off the stream. */
-  async #receive(length, what) {
+  async #receive(length, what, limit = REPLY_TIMEOUT_MS) {
     while (this.pending.length < length) {
-      const { value, done } = await Calculator.#withTimeout(this.reader.read(), what);
+      const { value, done } = await Calculator.#withTimeout(this.reader.read(), what, limit);
       if (done) throw new Error('the calculator closed the connection');
       if (!value || !value.length) continue;
 
@@ -177,19 +194,37 @@ export class Calculator {
     message.set(payload, HEADER_SIZE);
     await this.#send(message);
 
-    const reply = await this.#receive(HEADER_SIZE, what);
-    const replyView = new DataView(reply.buffer);
-    const replyCmd = replyView.getUint8(0);
-    const replySeq = replyView.getUint8(1);
-    const status = replyView.getUint16(2, true);
-    const length = replyView.getUint32(4, true);
+    /*
+     * Read reply headers until the one for this request turns up.
+     *
+     * Two things can come first. A BUSY notice means the OS has started
+     * defragmenting the archive and is waiting on the user, so the wait becomes
+     * effectively unbounded -- abandoning it there is what would leave a strip
+     * half-written. And a reply carrying an older sequence number is the late
+     * answer to a request that already timed out, which is worth discarding
+     * quietly rather than treating as a fault.
+     */
+    let limit = REPLY_TIMEOUT_MS;
+    for (;;) {
+      const reply = await this.#receive(HEADER_SIZE, what, limit);
+      const replyView = new DataView(reply.buffer);
+      const replyCmd = replyView.getUint8(0);
+      const replySeq = replyView.getUint8(1);
+      const status = replyView.getUint16(2, true);
+      const length = replyView.getUint32(4, true);
 
-    if (replySeq !== seq) {
-      throw new Error(`out of step: expected reply ${seq}, got ${replySeq}`);
+      if (replyCmd === BUSY) {
+        limit = BUSY_TIMEOUT_MS;
+        if (this.onBusy) this.onBusy();
+        continue;
+      }
+
+      const body = length ? await this.#receive(length, what, limit) : new Uint8Array(0);
+
+      if (replySeq !== seq) continue;      /* a stale answer; keep looking */
+      if (status !== 0) throw new ProtocolError(replyCmd, status);
+      return body;
     }
-    const body = length ? await this.#receive(length, what) : new Uint8Array(0);
-    if (status !== 0) throw new ProtocolError(replyCmd, status);
-    return body;
   }
 
   /**

@@ -470,6 +470,11 @@ static void sync_draw(void) {
     sprintf(line, "open %u loops %u", proto_open_error(), (unsigned)proto_loops());
     sync_line(6, line);
 
+    if (proto_collections()) {
+        sprintf(line, "defragmented %u time(s)", proto_collections());
+        sync_line(4, line);
+    }
+
     if (proto_library_state() == PROTO_LIBRARY_DIFFERENT) {
         sync_line(7, "Different library! del=erase");
     } else {

@@ -10,6 +10,7 @@
  */
 
 #include "proto.h"
+#include "fileioc.h"
 #include "library.h"
 #include "usbdrvce.h"
 
@@ -47,6 +48,17 @@ int main(int argc, char **argv) {
     /* main.c maps the index at startup, before ever reaching the sync screen,
      * and LIST reports what it found. Do the same here. */
     lib_open();
+
+    /*
+     * With --gc, the next archive triggers a defragment. The OS does that
+     * whenever it runs out of room, it asks the user first so it takes as long
+     * as it takes, and it moves every archived variable -- which invalidates
+     * every pointer the reader is holding.
+     */
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--gc") == 0)
+            shim_force_gc();
+    }
 
     bool ok = proto_run(progress, false);
 

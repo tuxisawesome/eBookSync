@@ -438,6 +438,74 @@ static void pump(void) {
     }
 }
 
+/* --------------------------------------------------------- garbage collect */
+
+/*
+ * The OS defragments the archive when it runs out of room, and it asks the user
+ * first -- so this takes as long as it takes, and there is no upper bound on
+ * it. Left alone, the computer would decide the calculator had died, give up
+ * part-way through sending a strip, and leave the two disagreeing about what is
+ * stored.
+ *
+ * So: say so before it starts, and repair the damage afterwards.
+ */
+
+static uint8_t gc_count;
+
+uint8_t proto_collections(void) { return gc_count; }
+
+/* Push a few bytes out with a hard cap on effort, since this runs at a moment
+ * when nothing else can. */
+static void send_now(const uint8_t *bytes, size_t length) {
+    for (unsigned attempts = 0; attempts < 4096 && length; attempts++) {
+        usb_HandleEvents();
+
+        int sent = srl_Write(&serial, bytes, length);
+        if (sent < 0)
+            return;
+        bytes += sent;
+        length -= (size_t)sent;
+    }
+}
+
+static void gc_before(void) {
+    gc_count++;
+
+    if (!serial_open)
+        return;
+
+    /* Same shape as a reply header, so the computer's reader can recognise it
+     * without any special framing. */
+    uint8_t notice[PROTO_HEADER_SIZE];
+    notice[0] = PROTO_BUSY;
+    notice[1] = sequence;
+    put16(notice + 2, PROTO_OK);
+    notice[4] = notice[5] = notice[6] = notice[7] = 0;
+    send_now(notice, sizeof notice);
+}
+
+static void gc_after(void) {
+    /*
+     * Every pointer from ti_GetDataPtr is meaningless now -- the collect moved
+     * the variables it was pointing into. Fetch them again.
+     */
+    lib_open();
+
+    cached_index = NULL;
+    cached_index_size = 0;
+
+    uint8_t handle = ti_Open(LIB_NAME, "r");
+    if (handle) {
+        cached_index_size = (uint16_t)ti_GetSize(handle);
+        cached_index = ti_GetDataPtr(handle);
+        ti_Close(handle);
+    }
+
+    /* And the free space it just recovered is different. */
+    os_ArcChk();
+    cached_archive_free = os_TempFreeArc;
+}
+
 /* ------------------------------------------------------------------ events */
 
 static usb_error_t handle_event(usb_event_t event, void *event_data,
@@ -530,6 +598,8 @@ bool proto_run(proto_progress_t progress, bool echo_only) {
     library_state = PROTO_LIBRARY_EMPTY;
 
     gather_state();
+    gc_count = 0;
+    ti_SetGCBehavior(gc_before, gc_after);
 
     /* The band cache has been handed back by now, so there is room. */
     payload = malloc(CSX_CHUNK_SIZE);
@@ -537,6 +607,7 @@ bool proto_run(proto_progress_t progress, bool echo_only) {
     if (usb_Init(handle_event, NULL, srl_GetCDCStandardDescriptors(),
                  USB_DEFAULT_INIT_FLAGS) != USB_SUCCESS) {
         usb_Cleanup();
+        ti_SetGCBehavior(NULL, NULL);
         free(payload);
         payload = NULL;
         return false;
@@ -568,6 +639,7 @@ bool proto_run(proto_progress_t progress, bool echo_only) {
     }
 
     usb_Cleanup();
+    ti_SetGCBehavior(NULL, NULL);
     free(payload);
     payload = NULL;
     return true;

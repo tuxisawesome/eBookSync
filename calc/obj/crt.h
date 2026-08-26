@@ -46,6 +46,10 @@ _ti_GetSize:
 	.type _ti_GetDataPtr, @function
 _ti_GetDataPtr:
 	jp 54
+	.global _ti_SetGCBehavior
+	.type _ti_SetGCBehavior, @function
+_ti_SetGCBehavior:
+	jp 105
 	.global __libload_library_GRAPHX
 	.type __libload_library_GRAPHX, @object
 __libload_library_GRAPHX:

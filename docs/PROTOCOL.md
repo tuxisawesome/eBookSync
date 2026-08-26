@@ -142,6 +142,32 @@ A `LIST` strip record is the on-calculator state of one strip:
 13 1  layer        saved zoom layer
 ```
 
+## Defragmenting
+
+The OS defragments the archive when it runs out of room, and it may decide to do
+so on any archive write -- so, during a sync, on any `PUT_CHUNK`. Two things
+follow, and both have teeth.
+
+**It asks the user first.** The prompt waits for a keypress, so the operation
+takes as long as it takes. A computer that gives up during it abandons a strip
+half-written and the two ends stop agreeing about what is stored. So before the
+collect starts, the calculator sends a header with cmd `0xFE`, `PROTO_BUSY`,
+carrying the sequence number of the request in flight. It is a notice, not a
+reply: the computer treats it as "still alive", stretches its patience to
+fifteen minutes and keeps reading. `web/js/link.js` reads reply headers in a
+loop for exactly this reason.
+
+**It moves every archived variable.** Every pointer from `ti_GetDataPtr` is
+meaningless afterwards -- the cached library index, and the chunk pointers a
+strip is being read from. `ti_SetGCBehavior` installs a handler that maps them
+all again, and re-reads the free space the collect just recovered. The menus
+install their own pair as well, which also hands the LCD back to the OS so the
+prompt can draw over graphx's 8bpp mode and restores it afterwards.
+
+A late reply -- the answer to a request the computer already gave up on -- is
+discarded rather than treated as a fault, so a link that does get out of step
+recovers on its own instead of failing every command after it.
+
 ## Status codes
 
 `0` OK, `1` unknown command, `2` bad length, `3` not enough archive space,

@@ -11,6 +11,10 @@ int ti_Seek(int offset, unsigned origin, uint8_t handle);
 size_t ti_Write(const void *data, size_t size, size_t count, uint8_t handle);
 int ti_SetArchiveStatus(bool archive, uint8_t handle);
 uint16_t ti_GetSize(uint8_t handle);
+void ti_SetGCBehavior(void (*before)(void), void (*after)(void));
+
+/* Make the shim run a collect on the next archive, to test the handlers. */
+void shim_force_gc(void);
 bool ti_ArchiveHasRoom(uint24_t num_bytes);
 
 /* Pretend the archive is this big, so the reader's free-space probe has

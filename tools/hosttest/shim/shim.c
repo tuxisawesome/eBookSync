@@ -129,8 +129,26 @@ size_t ti_Write(const void *data, size_t size, size_t count, uint8_t handle) {
     return count;
 }
 
+static void (*gc_before_hook)(void);
+static void (*gc_after_hook)(void);
+static bool gc_pending;
+
+void ti_SetGCBehavior(void (*before)(void), void (*after)(void)) {
+    gc_before_hook = before;
+    gc_after_hook = after;
+}
+
+void shim_force_gc(void) { gc_pending = true; }
+
 int ti_SetArchiveStatus(bool archive, uint8_t handle) {
     COUNT_OS_CALL();
+
+    /* Archiving is where the OS decides it needs to defragment. */
+    if (gc_pending) {
+        gc_pending = false;
+        if (gc_before_hook) gc_before_hook();
+        if (gc_after_hook) gc_after_hook();
+    }
     (void)archive;
     (void)handle;
     return 1;

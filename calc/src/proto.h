@@ -37,6 +37,15 @@ typedef enum {
     PROTO_SPACE      = 0x07,   /* -> free archive space */
     PROTO_BYE        = 0x08,   /* <- leave sync mode */
     PROTO_RESET      = 0x09,   /* <- delete the whole library */
+
+    /*
+     * Not a command: an unprompted notice that the calculator is about to be
+     * busy for an unknown length of time, because the OS has decided to
+     * defragment the archive and is asking the user to confirm it. Sent with
+     * the sequence number of the request in progress. The computer must treat
+     * it as "still alive, keep waiting" rather than as the reply.
+     */
+    PROTO_BUSY       = 0xFE,
 } proto_cmd_t;
 
 /* What HELLO says about the library already on the calculator. */
@@ -114,6 +123,7 @@ uint8_t proto_open_error(void);      /* last srl_Open result */
 uint24_t proto_loops(void);
 uint24_t proto_bytes(void);   /* payload bytes moved this session */
 uint8_t proto_library_state(void);  /* proto_library_t, as of the last HELLO */
+uint8_t proto_collections(void);    /* archive defragments during this session */
 
 
 #endif /* PROTO_H */
