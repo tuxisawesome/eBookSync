@@ -164,6 +164,12 @@ void gfx_Begin(void) {}
 void gfx_End(void) {}
 void gfx_SetDraw(uint8_t location) { (void)location; }
 
+/* --------------------------------------------------------------- OS display */
+
+void shim_os_clr_home(void) {}
+void os_SetCursorPos(uint8_t row, uint8_t col) { (void)row; (void)col; }
+uint24_t os_PutStrFull(const char *string) { (void)string; return 0; }
+
 /* ------------------------------------------------------------------- keypad */
 
 #include "keys.h"

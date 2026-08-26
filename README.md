@@ -119,6 +119,11 @@ is on the calculator removes it from the calculator too, on the next sync.
 Run `COMICS`, press `2nd` on the book list to reach the Sync screen, plug in the
 cable, and press **Connect calculator** on the page.
 
+The sync screen is plain text on the homescreen rather than the reader's own
+graphics. That is deliberate: the USB controller and the LCD contend for the
+memory bus, and USB loses whenever graphx has the LCD in its 8bpp mode.
+`docs/PROTOCOL.md` has the details.
+
 ## Reading
 
 | key | |

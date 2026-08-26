@@ -83,6 +83,23 @@ payload and reply do use blocking transfers.
 `tools/hosttest/check_usb.mjs` runs both ends against a model of these rules and
 fails on any overflow.
 
+## graphx has to be off
+
+usbdrvce notes that a transfer fails with `USB_TRANSFER_BUS_ERROR` when
+"non-default cpu speed or lcd parameters are in effect". `gfx_Begin()` puts the
+LCD into 8bpp palettised mode, which is precisely such a parameter change: the
+LCD and the USB controller contend for the memory bus, and in that mode USB
+loses.
+
+With graphx running, the sync loop froze **inside `usb_HandleEvents()`** with no
+transfer ever completing and no error ever reported. `srl_echo`, the one
+device-mode program in the toolchain that is known to work, makes no graphx
+calls at all and runs on the homescreen.
+
+So `ui_sync_screen()` calls `gfx_End()` before touching USB, draws its status on
+the OS text display, and calls `gfx_Begin()` again afterwards. The phase marker
+writes 16bpp pixels straight into video memory for the same reason.
+
 ## The keypad, of all things
 
 `kb_Scan()` disables interrupts while it runs. Scanning once per frame in a menu

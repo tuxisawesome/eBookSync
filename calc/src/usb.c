@@ -15,7 +15,6 @@
 #include "library.h"
 
 #include <fileioc.h>
-#include <graphx.h>
 #include <string.h>
 #include <tice.h>
 #include <usbdrvce.h>
@@ -552,13 +551,29 @@ uint8_t proto_schedule_error(void) { return (uint8_t)schedule_error; }
 uint24_t proto_loops(void) { return loop_count; }
 
 /*
- * Drawn straight to the visible screen, which during sync is also the drawing
- * target -- see ui_sync_screen. It appears immediately and survives the loop
- * stopping, which is the whole point of it.
+ * Written straight into video memory, in the OS's own 16bpp layout.
+ *
+ * graphx is shut down for the duration of a sync (see ui_sync_screen), so this
+ * cannot go through it -- and going through nothing is the point anyway: it
+ * appears immediately and survives the loop stopping dead, which is what it is
+ * for.
  */
 void proto_mark(uint8_t phase) {
-    gfx_SetColor(phase);
-    gfx_FillRectangle_NoClip(GFX_LCD_WIDTH - 14, 2, 12, 12);
+    static const uint16_t colours[] = {
+        0xF800,   /* red    -- inside usb_HandleEvents */
+        0xFFE0,   /* yellow -- inside usb_ScheduleTransfer */
+        0x07E0,   /* green  -- reading the keypad */
+        0x001F,   /* blue   -- drawing */
+    };
+    if (phase >= sizeof colours / sizeof *colours)
+        return;
+
+    uint16_t *vram = (uint16_t *)0xD40000;
+    for (uint8_t y = 0; y < 12; y++) {
+        uint16_t *row = vram + (uint24_t)y * 320 + (320 - 14);
+        for (uint8_t x = 0; x < 12; x++)
+            row[x] = colours[phase];
+    }
 }
 
 bool proto_run(proto_progress_t progress) {
