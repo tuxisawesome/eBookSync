@@ -98,4 +98,16 @@ uint8_t proto_schedule_error(void); /* last usb_ScheduleTransfer result */
  */
 uint24_t proto_loops(void);
 
+/*
+ * Phase marker: paints a square straight onto the visible screen so that a loop
+ * which stops dead still says where it stopped. The periodic redraw cannot do
+ * that -- it only runs if the loop is still going.
+ */
+#define PROTO_PHASE_EVENTS   253   /* red    -- inside usb_HandleEvents */
+#define PROTO_PHASE_SCHEDULE 254   /* yellow -- inside usb_ScheduleTransfer */
+#define PROTO_PHASE_UI       255   /* green  -- inside the progress callback */
+#define PROTO_PHASE_DRAW     252   /* blue   -- inside the redraw */
+
+void proto_mark(uint8_t phase);
+
 #endif /* PROTO_H */

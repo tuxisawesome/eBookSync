@@ -44,6 +44,7 @@ uint8_t proto_last_command(void) { return 0; }
 uint16_t proto_errors(void) { return 0; }
 uint8_t proto_schedule_error(void) { return 0; }
 uint24_t proto_loops(void) { return 0; }
+void proto_mark(uint8_t phase) { (void)phase; }
 
 static const struct { const char *name; kb_lkey_t key; } KEYS[] = {
     { "up", kb_KeyUp }, { "down", kb_KeyDown }, { "left", kb_KeyLeft },

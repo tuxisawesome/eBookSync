@@ -43,6 +43,11 @@ void ui_set_chrome_palette(void) {
     set_rgb(UI_DIM, 150, 150, 150);
     set_rgb(UI_SELECT_BG, 198, 218, 255);
 
+    /* Phase marker colours; see proto_mark. */
+    set_rgb(PROTO_PHASE_EVENTS, 220, 40, 40);
+    set_rgb(PROTO_PHASE_SCHEDULE, 230, 190, 40);
+    set_rgb(PROTO_PHASE_UI, 40, 190, 80);
+
     set_ramp(UI_TEXT_RAMP, 248, 248, 248, 24, 24, 24);
     set_ramp(UI_TEXT_RAMP_SEL, 198, 218, 255, 16, 24, 48);
 }
@@ -323,8 +328,9 @@ static void sync_draw(void) {
             (unsigned)proto_loops());
     gfx_PrintStringXY(line, 10, 128);
 
+    gfx_PrintStringXY("corner: red=usb yel=sched grn=keys blu=draw", 10, 146);
+
     ui_footer("clear  stop syncing");
-    gfx_SwapDraw();
 }
 
 /* Called from the protocol loop between requests. Returning false stops it. */
@@ -356,8 +362,10 @@ static bool sync_progress(const char *state, uint8_t slot, uint8_t chunk,
     if ((proto_loops() & 0x7FF) == 0)
         changed = true;
 
-    if (changed)
+    if (changed) {
+        proto_mark(PROTO_PHASE_DRAW);
         sync_draw();
+    }
 
     input_scan();
     return !input_pressed(kb_KeyClear);
@@ -367,6 +375,19 @@ void ui_sync_screen(void) {
     sync_chunks_received = 0;
     snprintf(sync_state, sizeof sync_state, "Starting...");
     input_reset();
+
+    /*
+     * Draw straight to the visible screen for the whole session, with no
+     * double buffering.
+     *
+     * gfx_SwapDraw() does not block, but the first drawing call of the *next*
+     * frame does: it waits for the queued swap to be picked up between LCD
+     * refreshes. In a loop that also drives USB that is a hazard -- usbdrvce
+     * warns that USB and the LCD contend, and a swap that is never picked up
+     * turns the next redraw into a permanent stall with no way out but the
+     * reset button. Nothing here animates, so the buffering buys nothing.
+     */
+    gfx_SetDraw(gfx_screen);
     sync_draw();
 
     /* The sync loop spins as fast as it can, and kb_Scan() disables interrupts
@@ -375,6 +396,8 @@ void ui_sync_screen(void) {
     input_begin_continuous();
     bool ok = proto_run(sync_progress);
     input_end_continuous();
+
+    gfx_SetDrawBuffer();
 
     if (!ok)
         ui_message("Could not take over USB.", "Unplug the cable and retry.");

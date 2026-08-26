@@ -15,6 +15,7 @@
 #include "library.h"
 
 #include <fileioc.h>
+#include <graphx.h>
 #include <string.h>
 #include <tice.h>
 #include <usbdrvce.h>
@@ -550,6 +551,16 @@ uint16_t proto_errors(void) { return receive_errors; }
 uint8_t proto_schedule_error(void) { return (uint8_t)schedule_error; }
 uint24_t proto_loops(void) { return loop_count; }
 
+/*
+ * Drawn straight to the visible screen, which during sync is also the drawing
+ * target -- see ui_sync_screen. It appears immediately and survives the loop
+ * stopping, which is the whole point of it.
+ */
+void proto_mark(uint8_t phase) {
+    gfx_SetColor(phase);
+    gfx_FillRectangle_NoClip(GFX_LCD_WIDTH - 14, 2, 12, 12);
+}
+
 bool proto_run(proto_progress_t progress) {
     requests_handled = 0;
     last_command = 0;
@@ -572,6 +583,8 @@ bool proto_run(proto_progress_t progress) {
 
     while (!finished) {
         loop_count++;
+
+        proto_mark(PROTO_PHASE_EVENTS);
         usb_HandleEvents();
 
         if (link_lost) {
@@ -583,6 +596,7 @@ bool proto_run(proto_progress_t progress) {
 
         /* Keep exactly one idle receive outstanding. */
         if (configured && !header_posted && !header_ready) {
+            proto_mark(PROTO_PHASE_SCHEDULE);
             usb_endpoint_t out_ep = endpoint(PROTO_EP_OUT);
             schedule_error = out_ep
                 ? usb_ScheduleTransfer(out_ep, request_header, sizeof request_header,
@@ -598,6 +612,7 @@ bool proto_run(proto_progress_t progress) {
                 configured = false;
         }
 
+        proto_mark(PROTO_PHASE_UI);
         if (progress && !progress(configured ? "Connected" : "Waiting for computer",
                                   0, 0, 0))
             break;

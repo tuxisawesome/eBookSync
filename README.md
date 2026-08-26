@@ -54,7 +54,8 @@ around 50 KB of free RAM. That drives everything:
 - **The [CE C/C++ toolchain](https://ce-programming.github.io/toolchain/)** to
   build the reader.
 - On Windows, [Zadig](https://zadig.akeo.ie/) to bind WinUSB to the calculator
-  while it is on its Sync screen. See `docs/PROTOCOL.md` for why.
+  while it is on its Sync screen. See `docs/PROTOCOL.md` for why. macOS and
+  Linux need no driver for a vendor-class interface.
 - On Linux, a udev rule so the browser may open the calculator:
 
   ```
