@@ -24,3 +24,5 @@ __pycache__/
 # Converter output: comics, not source.
 out/
 *.8xv
+
+about.txt
