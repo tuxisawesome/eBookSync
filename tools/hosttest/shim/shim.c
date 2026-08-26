@@ -171,6 +171,7 @@ void gfx_SetDraw(uint8_t location) { (void)location; }
 #define MAX_FRAMES 8192
 
 uint16_t shim_kb_data[8];
+uint8_t shim_kb_config;
 
 static uint16_t script[MAX_FRAMES][8];
 static int script_length;

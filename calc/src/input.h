@@ -11,6 +11,19 @@
 
 void input_reset(void);
 
+/*
+ * Switch the keypad to scanning itself, and back.
+ *
+ * kb_Scan() disables interrupts while it runs. That is harmless in a menu that
+ * scans once per frame, and fatal in the sync loop, which spins as fast as it
+ * can right next to an interrupt-driven USB driver: the driver never gets its
+ * interrupts, transfers never complete, and the keypad looks dead into the
+ * bargain. In continuous mode the keypad controller scans on its own and
+ * input_scan() just reads the result, touching no interrupts at all.
+ */
+void input_begin_continuous(void);
+void input_end_continuous(void);
+
 /* Sample the keypad. Call once per frame. */
 void input_scan(void);
 

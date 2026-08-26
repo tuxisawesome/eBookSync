@@ -67,6 +67,10 @@ static uint8_t stream[STREAM_BUFFER];
  * Once a header has arrived the computer is mid-exchange and committed to
  * sending the rest, so the payload and the reply can use blocking transfers.
  */
+static uint16_t requests_handled;
+static uint8_t last_command;
+static uint16_t receive_errors;
+
 static uint8_t request_header[PROTO_HEADER_SIZE];
 static volatile bool header_posted;
 static volatile bool header_ready;
@@ -469,6 +473,9 @@ static bool handle_request(proto_progress_t progress) {
     uint8_t cmd = header[0];
     uint8_t seq = header[1];
     uint16_t arg = (uint16_t)header[2] | ((uint16_t)header[3] << 8);
+
+    requests_handled++;
+    last_command = cmd;
     uint32_t length = (uint32_t)header[4] | ((uint32_t)header[5] << 8)
                     | ((uint32_t)header[6] << 16) | ((uint32_t)header[7] << 24);
 
@@ -574,13 +581,23 @@ static usb_error_t request_arrived(usb_endpoint_t endpoint, usb_transfer_status_
         header_ready = true;
     } else if (status & (USB_TRANSFER_NO_DEVICE | USB_TRANSFER_CANCELLED)) {
         link_lost = true;
+    } else {
+        receive_errors++;
     }
     /* Anything else -- a stall, a bus error -- just means no request this time;
      * the loop posts another receive. */
     return USB_SUCCESS;
 }
 
+uint16_t proto_requests(void) { return requests_handled; }
+uint8_t proto_last_command(void) { return last_command; }
+uint16_t proto_errors(void) { return receive_errors; }
+
 bool proto_run(proto_progress_t progress) {
+    requests_handled = 0;
+    last_command = 0;
+    receive_errors = 0;
+
     host_device = NULL;
     endpoint_in = endpoint_out = NULL;
     configured = false;

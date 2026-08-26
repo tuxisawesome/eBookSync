@@ -38,6 +38,11 @@ bool proto_run(proto_progress_t progress) {
     return true;
 }
 
+/* The sync screen displays these; the protocol itself is check_usb.mjs's job. */
+uint16_t proto_requests(void) { return 0; }
+uint8_t proto_last_command(void) { return 0; }
+uint16_t proto_errors(void) { return 0; }
+
 static const struct { const char *name; kb_lkey_t key; } KEYS[] = {
     { "up", kb_KeyUp }, { "down", kb_KeyDown }, { "left", kb_KeyLeft },
     { "right", kb_KeyRight }, { "enter", kb_KeyEnter }, { "clear", kb_KeyClear },

@@ -5,6 +5,16 @@ typedef uint16_t kb_lkey_t;
 extern uint16_t shim_kb_data[8];
 #define kb_Data shim_kb_data
 void kb_Scan(void);
+
+extern uint8_t shim_kb_config;
+#define kb_Config shim_kb_config
+#define kb_SetMode(mode) (kb_Config = (uint8_t)((kb_Config & ~3) | (mode)))
+typedef enum {
+    MODE_0_IDLE = 0,
+    MODE_1_INDISCRIMINATE,
+    MODE_2_SINGLE,
+    MODE_3_CONTINUOUS
+} kb_scan_mode_t;
 #define kb_KeyUp    ((kb_lkey_t)(7 << 8 | 1<<3))
 #define kb_KeyDown  ((kb_lkey_t)(7 << 8 | 1<<0))
 #define kb_KeyLeft  ((kb_lkey_t)(7 << 8 | 1<<1))

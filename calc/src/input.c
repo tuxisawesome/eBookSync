@@ -10,6 +10,7 @@ static uint8_t current[8];
 static uint8_t previous[8];
 static kb_lkey_t repeat_key;
 static unsigned repeat_frames;
+static bool continuous;
 
 void input_reset(void) {
     /*
@@ -18,7 +19,8 @@ void input_reset(void) {
      * main() starts -- zeroing would make the next scan look like a fresh press
      * and open whatever the menu happened to be pointing at.
      */
-    kb_Scan();
+    if (!continuous)
+        kb_Scan();
     for (uint8_t group = 1; group < 8; group++)
         current[group] = (uint8_t)kb_Data[group];
     memcpy(previous, current, sizeof previous);
@@ -27,9 +29,22 @@ void input_reset(void) {
     repeat_frames = 0;
 }
 
+void input_begin_continuous(void) {
+    kb_SetMode(MODE_3_CONTINUOUS);
+    continuous = true;
+}
+
+void input_end_continuous(void) {
+    continuous = false;
+    kb_SetMode(MODE_0_IDLE);
+}
+
 void input_scan(void) {
     memcpy(previous, current, sizeof previous);
-    kb_Scan();
+    /* In continuous mode the controller has already done the scanning, and
+     * calling kb_Scan() here would disable interrupts for no reason. */
+    if (!continuous)
+        kb_Scan();
     for (uint8_t group = 1; group < 8; group++)
         current[group] = (uint8_t)kb_Data[group];
 }

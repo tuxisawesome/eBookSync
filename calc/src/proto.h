@@ -79,4 +79,15 @@ typedef bool (*proto_progress_t)(const char *state, uint8_t slot, uint8_t chunk,
 
 bool proto_run(proto_progress_t progress);
 
+/*
+ * Counters the sync screen puts on display.
+ *
+ * Not decoration: when a sync stalls, the difference between "no request ever
+ * arrived", "requests arrive but replies fail" and "the link dropped" is the
+ * whole diagnosis, and there is no other way to see it on a calculator.
+ */
+uint16_t proto_requests(void);      /* requests handled */
+uint8_t proto_last_command(void);   /* the most recent one */
+uint16_t proto_errors(void);        /* failed receives on the idle wait */
+
 #endif /* PROTO_H */

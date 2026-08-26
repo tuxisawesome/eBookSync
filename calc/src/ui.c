@@ -309,10 +309,15 @@ static void sync_draw(void) {
     gfx_SetTextBGColor(UI_BG);
     gfx_PrintStringXY(sync_state, 10, 70);
 
-    char line[40];
+    char line[48];
     sprintf(line, "%u chunks received", sync_chunks_received);
     gfx_SetTextFGColor(UI_DIM);
     gfx_PrintStringXY(line, 10, 92);
+
+    /* Enough to tell a link that never speaks from one that speaks and fails. */
+    sprintf(line, "requests %u  last cmd %u  errors %u",
+            proto_requests(), proto_last_command(), proto_errors());
+    gfx_PrintStringXY(line, 10, 110);
 
     ui_footer("clear  stop syncing");
     gfx_SwapDraw();
@@ -333,6 +338,15 @@ static bool sync_progress(const char *state, uint8_t slot, uint8_t chunk,
         sync_chunks_received++;
         changed = true;
     }
+
+    /* Redraw when the link does something, but not on every spin of the loop:
+     * drawing is far slower than the loop and would starve the USB polling. */
+    static uint16_t drawn_requests;
+    if (proto_requests() != drawn_requests) {
+        drawn_requests = proto_requests();
+        changed = true;
+    }
+
     if (changed)
         sync_draw();
 
@@ -346,7 +360,14 @@ void ui_sync_screen(void) {
     input_reset();
     sync_draw();
 
-    if (!proto_run(sync_progress))
+    /* The sync loop spins as fast as it can, and kb_Scan() disables interrupts
+     * every time it is called -- which starves the USB driver of the interrupts
+     * it needs. Let the keypad controller scan itself for the duration. */
+    input_begin_continuous();
+    bool ok = proto_run(sync_progress);
+    input_end_continuous();
+
+    if (!ok)
         ui_message("Could not take over USB.", "Unplug the cable and retry.");
 
     /* usb_Cleanup leaves the LCD alone, but the palette is ours to restore. */

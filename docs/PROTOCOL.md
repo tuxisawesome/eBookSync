@@ -75,6 +75,24 @@ payload and reply do use blocking transfers.
 `tools/hosttest/check_usb.mjs` runs both ends against a model of these rules and
 fails on any overflow.
 
+## The keypad, of all things
+
+`kb_Scan()` disables interrupts while it runs. Scanning once per frame in a menu
+is fine; doing it in the sync loop, which spins as fast as it can, is not -- the
+USB driver is interrupt-driven, and a loop that keeps switching interrupts off
+starves it. Transfers stop completing, the computer times out waiting for a
+reply, and the keypad looks dead too, so there is no way out but the reset
+button.
+
+The sync screen therefore puts the keypad in `MODE_3_CONTINUOUS` for the
+duration: the controller scans by itself and the loop only reads `kb_Data`,
+touching no interrupts. See `input_begin_continuous()`.
+
+The screen also shows how many requests have been handled, the last command
+byte, and how many receives failed. When a sync stalls, the difference between
+"nothing ever arrived", "requests arrive but replies fail" and "the link
+dropped" is the entire diagnosis, and there is nowhere else to see it.
+
 ## Commands
 
 | cmd | name | payload | reply |
