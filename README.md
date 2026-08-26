@@ -53,6 +53,8 @@ around 50 KB of free RAM. That drives everything:
   and covers OS 5.6.5 and 5.8.3. OS 5.3 and earlier need nothing.
 - **The [CE C/C++ toolchain](https://ce-programming.github.io/toolchain/)** to
   build the reader.
+- On Windows, [Zadig](https://zadig.akeo.ie/) to bind WinUSB to the calculator
+  while it is on its Sync screen. See `docs/PROTOCOL.md` for why.
 - On Linux, a udev rule so the browser may open the calculator:
 
   ```

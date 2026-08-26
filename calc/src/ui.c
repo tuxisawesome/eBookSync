@@ -319,7 +319,8 @@ static void sync_draw(void) {
             proto_requests(), proto_last_command(), proto_errors());
     gfx_PrintStringXY(line, 10, 110);
 
-    sprintf(line, "schedule %u", proto_schedule_error());
+    sprintf(line, "schedule %u  loops %u", proto_schedule_error(),
+            (unsigned)proto_loops());
     gfx_PrintStringXY(line, 10, 128);
 
     ui_footer("clear  stop syncing");
@@ -349,6 +350,11 @@ static bool sync_progress(const char *state, uint8_t slot, uint8_t chunk,
         drawn_requests = proto_requests();
         changed = true;
     }
+
+    /* A slow heartbeat, so the loop counter on screen visibly moves while the
+     * loop is alive. If it stops, the loop is stuck rather than waiting. */
+    if ((proto_loops() & 0x7FF) == 0)
+        changed = true;
 
     if (changed)
         sync_draw();

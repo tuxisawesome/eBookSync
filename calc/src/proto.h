@@ -91,4 +91,11 @@ uint8_t proto_last_command(void);   /* the most recent one */
 uint16_t proto_errors(void);        /* failed receives on the idle wait */
 uint8_t proto_schedule_error(void); /* last usb_ScheduleTransfer result */
 
+/*
+ * Times round the sync loop. Shown as a live counter, because a static screen
+ * cannot tell you whether the loop is wedged or merely idle -- and those need
+ * completely different fixes.
+ */
+uint24_t proto_loops(void);
+
 #endif /* PROTO_H */

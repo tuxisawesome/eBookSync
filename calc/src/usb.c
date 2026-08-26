@@ -19,17 +19,6 @@
 #include <tice.h>
 #include <usbdrvce.h>
 
-/* Vendor request codes we pick ourselves; the host learns them from the BOS
- * descriptor and the Microsoft OS descriptor respectively. */
-#define VENDOR_CODE_WEBUSB   0x21
-#define VENDOR_CODE_MSOS     0x22
-
-#define BOS_DESCRIPTOR_TYPE  0x0F
-#define MSOS_DESCRIPTOR_INDEX 0x07
-
-/* Set header (10) + configuration subset (8) + function subset (8) +
- * compatible ID (20). */
-#define MSOS_TOTAL_LENGTH    46
 
 /*
  * Retries for the blocking transfers used *inside* a command, once its header
@@ -71,6 +60,7 @@ static uint16_t requests_handled;
 static uint8_t last_command;
 static uint16_t receive_errors;
 static usb_error_t schedule_error;
+static uint24_t loop_count;
 
 /* A whole packet, not just the 8 header bytes: see read_exact. */
 static uint8_t request_header[PROTO_PACKET_SIZE];
@@ -78,18 +68,29 @@ static volatile bool header_posted;
 static volatile bool header_ready;
 static volatile bool link_lost;
 
-/* Control responses are answered from an event callback, so they need a buffer
- * of their own that stays put until the transfer completes. */
-static uint8_t setup_buffer[64];
 
 /* ------------------------------------------------------------- descriptors */
 
 static const usb_device_descriptor_t device_descriptor = {
     .bLength = 18,
     .bDescriptorType = USB_DEVICE_DESCRIPTOR,
-    /* 2.1 rather than 2.0: it is what makes the host ask for the BOS
-     * descriptor, and without that there is no WebUSB and no WinUSB binding. */
-    .bcdUSB = 0x0210,
+    /*
+     * Plain USB 2.0, deliberately.
+     *
+     * Declaring 2.1 makes the host ask for a BOS descriptor, which is how a
+     * device advertises WebUSB and asks Windows to bind WinUSB automatically.
+     * Answering it means handling a control request by hand, and getting that
+     * wrong wedges the control pipe the instant the host asks -- which is
+     * exactly what happened. Answering it correctly needs
+     * usb_ScheduleControlTransfer(), which takes the setup packet, and not
+     * usb_ScheduleTransfer(), which does not.
+     *
+     * None of it is needed to talk to the device: Chrome will open any
+     * vendor-class interface the user picks. It only buys automatic driver
+     * binding on Windows, where Zadig is the fallback. Worth doing properly one
+     * day; not worth a wedged calculator today.
+     */
+    .bcdUSB = 0x0200,
     .bDeviceClass = 0,
     .bDeviceSubClass = 0,
     .bDeviceProtocol = 0,
@@ -145,52 +146,6 @@ static const usb_standard_descriptors_t descriptors = {
     .langids = (const usb_string_descriptor_t *)langids,
     .numStrings = 2,
     .strings = strings,
-};
-
-/*
- * BOS: one WebUSB platform capability and one Microsoft OS 2.0 platform
- * capability. The first tells Chrome the device is WebUSB-aware and which
- * vendor request returns its landing page; the second tells Windows to ask for
- * a descriptor set that names WinUSB as the compatible driver, so the device
- * binds itself with no user action.
- */
-static const uint8_t bos_descriptor[] = {
-    5, BOS_DESCRIPTOR_TYPE, 57, 0, 2,          /* two capabilities */
-
-    /* WebUSB platform capability */
-    24, 0x10, 0x05, 0x00,
-    0x38, 0xB6, 0x08, 0x34, 0xA9, 0x09, 0xA0, 0x47,
-    0x8B, 0xFD, 0xA0, 0x76, 0x88, 0x15, 0xB6, 0x65,
-    0x00, 0x01, VENDOR_CODE_WEBUSB, 0x00,
-
-    /* Microsoft OS 2.0 platform capability */
-    28, 0x10, 0x05, 0x00,
-    0xDF, 0x60, 0xDD, 0xD8, 0x89, 0x45, 0xC7, 0x4C,
-    0x9C, 0xD2, 0x65, 0x9D, 0x9E, 0x64, 0x8A, 0x9F,
-    0x00, 0x00, 0x03, 0x06,                    /* Windows 8.1 or later */
-    MSOS_TOTAL_LENGTH, 0x00, VENDOR_CODE_MSOS, 0x00,
-};
-
-/*
- * Microsoft OS 2.0 descriptor set: "interface 0 wants WinUSB".
- *
- * Nested exactly as the specification requires -- set header, configuration
- * subset, function subset, compatible ID -- with each level carrying the length
- * of everything below it. Windows rejects the whole set if any of those lengths
- * is wrong, and the symptom is a silent failure to bind, so they are derived
- * from MSOS_TOTAL_LENGTH rather than written out by hand.
- */
-static const uint8_t msos_descriptor[] = {
-    /* set header */
-    0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x06, MSOS_TOTAL_LENGTH, 0x00,
-    /* configuration subset: configuration 0 */
-    0x08, 0x00, 0x01, 0x00, 0x00, 0x00, MSOS_TOTAL_LENGTH - 10, 0x00,
-    /* function subset: interface 0 */
-    0x08, 0x00, 0x02, 0x00, 0x00, 0x00, MSOS_TOTAL_LENGTH - 18, 0x00,
-    /* compatible ID */
-    0x14, 0x00, 0x03, 0x00,
-    'W', 'I', 'N', 'U', 'S', 'B', 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0,
 };
 
 /* ---------------------------------------------------------------- transport */
@@ -540,49 +495,10 @@ static bool handle_request(proto_progress_t progress) {
 
 /* -------------------------------------------------------------------- events */
 
-static usb_error_t handle_setup(const usb_control_setup_t *setup) {
-    bool device_to_host = (setup->bmRequestType & 0x80) != 0;
-    uint8_t type = (setup->bmRequestType >> 5) & 3;
-
-    /* These arrive during enumeration, before USB_HOST_CONFIGURE_EVENT, so the
-     * device handle has to be looked up here rather than cached. */
-    usb_device_t device = usb_FindDevice(NULL, NULL, USB_SKIP_HUBS);
-    if (!device)
-        return USB_SUCCESS;
-
-    /* GET_DESCRIPTOR(BOS) */
-    if (device_to_host && type == 0 && setup->bRequest == 6
-        && (setup->wValue >> 8) == BOS_DESCRIPTOR_TYPE) {
-        size_t length = sizeof bos_descriptor;
-        if (length > setup->wLength)
-            length = setup->wLength;
-        memcpy(setup_buffer, bos_descriptor, length);
-        /* Scheduled, not blocking: this runs inside an event callback, and
-         * waiting for the transfer here would stall enumeration. */
-        usb_ScheduleTransfer(usb_GetDeviceEndpoint(device, 0), setup_buffer, length,
-                             NULL, NULL);
-        return USB_IGNORE;
-    }
-
-    /* Microsoft OS 2.0 descriptor set */
-    if (device_to_host && type == 2 && setup->bRequest == VENDOR_CODE_MSOS
-        && setup->wIndex == MSOS_DESCRIPTOR_INDEX) {
-        size_t length = sizeof msos_descriptor;
-        if (length > setup->wLength)
-            length = setup->wLength;
-        memcpy(setup_buffer, msos_descriptor, length);
-        usb_ScheduleTransfer(usb_GetDeviceEndpoint(device, 0), setup_buffer, length,
-                             NULL, NULL);
-        return USB_IGNORE;
-    }
-
-    /* Anything else, including all the standard requests, is usbdrvce's job. */
-    return USB_SUCCESS;
-}
-
 static usb_error_t handle_event(usb_event_t event, void *event_data,
                                 usb_callback_data_t *callback_data) {
     (void)callback_data;
+    (void)event_data;
 
     switch (event) {
         case USB_HOST_CONFIGURE_EVENT:
@@ -594,8 +510,6 @@ static usb_error_t handle_event(usb_event_t event, void *event_data,
             }
             break;
 
-        case USB_DEFAULT_SETUP_EVENT:
-            return handle_setup(event_data);
 
         case USB_DEVICE_DISCONNECTED_EVENT:
         case USB_DEVICE_SUSPENDED_EVENT:
@@ -634,12 +548,14 @@ uint16_t proto_requests(void) { return requests_handled; }
 uint8_t proto_last_command(void) { return last_command; }
 uint16_t proto_errors(void) { return receive_errors; }
 uint8_t proto_schedule_error(void) { return (uint8_t)schedule_error; }
+uint24_t proto_loops(void) { return loop_count; }
 
 bool proto_run(proto_progress_t progress) {
     requests_handled = 0;
     last_command = 0;
     receive_errors = 0;
     schedule_error = USB_SUCCESS;
+    loop_count = 0;
 
     host_device = NULL;
     endpoint_in = endpoint_out = NULL;
@@ -655,6 +571,7 @@ bool proto_run(proto_progress_t progress) {
     }
 
     while (!finished) {
+        loop_count++;
         usb_HandleEvents();
 
         if (link_lost) {

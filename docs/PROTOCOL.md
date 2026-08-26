@@ -164,12 +164,19 @@ this is not a shipping USB product.
 One configuration, one vendor-specific interface (class `0xFF`), two bulk
 endpoints: `0x01` OUT and `0x82` IN, 64-byte packets. The device also answers:
 
-- a **BOS descriptor** with the WebUSB platform capability, so Chrome recognises
-  it, and
-- **Microsoft OS 2.0 descriptors** requesting the WinUSB compatible ID, so
-  Windows binds WinUSB automatically instead of leaving an unknown device.
+The device declares plain **USB 2.0**, and answers no control requests of its
+own -- usbdrvce handles every standard request.
 
-On Linux, a udev rule is still needed to let the browser open the device:
+It did once declare 2.1 and answer the BOS and Microsoft OS 2.0 requests, so
+that Windows would bind WinUSB by itself. That is worth having, but a control
+request must be answered with `usb_ScheduleControlTransfer()`, which takes the
+setup packet; answering with plain `usb_ScheduleTransfer()` on endpoint 0 feeds
+raw bytes into the control pipe as though they were a setup packet and wedges
+the device the instant the host asks. Until it is done properly, **Windows users
+need [Zadig](https://zadig.akeo.ie/) to bind WinUSB to the device by hand.**
+Linux and macOS need nothing beyond the udev rule below.
+
+On Linux, a udev rule lets the browser open the device:
 
 ```
 SUBSYSTEM=="usb", ATTR{idVendor}=="1209", ATTR{idProduct}=="0001", MODE="0660", TAG+="uaccess"
