@@ -23,11 +23,6 @@
 typedef uint32_t uint24_t;
 typedef int32_t int24_t;
 
-/* proto_mark paints straight into the calculator's framebuffer; on the host
- * that address is not ours, so give it somewhere harmless to write. */
-extern uint16_t shim_vram[240 * 320];
-#define PROTO_VRAM shim_vram
-
 /* Register an appvar with the fake fileioc, taking a copy of the payload. */
 void shim_add_var(const char *name, const void *data, size_t size);
 void shim_reset_vars(void);

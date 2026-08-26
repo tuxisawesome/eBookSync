@@ -105,22 +105,5 @@ uint8_t proto_schedule_error(void); /* last srl_Open result */
  */
 uint24_t proto_loops(void);
 
-/*
- * Phase marker: paints a square straight onto the visible screen so that a loop
- * which stops dead still says where it stopped. The periodic redraw cannot do
- * that -- it only runs if the loop is still going.
- */
-#define PROTO_PHASE_EVENTS   0   /* red    -- inside usb_HandleEvents */
-#define PROTO_PHASE_OPEN     1   /* yellow -- opening the serial device */
-#define PROTO_PHASE_UI       2   /* green  -- reading the keypad */
-#define PROTO_PHASE_DRAW     3   /* blue   -- drawing the status */
-
-void proto_mark(uint8_t phase);
-
-/* Where proto_mark paints. The host tests point this at a plain buffer, since
- * the calculator's framebuffer address means nothing there. */
-#ifndef PROTO_VRAM
-#define PROTO_VRAM ((uint16_t *)0xD40000)
-#endif
 
 #endif /* PROTO_H */

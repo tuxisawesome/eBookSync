@@ -63,7 +63,6 @@ static uint8_t serial_buffer[512];
 
 static srl_device_t serial;
 static bool serial_open;
-static bool open_pending;
 static srl_error_t open_error;
 
 /* Set while a command is being handled, so the stream helpers can keep the
@@ -397,11 +396,29 @@ static usb_error_t handle_event(usb_event_t event, void *event_data,
         return error;
 
     switch (event) {
-        case USB_HOST_CONFIGURE_EVENT:
-            /* srl_Open must not be called from an event handler, so just note
-             * that the computer has configured us and open it in the loop. */
-            open_pending = true;
+        case USB_HOST_CONFIGURE_EVENT: {
+            /*
+             * Opened here, inside the event, rather than noted and opened from
+             * the loop.
+             *
+             * srldrvce's header says not to call srl_Open from an event
+             * handler. Its own example, srl_echo, does exactly this -- and
+             * srl_echo works on this hardware while deferring it did not. When
+             * the documentation and the only working example disagree, follow
+             * the example.
+             */
+            if (serial_open)
+                break;
+
+            usb_device_t device = usb_FindDevice(NULL, NULL, USB_SKIP_HUBS);
+            if (!device)
+                break;
+
+            open_error = srl_Open(&serial, device, serial_buffer,
+                                  sizeof serial_buffer, SRL_INTERFACE_ANY, 9600);
+            serial_open = open_error == SRL_SUCCESS;
             break;
+        }
 
         case USB_DEVICE_DISCONNECTED_EVENT:
         case USB_DEVICE_SUSPENDED_EVENT:
@@ -422,31 +439,6 @@ uint16_t proto_errors(void) { return receive_errors; }
 uint8_t proto_schedule_error(void) { return (uint8_t)open_error; }
 uint24_t proto_loops(void) { return loop_count; }
 
-/*
- * Written straight into video memory, in the OS's own 16bpp layout.
- *
- * graphx is shut down for the duration of a sync, so this cannot go through it
- * -- and going through nothing is the point: it appears immediately and
- * survives the loop stopping dead, which is what it is for.
- */
-void proto_mark(uint8_t phase) {
-    static const uint16_t colours[] = {
-        0xF800,   /* red    -- inside usb_HandleEvents */
-        0xFFE0,   /* yellow -- opening the serial device */
-        0x07E0,   /* green  -- reading the keypad */
-        0x001F,   /* blue   -- drawing */
-    };
-    if (phase >= sizeof colours / sizeof *colours)
-        return;
-
-    uint16_t *vram = PROTO_VRAM;
-    for (uint8_t y = 0; y < 12; y++) {
-        uint16_t *row = vram + (uint24_t)y * 320 + (320 - 14);
-        for (uint8_t x = 0; x < 12; x++)
-            row[x] = colours[phase];
-    }
-}
-
 bool proto_run(proto_progress_t progress, bool echo_only) {
     requests_handled = 0;
     last_command = 0;
@@ -455,7 +447,6 @@ bool proto_run(proto_progress_t progress, bool echo_only) {
     loop_count = 0;
     finished = false;
     serial_open = false;
-    open_pending = false;
     header_filled = 0;
     active_progress = progress;
 
@@ -468,20 +459,7 @@ bool proto_run(proto_progress_t progress, bool echo_only) {
     while (!finished) {
         loop_count++;
 
-        proto_mark(PROTO_PHASE_EVENTS);
         usb_HandleEvents();
-
-        if (open_pending && !serial_open) {
-            proto_mark(PROTO_PHASE_OPEN);
-            open_pending = false;
-
-            usb_device_t device = usb_FindDevice(NULL, NULL, USB_SKIP_HUBS);
-            if (device) {
-                open_error = srl_Open(&serial, device, serial_buffer,
-                                      sizeof serial_buffer, SRL_INTERFACE_ANY, 115200);
-                serial_open = open_error == SRL_SUCCESS;
-            }
-        }
 
         if (echo_only) {
             /* Bytes in, the same bytes out. Nothing else. */
@@ -498,8 +476,7 @@ bool proto_run(proto_progress_t progress, bool echo_only) {
                 }
             }
 
-            proto_mark(PROTO_PHASE_UI);
-            if (progress && !progress(serial_open ? "Echo: connected" : "Echo: waiting",
+                if (progress && !progress(serial_open ? "Echo: connected" : "Echo: waiting",
                                       0, 0, 0))
                 break;
             continue;
@@ -523,7 +500,6 @@ bool proto_run(proto_progress_t progress, bool echo_only) {
                 serial_open = false;
         }
 
-        proto_mark(PROTO_PHASE_UI);
         if (progress && !progress(serial_open ? "Connected" : "Waiting for computer",
                                   0, 0, 0))
             break;

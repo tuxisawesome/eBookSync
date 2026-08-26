@@ -379,10 +379,8 @@ static bool sync_progress(const char *state, uint8_t slot, uint8_t chunk,
     if ((proto_loops() & 0x7FF) == 0)
         changed = true;
 
-    if (changed) {
-        proto_mark(PROTO_PHASE_DRAW);
+    if (changed)
         sync_draw();
-    }
 
     input_scan();
     return !input_pressed(kb_KeyClear);
@@ -407,11 +405,16 @@ void ui_sync_run(bool echo_only) {
     os_ClrHome();
     sync_draw();
 
-    /* kb_Scan() disables interrupts, and the sync loop spins as fast as it can;
-     * let the keypad controller scan itself instead. */
-    input_begin_continuous();
+    /*
+     * Plain kb_Scan(), as srl_echo uses.
+     *
+     * kb_Scan() disables interrupts, which looked like a hazard next to an
+     * interrupt-driven USB driver, so this used to put the keypad in continuous
+     * mode instead. But srl_echo calls kb_Scan() in its loop and works, and
+     * continuous mode did not help -- so this matches the example rather than
+     * the theory.
+     */
     bool ok = proto_run(sync_progress, echo_only);
-    input_end_continuous();
 
     os_ClrHome();
     gfx_Begin();
