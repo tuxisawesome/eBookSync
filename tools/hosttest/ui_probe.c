@@ -42,6 +42,7 @@ bool proto_run(proto_progress_t progress) {
 uint16_t proto_requests(void) { return 0; }
 uint8_t proto_last_command(void) { return 0; }
 uint16_t proto_errors(void) { return 0; }
+uint8_t proto_schedule_error(void) { return 0; }
 
 static const struct { const char *name; kb_lkey_t key; } KEYS[] = {
     { "up", kb_KeyUp }, { "down", kb_KeyDown }, { "left", kb_KeyLeft },

@@ -70,8 +70,10 @@ static uint8_t stream[STREAM_BUFFER];
 static uint16_t requests_handled;
 static uint8_t last_command;
 static uint16_t receive_errors;
+static usb_error_t schedule_error;
 
-static uint8_t request_header[PROTO_HEADER_SIZE];
+/* A whole packet, not just the 8 header bytes: see read_exact. */
+static uint8_t request_header[PROTO_PACKET_SIZE];
 static volatile bool header_posted;
 static volatile bool header_ready;
 static volatile bool link_lost;
@@ -201,14 +203,48 @@ static const uint8_t msos_descriptor[] = {
  * endpoint and loses the remainder. Callers never ask for more than they can
  * hold, so the cap only matters as a guard.
  */
+/*
+ * Look the endpoint up afresh for every transfer.
+ *
+ * srldrvce -- the one driver in the toolchain that acts as a device -- does
+ * exactly this rather than caching the handle, and it is cheap. A handle kept
+ * across a reconfiguration is not obviously still valid.
+ */
+static usb_endpoint_t endpoint(uint8_t address) {
+    usb_device_t device = usb_FindDevice(NULL, NULL, USB_SKIP_HUBS);
+    return device ? usb_GetDeviceEndpoint(device, address) : NULL;
+}
+
+/*
+ * Receive exactly `length` bytes.
+ *
+ * Every posted receive is a whole number of packets. That is not an
+ * optimisation: the endpoint moves whole packets, and a receive posted shorter
+ * than the endpoint's maximum simply does not work -- srldrvce always posts a
+ * full 64 bytes for the same reason. Short packets still end a transfer early,
+ * so asking for more than is coming is safe and `got` says what really arrived.
+ *
+ * Callers always read into `stream`, so rounding up can never overrun.
+ */
 static bool read_exact(void *buffer, size_t length) {
     uint8_t *out = buffer;
+
     while (length) {
-        size_t want = length > STREAM_BUFFER ? STREAM_BUFFER : length;
-        size_t got = 0;
-        if (usb_Transfer(endpoint_out, out, want, TRANSFER_RETRIES, &got) != USB_SUCCESS)
+        size_t want = length;
+        if (want > STREAM_BUFFER)
+            want = STREAM_BUFFER;
+        want = (want + PROTO_PACKET_SIZE - 1) / PROTO_PACKET_SIZE * PROTO_PACKET_SIZE;
+        if (want > STREAM_BUFFER)
+            want = STREAM_BUFFER;
+
+        usb_endpoint_t out_ep = endpoint(PROTO_EP_OUT);
+        if (!out_ep)
             return false;
-        if (!got)
+
+        size_t got = 0;
+        if (usb_Transfer(out_ep, out, want, TRANSFER_RETRIES, &got) != USB_SUCCESS)
+            return false;
+        if (!got || got > length)
             return false;
         out += got;
         length -= got;
@@ -220,9 +256,14 @@ static bool write_exact(const void *buffer, size_t length) {
     /* usb_Transfer wants a RAM buffer and does not modify it; the cast is safe
      * because everything we send already lives in RAM. */
     uint8_t *in = (uint8_t *)buffer;
+
     while (length) {
+        usb_endpoint_t in_ep = endpoint(PROTO_EP_IN);
+        if (!in_ep)
+            return false;
+
         size_t sent = 0;
-        if (usb_Transfer(endpoint_in, in, length, TRANSFER_RETRIES, &sent) != USB_SUCCESS)
+        if (usb_Transfer(in_ep, in, length, TRANSFER_RETRIES, &sent) != USB_SUCCESS)
             return false;
         if (!sent)
             return false;
@@ -577,7 +618,7 @@ static usb_error_t request_arrived(usb_endpoint_t endpoint, usb_transfer_status_
     (void)data;
 
     header_posted = false;
-    if (status == USB_TRANSFER_COMPLETED && transferred == PROTO_HEADER_SIZE) {
+    if (status == USB_TRANSFER_COMPLETED && transferred >= PROTO_HEADER_SIZE) {
         header_ready = true;
     } else if (status & (USB_TRANSFER_NO_DEVICE | USB_TRANSFER_CANCELLED)) {
         link_lost = true;
@@ -592,11 +633,13 @@ static usb_error_t request_arrived(usb_endpoint_t endpoint, usb_transfer_status_
 uint16_t proto_requests(void) { return requests_handled; }
 uint8_t proto_last_command(void) { return last_command; }
 uint16_t proto_errors(void) { return receive_errors; }
+uint8_t proto_schedule_error(void) { return (uint8_t)schedule_error; }
 
 bool proto_run(proto_progress_t progress) {
     requests_handled = 0;
     last_command = 0;
     receive_errors = 0;
+    schedule_error = USB_SUCCESS;
 
     host_device = NULL;
     endpoint_in = endpoint_out = NULL;
@@ -623,10 +666,13 @@ bool proto_run(proto_progress_t progress) {
 
         /* Keep exactly one idle receive outstanding. */
         if (configured && !header_posted && !header_ready) {
-            if (usb_ScheduleTransfer(endpoint_out, request_header, sizeof request_header,
-                                     request_arrived, NULL) == USB_SUCCESS) {
+            usb_endpoint_t out_ep = endpoint(PROTO_EP_OUT);
+            schedule_error = out_ep
+                ? usb_ScheduleTransfer(out_ep, request_header, sizeof request_header,
+                                       request_arrived, NULL)
+                : USB_ERROR_NO_DEVICE;
+            if (schedule_error == USB_SUCCESS)
                 header_posted = true;
-            }
         }
 
         if (header_ready) {

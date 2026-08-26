@@ -33,6 +33,7 @@ static packet_t queued[MAX_PACKETS];
 static int queue_head;
 static int queue_tail;
 static int overflows;
+static int misaligned;
 static bool input_ended;
 
 static usb_event_callback_t event_handler;
@@ -51,12 +52,13 @@ static struct {
 void wire_reset(void) {
     queue_head = queue_tail = 0;
     overflows = 0;
+    misaligned = 0;
     input_ended = false;
     announced = false;
     scheduled.active = false;
 }
 
-int wire_overflows(void) { return overflows; }
+int wire_overflows(void) { return overflows + misaligned; }
 
 bool wire_out_drained(void) { return queue_head == queue_tail && input_ended; }
 
@@ -114,6 +116,18 @@ static bool endpoint_is_in(usb_endpoint_t endpoint) {
 /* Receive into `buffer`, obeying the packet rules above. */
 static usb_error_t receive(uint8_t *buffer, size_t length, size_t *transferred) {
     size_t filled = 0;
+
+    /*
+     * A receive shorter than the endpoint's maximum packet does not work on the
+     * hardware -- srldrvce, the toolchain's own device-mode driver, always posts
+     * a full 64 bytes. Posting 8 bytes for an 8-byte header looks reasonable and
+     * silently never completes.
+     */
+    if (length % USB_PACKET_SIZE) {
+        misaligned++;
+        fprintf(stderr, "wire: MISALIGNED -- %zu byte receive posted on a %d byte "
+                        "endpoint\n", length, USB_PACKET_SIZE);
+    }
 
     while (filled < length) {
         if (queue_head == queue_tail && !refill()) break;

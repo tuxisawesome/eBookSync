@@ -135,8 +135,11 @@ void wire_push_out(const void *data, size_t length);
 /* Take the next packet the calculator sent. Returns its length, or -1. */
 int wire_pop_in(void *data, size_t max);
 
-/* Receives that were posted shorter than the packet arriving into them. Any
- * value but zero is a protocol bug. */
+/*
+ * Protocol violations seen: receives posted shorter than the packet arriving
+ * into them, and receives posted shorter than the endpoint's maximum packet.
+ * Any value but zero is a bug that would show up as a stalled sync.
+ */
 int wire_overflows(void);
 
 /* True once every queued OUT packet has been consumed. */

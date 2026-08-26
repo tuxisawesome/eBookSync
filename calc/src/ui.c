@@ -319,6 +319,9 @@ static void sync_draw(void) {
             proto_requests(), proto_last_command(), proto_errors());
     gfx_PrintStringXY(line, 10, 110);
 
+    sprintf(line, "schedule %u", proto_schedule_error());
+    gfx_PrintStringXY(line, 10, 128);
+
     ui_footer("clear  stop syncing");
     gfx_SwapDraw();
 }

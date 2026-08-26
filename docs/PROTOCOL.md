@@ -57,7 +57,15 @@ them wedges a sync in a way that is invisible from either end:
    carries the slot. A few argument bytes ahead of the chunk data would share a
    packet with it and could not be read separately.
 
-3. **Payload transfers are capped at 512 bytes, on both sides.** The calculator
+3. **Every receive the calculator posts is a whole number of packets.** An
+   8-byte receive for an 8-byte header looks reasonable and simply never
+   completes -- no data, no error, nothing. `srldrvce`, the toolchain's own
+   device-mode driver, always posts a full 64 bytes, and so does this. The idle
+   wait posts a whole packet and takes the first 8 bytes; payload receives round
+   up to a packet boundary. A short packet still ends a transfer early, so
+   asking for more than is coming is safe.
+
+4. **Payload transfers are capped at 512 bytes, on both sides.** The calculator
    receives a payload in 512-byte posts (`STREAM_BUFFER` in `calc/src/usb.c`),
    so the computer sends it in 512-byte transfers (`MAX_PAYLOAD_TRANSFER` in
    `web/js/usb.js`). The two constants must match: a larger transfer on the
