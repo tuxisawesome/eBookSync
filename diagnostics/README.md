@@ -1,44 +1,66 @@
-# Where things stand
+# The bug
 
-`probe.sh` freezes the calculator exactly as Chrome does. That settles two
-things:
+The sync screen froze after showing "Starting", **with no cable attached**. That
+ruled out USB entirely and pointed at the only thing that runs between drawing
+that word and waiting for the computer: gathering the free archive size.
 
-- **Chrome and `web/js/link.js` are innocent.** A shell script sending eight
-  bytes does it too.
-- **The fault is on the calculator, and it is the reply that triggers it.**
+It did that by binary-searching `ti_ArchiveHasRoom` -- twenty-four calls, each
+one walking the VAT and the flash, several of them asking whether eight
+megabytes would fit in a three megabyte archive. That is what froze the
+calculator.
 
-Your keystroke experiment explains why that took so long to see. Holding `A`
-sends `41 41 41 41 41 41 41 41`, which the reader parses as a header with a
-payload length of `0x41414141` -- about a billion bytes. It then sits in
-`drain()` consuming them and **never reaches the code that writes a reply**. So
-every test with random keystrokes exercised the read path only. A real `HELLO`
-has a payload length of zero, so it goes straight to writing.
+The right way is one call:
 
-Writing the reply is the one thing that had never actually been tested.
-
-## This build says where it stops
-
-The sync screen's status line now names the exact position, and it updates as
-the command runs. When it freezes, whatever it last displayed is where it died:
-
-| status | meaning |
-|---|---|
-| `1 header in` | the eight header bytes arrived and were dispatched |
-| `2 in hello` | inside the HELLO handler, before anything is written |
-| `w: events` | inside `usb_HandleEvents()`, called before each write |
-| `w: srl_Write` | inside `srl_Write()` itself |
-| `3 header sent` | the 8-byte reply header went out |
-| `4 hello done` | the whole reply went out -- HELLO worked |
-| `Connected` | back in the main loop, waiting for the next command |
-
-## Run it
-
-```sh
-diagnostics/probe.sh /dev/cu.usbmodem<whatever>
+```c
+os_ArcChk();                      /* one OS routine */
+free = os_TempFreeArc;            /* it leaves the answer here */
 ```
 
-Calculator on the Sync screen. Report the last status line shown.
+It also explains the whole trail backwards. `HELLO` called that binary search,
+so every connection froze on the first command. Random keystrokes never did,
+because eight bytes of `A` parse as a payload length of about a billion, so the
+reader sat in `drain()` and never reached a command handler at all. Echo mode
+never did either, because it runs no commands. Every "it must be USB" conclusion
+came from a program that never once completed a command.
 
-`w: srl_Write` or `w: events` narrows this to a single function call, and one of
-those two is almost certainly it. `4 hello done` would mean HELLO now works and
-something later is at fault.
+# What was rewritten
+
+`calc/src/usb.c`, around four rules:
+
+1. **One `usb_HandleEvents()` per turn round the loop**, at the top. Nothing
+   nests another event pump inside itself.
+2. **Nothing blocks.** `srl_Read` and `srl_Write` are non-blocking by contract,
+   so the link is a state machine -- header, payload, execute, reply -- where
+   each state moves at most 512 bytes and returns. No inner loop ever waits on
+   the computer, so the keypad is always scanned and `clear` always works.
+3. **OS calls happen in exactly one place**, `execute()`, with the whole request
+   already in memory and nothing in flight.
+4. **Nothing asks the OS an expensive question.**
+
+# The test that would have caught it
+
+The host suite reported 231 green checks through every one of these bugs,
+because the shim answered `ti_ArchiveHasRoom` instantly. It now counts calls
+into the operating system made while the link is up, and requires the read-only
+commands to make none:
+
+```
+=== with the OS binary search back in HELLO ===
+  FAIL hello/list/index/space make no OS calls: got 24, want 0
+20/21 usb protocol checks pass
+
+=== rewritten ===
+21/21 usb protocol checks pass
+```
+
+# Testing this build
+
+`SRLECHO.8xp` and `probe.sh` are still here and still useful.
+
+1. `diagnostics/probe.sh /dev/cu.usbmodem<whatever>` -- calculator on the Sync
+   screen. Expect 14 bytes back beginning `01 01 00 00 06 00 00 00 01`.
+2. Then the page: connect, and it should show the calculator's contents.
+3. Then a real sync.
+
+Use `/dev/cu.*`, not `/dev/tty.*` -- on macOS the latter blocks on open waiting
+for a carrier signal a USB gadget never asserts.

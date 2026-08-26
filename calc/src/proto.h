@@ -96,7 +96,7 @@ bool proto_run(proto_progress_t progress, bool echo_only);
 uint16_t proto_requests(void);      /* requests handled */
 uint8_t proto_last_command(void);   /* the most recent one */
 uint16_t proto_errors(void);        /* failed receives on the idle wait */
-uint8_t proto_schedule_error(void); /* last srl_Open result */
+uint8_t proto_open_error(void);      /* last srl_Open result */
 
 /*
  * Times round the sync loop. Shown as a live counter, because a static screen

@@ -39,6 +39,8 @@ usb_error_t usb_Init(usb_event_callback_t handler, usb_callback_data_t *data,
     (void)flags;
     if (!descriptors) return USB_ERROR_INVALID_PARAM;
     event_handler = handler;
+    /* Everything from here on is "while the link is up". */
+    shim_reset_os_calls();
     return USB_SUCCESS;
 }
 

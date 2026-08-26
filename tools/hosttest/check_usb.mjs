@@ -30,6 +30,13 @@ const PACKET_SIZE = 64;
 let failures = 0;
 let checks = 0;
 
+/* "os calls N" from the probe's stderr: how many times the reader called into
+ * the operating system while the link was up. */
+function osCalls(stderr) {
+  const match = /os calls (\d+)/.exec(stderr || '');
+  return match ? Number(match[1]) : -1;
+}
+
 function check(label, actual, expected) {
   checks++;
   const a = JSON.stringify(actual);
@@ -114,6 +121,14 @@ async function session(libraryDir, body) {
   check('space: reports free archive', result.space > 0, true);
   check('the probe used the link correctly', status, 0);
   if (status !== 0) console.log('    probe said:', stderr.trim());
+
+  /*
+   * The read-only commands must not call the operating system at all. A binary
+   * search over ti_ArchiveHasRoom inside HELLO -- two dozen calls, each walking
+   * the VAT and flash -- froze the calculator outright, with or without a cable
+   * attached, and nothing else here could have caught it.
+   */
+  check('hello/list/index/space make no OS calls', osCalls(stderr), 0);
 }
 
 /* --- a library round-trips through LIST ----------------------------------- */

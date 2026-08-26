@@ -346,7 +346,7 @@ static void sync_draw(void) {
             proto_errors());
     sync_line(5, line);
 
-    sprintf(line, "sch %u loops %u", proto_schedule_error(), (unsigned)proto_loops());
+    sprintf(line, "open %u loops %u", proto_open_error(), (unsigned)proto_loops());
     sync_line(6, line);
 
     sync_line(8, "[clear] stop syncing");

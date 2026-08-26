@@ -50,6 +50,7 @@ int main(int argc, char **argv) {
 
     bool ok = proto_run(progress, false);
 
-    fprintf(stderr, "proto_run returned %d, overflows %d\n", ok, wire_overflows());
+    fprintf(stderr, "proto_run returned %d, overflows %d, os calls %u\n",
+            ok, wire_overflows(), shim_os_calls());
     return wire_overflows() ? 1 : 0;
 }

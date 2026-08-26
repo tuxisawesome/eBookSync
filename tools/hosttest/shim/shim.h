@@ -23,6 +23,19 @@
 typedef uint32_t uint24_t;
 typedef int32_t int24_t;
 
+/*
+ * Calls into the operating system made since usb_Init().
+ *
+ * The reader must not make any while the link is up except from execute(), and
+ * the read-only commands must make none at all. That is not a style rule: a
+ * binary search over ti_ArchiveHasRoom in the HELLO handler -- twenty-four OS
+ * calls, several asking whether eight megabytes would fit -- froze the
+ * calculator outright, and no test here could see it because the shim answered
+ * instantly. Now they are counted.
+ */
+unsigned shim_os_calls(void);
+void shim_reset_os_calls(void);
+
 /* Register an appvar with the fake fileioc, taking a copy of the payload. */
 void shim_add_var(const char *name, const void *data, size_t size);
 void shim_reset_vars(void);

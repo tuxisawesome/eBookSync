@@ -19,6 +19,12 @@ typedef struct {
 } shim_var_t;
 
 static shim_var_t vars[MAX_VARS];
+
+static unsigned os_call_count;
+
+unsigned shim_os_calls(void) { return os_call_count; }
+void shim_reset_os_calls(void) { os_call_count = 0; }
+#define COUNT_OS_CALL() (os_call_count++)
 static uint8_t open_handle_var[16];
 static size_t open_handle_pos[16];
 static uint8_t next_handle = 1;
@@ -59,6 +65,7 @@ const uint8_t *shim_var_data(const char *name, size_t *size) {
 }
 
 uint8_t ti_Open(const char *name, const char *mode) {
+    COUNT_OS_CALL();
     /* A write mode creates the variable if it is not there, the way fileioc
      * does; the reader relies on that when a chunk arrives. */
     if (mode && (*mode == 'w' || *mode == 'a') && !shim_var_data(name, NULL)) {
@@ -81,11 +88,13 @@ uint8_t ti_Open(const char *name, const char *mode) {
 int ti_Close(uint8_t handle) { (void)handle; return 1; }
 
 void *ti_GetDataPtr(uint8_t handle) {
+    COUNT_OS_CALL();
     shim_var_t *var = &vars[open_handle_var[handle]];
     return var->data + open_handle_pos[handle];
 }
 
 int ti_Delete(const char *name) {
+    COUNT_OS_CALL();
     for (int i = 0; i < MAX_VARS; i++) {
         if (vars[i].used && strcmp(vars[i].name, name) == 0) {
             free(vars[i].data);
@@ -104,6 +113,7 @@ int ti_Seek(int offset, unsigned origin, uint8_t handle) {
 }
 
 size_t ti_Write(const void *data, size_t size, size_t count, uint8_t handle) {
+    COUNT_OS_CALL();
     shim_var_t *var = &vars[open_handle_var[handle]];
     size_t at = open_handle_pos[handle];
     size_t bytes = size * count;
@@ -120,12 +130,14 @@ size_t ti_Write(const void *data, size_t size, size_t count, uint8_t handle) {
 }
 
 int ti_SetArchiveStatus(bool archive, uint8_t handle) {
+    COUNT_OS_CALL();
     (void)archive;
     (void)handle;
     return 1;
 }
 
 uint16_t ti_GetSize(uint8_t handle) {
+    COUNT_OS_CALL();
     return (uint16_t)vars[open_handle_var[handle]].size;
 }
 
@@ -133,7 +145,10 @@ static uint24_t archive_free_bytes = 2900000;
 
 void shim_set_archive_free(uint24_t bytes) { archive_free_bytes = bytes; }
 
-bool ti_ArchiveHasRoom(uint24_t num_bytes) { return num_bytes <= archive_free_bytes; }
+bool ti_ArchiveHasRoom(uint24_t num_bytes) {
+    COUNT_OS_CALL();
+    return num_bytes <= archive_free_bytes;
+}
 
 /* ------------------------------------------------------------------ graphics */
 
@@ -166,6 +181,11 @@ void gfx_SetDraw(uint8_t location) { (void)location; }
 
 /* --------------------------------------------------------------- OS display */
 
+uint24_t shim_temp_free_arc = 2900000;
+void os_ArcChk(void) {
+    COUNT_OS_CALL();
+    shim_temp_free_arc = archive_free_bytes;
+}
 void shim_os_clr_home(void) {}
 void os_SetCursorPos(uint8_t row, uint8_t col) { (void)row; (void)col; }
 uint24_t os_PutStrFull(const char *string) { (void)string; return 0; }
