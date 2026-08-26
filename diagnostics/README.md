@@ -1,50 +1,57 @@
-# A control experiment
+# Two control experiments
 
-`SRLECHO.8xp` is the CE toolchain's own `srl_echo` example, built unmodified
-from `CEdev/examples/library_examples/srldrvce/srl_echo`. It is the one
-device-mode USB program on this platform that is known to work.
+The reader now enumerates correctly — `/dev/tty.usbmodem*` appears on the Mac,
+which means `srldrvce` and the CDC descriptors work. It freezes when the port is
+**opened**, inside `usb_HandleEvents()`, before a single protocol byte moves.
 
-It makes the calculator appear as a **USB serial port** and echoes back
-everything it is sent. It uses `srldrvce`, which sits on top of the same
-`usbdrvce` the reader uses, but it makes no graphx calls and hand-writes no
-descriptors.
+Opening a CDC port is when the host sends its class control requests:
+`SET_LINE_CODING`, `GET_LINE_CODING` and `SET_CONTROL_LINE_STATE`. Those are
+handled by `srldrvce`, not by any code in this repo — which is worth knowing,
+because it means the fault may not be in the reader at all.
 
-## Why run it
+Notably, `srldrvce`'s handler covers `SET_LINE_CODING` (`0x21`/`0x20`) and
+`GET_LINE_CODING` (`0xA1`/`0x21`), but **not** `SET_CONTROL_LINE_STATE`
+(`0x21`/`0x22`), which macOS sends on every open. If that is the problem, it
+affects every program built on `srldrvce` equally — including the toolchain's
+own example.
 
-The reader's sync loop freezes inside `usb_HandleEvents()` with no transfer ever
-completing and no error ever reported. That is either a bug in how the reader
-drives `usbdrvce`, or something about this calculator, OS version or host that
-stops device mode working at all. Seven rounds of reading documentation have not
-separated those two, and this does, in about two minutes.
+These two tests separate the possibilities. Together they take about five
+minutes and are worth far more than another guess.
 
-## Running it
+## Test 1: the toolchain's own example
 
-1. Send `SRLECHO.8xp` to the calculator and run it (arTIfiCE first, as usual).
-2. The screen says `usb init`, then waits.
-3. Plug the calculator into the Mac.
+`SRLECHO.8xp` is `srl_echo` from `CEdev/examples/library_examples/srldrvce`,
+built unmodified. It uses `srldrvce` exactly as this reader now does, but shares
+no other code: no graphx, no appvars, no protocol.
 
-Then, on the Mac:
+1. Send `SRLECHO.8xp` to the calculator and run it. It prints `usb init`.
+2. Plug into the Mac. Check `ls /dev/tty.usb*`.
+3. Open it and type — it should echo back:
 
-```sh
-ls /dev/tty.usb*          # before plugging in, and after
-```
+   ```sh
+   screen /dev/tty.usbmodem<whatever>     # ctrl-a k to quit
+   ```
 
-If a new device appears, open it and type:
+## Test 2: the reader's own echo mode
 
-```sh
-screen /dev/tty.usbmodem<whatever>   # ctrl-a k to quit
-```
+The reader now has the same test built in, so the *only* difference from a
+normal sync is the protocol on top.
 
-Anything you type should come straight back.
+1. Run `COMICS`. On the book list press **alpha** (not `2nd`).
+2. The screen says `eBookSync - ECHO TEST`.
+3. Plug in, `screen /dev/tty.usbmodem…`, and type.
 
-## What the outcome means
+It echoes every byte straight back and touches nothing else — no appvars, no
+library, no protocol.
 
-**A serial port appears and echoes** — `usbdrvce` device mode works fine on your
-hardware, and the fault is in the reader. The difference between the two
-programs is then a short list, and I can bisect it.
+## What the outcomes mean
 
-**No serial port appears, or the calculator freezes** — device mode does not
-work on this calculator/OS combination at all, and no amount of fixing the
-reader will help. The transport has to change.
+| Test 1 | Test 2 | Where the fault is |
+|---|---|---|
+| echoes | echoes | The transport is fine. The fault is in my protocol handling, and the difference is now a small amount of code I can bisect. |
+| echoes | freezes | `srldrvce` is fine, and something else in the reader — its heap, its use of graphx before sync, its open appvars — is breaking it. Also bisectable, and I would start by stripping the reader back to nothing but the sync screen. |
+| freezes | freezes | The fault is below anything I control: `srldrvce`, `usbdrvce`, this OS version, or this calculator. No change to the reader will fix it, and the answer is to raise it with the toolchain authors — with these two results as the report. |
 
-Either answer is worth far more than another guess.
+The third row is a real possibility and worth naming plainly. Seven fixes went
+into the hand-written USB device before it was abandoned, and the failure never
+moved. If `srl_echo` freezes on your machine too, that was never my bug to find.

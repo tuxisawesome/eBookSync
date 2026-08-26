@@ -75,7 +75,16 @@ typedef struct {
 typedef bool (*proto_progress_t)(const char *state, uint8_t slot, uint8_t chunk,
                                  uint8_t chunk_count);
 
-bool proto_run(proto_progress_t progress);
+/*
+ * `echo_only` runs the link as a bare echo: bytes in, the same bytes straight
+ * back out, with no protocol, no appvars and no library touched.
+ *
+ * It is a control experiment. If a sync stalls but echo does not, the fault is
+ * in the protocol handling above the transport; if echo stalls too, the fault
+ * is in the transport or below it, and nothing above will fix it. There is no
+ * other way to make that split on hardware that cannot be stepped through.
+ */
+bool proto_run(proto_progress_t progress, bool echo_only);
 
 /*
  * Counters the sync screen puts on display.

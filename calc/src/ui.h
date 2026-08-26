@@ -26,11 +26,15 @@ typedef enum {
     UI_CHOSE,     /* the user picked the highlighted row */
     UI_BACK,      /* the user backed out */
     UI_SYNC,      /* the user asked for the sync screen */
+    UI_ECHO,      /* the user asked for the link echo test */
 } ui_result_t;
 
 /* Take over USB and serve the sync protocol until the computer disconnects or
  * the user presses clear. */
 void ui_sync_screen(void);
+
+/* The same screen, but running a bare echo instead of the protocol. */
+void ui_sync_run(bool echo_only);
 
 ui_result_t ui_book_menu(uint16_t *selection);
 ui_result_t ui_strip_menu(uint16_t book_index, uint16_t *selection);

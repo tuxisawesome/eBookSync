@@ -447,7 +447,7 @@ void proto_mark(uint8_t phase) {
     }
 }
 
-bool proto_run(proto_progress_t progress) {
+bool proto_run(proto_progress_t progress, bool echo_only) {
     requests_handled = 0;
     last_command = 0;
     receive_errors = 0;
@@ -481,6 +481,28 @@ bool proto_run(proto_progress_t progress) {
                                       sizeof serial_buffer, SRL_INTERFACE_ANY, 115200);
                 serial_open = open_error == SRL_SUCCESS;
             }
+        }
+
+        if (echo_only) {
+            /* Bytes in, the same bytes out. Nothing else. */
+            if (serial_open) {
+                int got = srl_Read(&serial, stream, sizeof stream);
+                if (got < 0) {
+                    serial_open = false;
+                    receive_errors++;
+                } else if (got > 0) {
+                    requests_handled++;
+                    last_command = stream[0];
+                    if (!write_exact(stream, (size_t)got))
+                        serial_open = false;
+                }
+            }
+
+            proto_mark(PROTO_PHASE_UI);
+            if (progress && !progress(serial_open ? "Echo: connected" : "Echo: waiting",
+                                      0, 0, 0))
+                break;
+            continue;
         }
 
         /* Collect a header a few bytes at a time; srl_Read never blocks. */

@@ -48,7 +48,7 @@ int main(int argc, char **argv) {
      * and LIST reports what it found. Do the same here. */
     lib_open();
 
-    bool ok = proto_run(progress);
+    bool ok = proto_run(progress, false);
 
     fprintf(stderr, "proto_run returned %d, overflows %d\n", ok, wire_overflows());
     return wire_overflows() ? 1 : 0;

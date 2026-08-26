@@ -26,5 +26,6 @@ typedef enum {
 #define kb_Key2nd   ((kb_lkey_t)(1 << 8 | 1<<5))
 #define kb_KeyMode  ((kb_lkey_t)(1 << 8 | 1<<6))
 #define kb_KeyDel   ((kb_lkey_t)(1 << 8 | 1<<7))
+#define kb_KeyAlpha ((kb_lkey_t)(2 << 8 | 1<<7))
 #define kb_IsDown(lkey) (kb_Data[(lkey) >> 8] & (lkey))
 #endif

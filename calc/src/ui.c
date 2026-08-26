@@ -220,7 +220,7 @@ ui_result_t ui_book_menu(uint16_t *selection) {
             }
 
             draw_scrollbar(&list);
-            ui_footer("enter open   2nd sync   clear quit");
+            ui_footer("enter open  2nd sync  alpha echo  clear quit");
             gfx_SwapDraw();
             dirty = false;
         }
@@ -234,6 +234,8 @@ ui_result_t ui_book_menu(uint16_t *selection) {
         }
         if (input_pressed(kb_Key2nd))
             return UI_SYNC;
+        if (input_pressed(kb_KeyAlpha))
+            return UI_ECHO;
         if (input_pressed(kb_KeyClear))
             return UI_BACK;
     }
@@ -312,6 +314,7 @@ ui_result_t ui_strip_menu(uint16_t book_index, uint16_t *selection) {
  */
 
 static uint8_t sync_chunks_received;
+static bool sync_echo_mode;
 static char sync_state[32];
 
 /* The homescreen is 26 columns; pad so a shorter line erases the last one. */
@@ -333,7 +336,7 @@ static void sync_line(uint8_t row, const char *text) {
 static void sync_draw(void) {
     char line[40];
 
-    sync_line(0, "eBookSync");
+    sync_line(0, sync_echo_mode ? "eBookSync - ECHO TEST" : "eBookSync");
     sync_line(2, sync_state);
 
     sprintf(line, "%u chunks received", sync_chunks_received);
@@ -386,6 +389,15 @@ static bool sync_progress(const char *state, uint8_t slot, uint8_t chunk,
 }
 
 void ui_sync_screen(void) {
+    ui_sync_run(false);
+}
+
+/*
+ * The echo mode is reached with alpha from the book list. It exists to tell a
+ * broken protocol apart from a broken link -- see proto_run.
+ */
+void ui_sync_run(bool echo_only) {
+    sync_echo_mode = echo_only;
     sync_chunks_received = 0;
     snprintf(sync_state, sizeof sync_state, "Starting...");
     input_reset();
@@ -398,7 +410,7 @@ void ui_sync_screen(void) {
     /* kb_Scan() disables interrupts, and the sync loop spins as fast as it can;
      * let the keypad controller scan itself instead. */
     input_begin_continuous();
-    bool ok = proto_run(sync_progress);
+    bool ok = proto_run(sync_progress, echo_only);
     input_end_continuous();
 
     os_ClrHome();

@@ -32,7 +32,8 @@ bool viewer_run(uint16_t strip_index) {
 }
 
 typedef bool (*proto_progress_t)(const char *, uint8_t, uint8_t, uint8_t);
-bool proto_run(proto_progress_t progress) {
+bool proto_run(proto_progress_t progress, bool echo_only) {
+    (void)echo_only;
     printf("sync\n");
     if (progress) progress("Waiting for computer", 0, 0, 0);
     return true;
