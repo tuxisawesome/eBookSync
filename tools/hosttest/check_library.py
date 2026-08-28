@@ -60,6 +60,62 @@ def parse_probe(text):
     return header, books, strips
 
 
+def check_password(index):
+    """The password in the device block, against an independent implementation.
+
+    tools/csx/library.py builds the block with hashlib; calc/src/library.c reads
+    it with its own SHA-256. Neither has seen the other's code, which is the
+    only reason agreement here means anything.
+    """
+    failures = []
+    salt = bytes(range(16))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        directory = Path(tmp)
+        locked = lib.set_password(index, "Hunter2", salt=salt)
+        (directory / f"{lib.NAME}.8xv").write_bytes(tifile.write(lib.NAME, locked))
+
+        # Two wrong, then the right one -- so the failure counter is seen to go
+        # up and then be cleared, which is the whole point of keeping it.
+        out = run_probe(directory, "password", "hunter2", "Hunter3", "Hunter2")
+        said = dict(
+            (line.split()[0], line.split()[1:]) for line in out.splitlines()
+            if line and line.split()[0] in ("set", "failures")
+        )
+        results = [line.split() for line in out.splitlines() if line.startswith("check ")]
+
+        if said.get("set") != ["1"]:
+            failures.append("password: the reader does not see one set")
+        if [r[1] for r in results] != ["0", "0", "1"]:
+            failures.append(f"password: wrong verdicts {[r[1] for r in results]}")
+        if said.get("failures") != ["0"]:
+            failures.append(f"password: counter not cleared on success ({said.get('failures')})")
+
+        saved = (directory / f"{lib.NAME}.saved").read_bytes()
+        block = lib.device_block(saved)
+        if block[lib.PW_SALT:lib.PW_SALT + 16] != salt:
+            failures.append("password: the reader disturbed the salt")
+        if block[lib.PW_HASH:lib.PW_HASH + 32] != locked[
+                lib.DEVICE_OFFSET + lib.PW_HASH:lib.DEVICE_OFFSET + lib.PW_HASH + 32]:
+            failures.append("password: the reader disturbed the hash")
+
+        # And the counter really does climb when nothing right is offered.
+        (directory / f"{lib.NAME}.8xv").write_bytes(tifile.write(lib.NAME, locked))
+        run_probe(directory, "password", "a", "b", "c")
+        counted = lib.device_block((directory / f"{lib.NAME}.saved").read_bytes())
+        if counted[lib.PW_FAILURES] != 3:
+            failures.append(f"password: counted {counted[lib.PW_FAILURES]} failures, wanted 3")
+
+        # An index with no password lets anything through, including nothing.
+        (directory / f"{lib.NAME}.8xv").write_bytes(tifile.write(lib.NAME, index))
+        out = run_probe(directory, "password", "anything", "")
+        verdicts = [line.split()[1] for line in out.splitlines() if line.startswith("check ")]
+        if verdicts != ["1", "1"]:
+            failures.append("password: an unlocked calculator refused something")
+
+    return failures
+
+
 def main():
     books = sample_books()
     index = lib.build(books)
@@ -67,7 +123,7 @@ def main():
 
     with tempfile.TemporaryDirectory() as tmp:
         directory = Path(tmp)
-        (directory / "CSLIB.8xv").write_bytes(tifile.write(lib.NAME, index))
+        (directory / f"{lib.NAME}.8xv").write_bytes(tifile.write(lib.NAME, index))
 
         header, probe_books, probe_strips = parse_probe(run_probe(directory))
 
@@ -105,7 +161,7 @@ def main():
 
         # Now the write-back path: mark strip 2 read, at position 4321, layer 1.
         run_probe(directory, "save", "2", str(lib.FLAG_READ), "4321", "1")
-        saved = lib.parse((directory / "CSLIB.saved").read_bytes())
+        saved = lib.parse((directory / f"{lib.NAME}.saved").read_bytes())
         updated = [s for book in saved for s in book.strips][2]
         if not (updated.read and updated.pos == 4321 and updated.layer == 1
                 and updated.read_at == 1_756_100_000):
@@ -116,9 +172,11 @@ def main():
         if untouched.pos != 1234 or untouched.slot != 0 or untouched.size != 401_920:
             failures.append("write-back corrupted a neighbouring record")
 
+        failures += check_password(index)
+
     for failure in failures:
         print("  FAIL " + failure)
-    total = 1 + len(books) * 5 + len(flat) * 9 + 2
+    total = 1 + len(books) * 5 + len(flat) * 9 + 2 + 7
     print(f"{total - len(failures)}/{total} library checks pass")
     return 1 if failures else 0
 

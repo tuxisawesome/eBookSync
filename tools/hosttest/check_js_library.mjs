@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import * as lib from '../../web/js/library.js';
 import { buildIndex, FLAG_READ } from '../../web/js/library.js';
 import { writeAppvar } from '../../web/js/tifile.js';
 
@@ -61,7 +62,7 @@ const books = [
 
 const index = buildIndex(books, { render: fakeRender });
 const dir = mkdtempSync(join(tmpdir(), 'ebooksync-'));
-writeFileSync(join(dir, 'CSLIB.8xv'), writeAppvar('CSLIB', index));
+writeFileSync(join(dir, `${lib.NAME}.8xv`), writeAppvar(lib.NAME, index));
 
 const output = execFileSync(join(HERE, 'lib_probe'), [dir], { encoding: 'utf8' });
 

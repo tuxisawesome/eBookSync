@@ -13,11 +13,25 @@
  * is all this protocol ever wanted. See docs/PROTOCOL.md.
  */
 
+import { parseOutboxRecord, parseState } from './chatwire.js';
+
 /* srldrvce presents these -- the shared V-USB CDC identifiers. */
 export const USB_VENDOR_ID = 0x16c0;
 export const USB_PRODUCT_ID = 0x05e1;
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
+
+/*
+ * The oldest calculator this page can still talk to at all.
+ *
+ * Protocol 1 is eBookSync, which has no UPDATE commands -- so there is no way
+ * to push it a build that would fix that, and it has to be installed by hand
+ * once. From 2 on, a calculator that is behind can always be brought forward
+ * over the link, which is why hello() reports a mismatch instead of throwing:
+ * refusing to talk to an old calculator would make the update unreachable on
+ * exactly the calculators that need it.
+ */
+export const MIN_PROTOCOL_VERSION = 2;
 const HEADER_SIZE = 8;
 
 /*
@@ -55,13 +69,47 @@ export const CMD = {
   SPACE: 0x07,
   BYE: 0x08,
   RESET: 0x09,
+
+  UPDATE_BEGIN: 0x0a,
+  UPDATE_CHUNK: 0x0b,
+  UPDATE_END: 0x0c,
+
+  CHAT_STATE: 0x0d,
+  CHAT_OUT_GET: 0x0e,
+  CHAT_OUT_ACK: 0x0f,
+  CHAT_ROSTER_PUT: 0x10,
+  CHAT_IN_PUT: 0x11,
+
+  CLOCK_SET: 0x12,
 };
+
+/*
+ * Which program an UPDATE_* command is about.
+ *
+ * Each is installed by the other: the reader replaces EOSUP during the sync
+ * that brings it down, and EOSUP replaces the reader when the user runs it. A
+ * CE program runs in place inside its own variable and cannot overwrite itself,
+ * which is the whole reason there are two. See calc/src/update.h.
+ */
+export const UPDATE_TARGET = { READER: 0, UPDATER: 1 };
+
+/* HELLO's flag byte. */
+export const FLAG_UPDATER = 0x01;   /* prgmEOSUP is installed */
+export const FLAG_ARMED = 0x02;     /* a reader update is waiting for it */
+
+/* One update chunk, matching the calculator's payload buffer exactly. */
+export const UPDATE_CHUNK_SIZE = 16384;
 
 /* Not a reply: "still alive, the OS is defragmenting". See docs/PROTOCOL.md. */
 const BUSY = 0xfe;
 
 /* What HELLO reports about the library already on the calculator. */
-export const LIBRARY = { EMPTY: 0, SAME: 1, DIFFERENT: 2 };
+/*
+ * UNKNOWN is not a failure: it means this page has no library folder chosen, so
+ * there was nothing to compare. Connecting for the chat or an update alone is
+ * ordinary, and neither is about comics.
+ */
+export const LIBRARY = { EMPTY: 0, SAME: 1, DIFFERENT: 2, UNKNOWN: 3 };
 
 export const STATUS = {
   0: 'ok',
@@ -71,7 +119,11 @@ export const STATUS = {
   4: 'could not write the variable',
   5: 'not found',
   6: 'payload ended early',
+  7: 'the calculator cannot do that right now',
 };
+
+/* The one status the callers below treat as an answer rather than a fault. */
+const STATUS_NOT_FOUND = 5;
 
 export class ProtocolError extends Error {
   constructor(cmd, status) {
@@ -238,18 +290,110 @@ export class Calculator {
     const body = await this.request(CMD.HELLO, libraryId);
     if (body.length < 6) throw new Error('short HELLO reply');
 
+    /*
+     * A version mismatch is reported, not thrown. Throwing here is what would
+     * make an out-of-date calculator unfixable: the update travels over this
+     * same link, so the page has to stay on speaking terms with a calculator
+     * that is behind for long enough to push it forward. main.js decides what
+     * to offer -- see describeCompatibility().
+     */
     const version = body[0];
-    if (version !== PROTOCOL_VERSION) {
-      throw new Error(`calculator speaks protocol ${version}, this page speaks `
-        + `${PROTOCOL_VERSION} -- update the reader on the calculator`);
-    }
     return {
       version,
+      compatible: version === PROTOCOL_VERSION,
+      updatable: version >= MIN_PROTOCOL_VERSION && version <= PROTOCOL_VERSION,
       freeArchive: body[1] | (body[2] << 8) | (body[3] << 16),
       maxChunks: body[4],
       chunkSize: body[5] * 256,
       library: body.length > 6 ? body[6] : LIBRARY.EMPTY,
+      /* Added in protocol 2; an older reader simply does not send these. */
+      build: body.length >= 9 ? body[7] | (body[8] << 8) : 0,
+      flags: body.length >= 10 ? body[9] : 0,
+      hasUpdater: body.length >= 10 && (body[9] & FLAG_UPDATER) !== 0,
+      updateArmed: body.length >= 10 && (body[9] & FLAG_ARMED) !== 0,
     };
+  }
+
+  /**
+   * Announce an update: what it is, how big, and what it should add up to.
+   *
+   * Anything already half-received on the calculator is swept here, so a sync
+   * that died partway through costs nothing but the bytes it moved.
+   */
+  async updateBegin(target, { build, bytes, chunks, crc }) {
+    const payload = new Uint8Array(12);
+    const view = new DataView(payload.buffer);
+    view.setUint16(0, build, true);
+    view.setUint32(2, bytes, true);
+    view.setUint16(6, chunks, true);
+    view.setUint32(8, crc, true);
+    await this.request(CMD.UPDATE_BEGIN, payload, target);
+  }
+
+  async updateChunk(target, index, chunk) {
+    await this.request(CMD.UPDATE_CHUNK, chunk, target | (index << 8));
+  }
+
+  /**
+   * Finish an update: the calculator checksums what it stored and either
+   * installs it (the updater) or arms it for prgmEOSUP (the reader).
+   *
+   * A CRC mismatch comes back as a ProtocolError with status 6, and nothing has
+   * been replaced at that point -- the damaged image is discarded on the
+   * calculator rather than left where something could install it.
+   */
+  async updateEnd(target) {
+    await this.request(CMD.UPDATE_END, new Uint8Array(0), target);
+  }
+
+  /* ------------------------------------------------------------------ chat */
+
+  /**
+   * What the calculator is holding and what it has queued.
+   *
+   * None of the chat commands care which library the calculator carries. Only
+   * the comics can be mixed up by plugging into the wrong computer; the chat
+   * belongs to whoever's credentials this page is using, and the calculator is
+   * a second terminal for that one account.
+   */
+  async chatState() {
+    return parseState(await this.request(CMD.CHAT_STATE));
+  }
+
+  /** One queued message, or null once the index runs past the end. */
+  async chatOutGet(index) {
+    try {
+      return parseOutboxRecord(await this.request(CMD.CHAT_OUT_GET, new Uint8Array(0), index));
+    } catch (error) {
+      if (error instanceof ProtocolError && error.status === STATUS_NOT_FOUND) return null;
+      throw error;
+    }
+  }
+
+  /**
+   * Drop the first `count` queued messages.
+   *
+   * Sent once they are stored durably here -- not once they reach the relay. If
+   * the network is down they are still safely off the calculator, and the
+   * relay's own de-duplication makes sending them again free.
+   */
+  async chatOutAck(count) {
+    await this.request(CMD.CHAT_OUT_ACK, new Uint8Array(0), count);
+  }
+
+  async chatPutRoster(bytes) {
+    await this.request(CMD.CHAT_ROSTER_PUT, bytes);
+  }
+
+  async chatPutMessages(conversationId, bytes) {
+    await this.request(CMD.CHAT_IN_PUT, bytes, conversationId);
+  }
+
+  /** Set the calculator's clock, so message and read timestamps mean something. */
+  async setClock(unixSeconds) {
+    const payload = new Uint8Array(4);
+    new DataView(payload.buffer).setUint32(0, unixSeconds, true);
+    await this.request(CMD.CLOCK_SET, payload);
   }
 
   /** Erase every comic on the calculator. Returns how many strips went. */

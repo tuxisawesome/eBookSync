@@ -46,7 +46,7 @@ def library_with_content(directory):
         lib.Strip("002 - 标题", 1, 9, 141_000),
     ])]
     index = lib.build(books, renderer=StubRenderer())
-    (directory / "CSLIB.8xv").write_bytes(tifile.write(lib.NAME, index))
+    (directory / f"{lib.NAME}.8xv").write_bytes(tifile.write(lib.NAME, index))
 
 
 def run(keys, directory=None):
@@ -129,6 +129,77 @@ with tempfile.TemporaryDirectory() as tmp:
 
     check("library, 2nd reaches the sync screen",
           LEAD + press("2nd"), RUNNING, expect_output="sync", directory=directory)
+
+    # y= opens chat. With nothing synced it says so rather than closing, which
+    # is the same bug class as the empty book list this file exists for.
+    check("library, y= opens chat and clear comes back",
+          LEAD + press("yequ") + press("clear"), RUNNING, directory=directory)
+
+check("empty library, y= opens chat without closing the app",
+      LEAD + press("yequ"), RUNNING)
+
+check("empty library, y= then clear returns to the book list",
+      LEAD + press("yequ") + press("clear") + press("clear"), CLOSED)
+
+# --- the lock screen -------------------------------------------------------
+# The password is in the library index (see docs/FORMAT.md), so a locked
+# calculator is one whose index has a device block filled in. Three wrong
+# answers close the reader; the right one gets through to the book list.
+def locked_library(directory, password, failures_so_far=0):
+    books = [lib.Book("第一本书", [lib.Strip("001 - 标题", 0, 9, 140_000)])]
+    index = lib.build(books, renderer=StubRenderer())
+    index = lib.set_password(index, password, failures=failures_so_far)
+    (directory / f"{lib.NAME}.8xv").write_bytes(tifile.write(lib.NAME, index))
+
+
+# keyin.c reads the letters printed on the keys, so a numeric password is typed
+# with the digit keys and needs no mode changes.
+def type_password(digits):
+    keys = []
+    for digit in digits:
+        keys += press(digit)
+    return keys + press("enter")
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    directory = Path(tmp)
+    locked_library(directory, "1234")
+
+    check("locked, the right password gets in",
+          LEAD + type_password("1234"), RUNNING, directory=directory)
+
+    check("locked, one wrong password does not close the app",
+          LEAD + type_password("9999") + press("enter"), RUNNING, directory=directory)
+
+    # Three wrong answers, each followed by the keypress that dismisses the
+    # "wrong password" message.
+    wrong = list(LEAD)   # a copy: += on a list mutates it in place
+    for _ in range(3):
+        wrong += type_password("9999") + press("enter")
+    check("locked, three wrong passwords close the app", wrong, CLOSED, directory=directory)
+
+    check("locked, clear at the prompt closes the app",
+          LEAD + press("clear"), CLOSED, directory=directory)
+
+    check("locked, the book list is not reachable without the password",
+          LEAD + press("2nd") + press("2nd"), RUNNING,
+          directory=directory)
+
+    # Nothing typed before the password is right must reach the menus: the sync
+    # screen in particular, since that is a way to move comics off the device.
+    status, output = run(LEAD + press("2nd") + press("2nd"), directory)
+    checks += 1
+    if "sync" in output:
+        failures.append("locked: 2nd reached the sync screen before the password")
+
+with tempfile.TemporaryDirectory() as tmp:
+    directory = Path(tmp)
+    locked_library(directory, "1234", failures_so_far=4)
+
+    # A previous failed attempt is reported to whoever does get in -- that is
+    # what the counter is for, since it cannot rate-limit anything.
+    check("locked, a good password after earlier failures still gets in",
+          LEAD + type_password("1234") + press("enter"), RUNNING, directory=directory)
 
 for failure in failures:
     print("  FAIL " + failure)

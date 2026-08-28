@@ -34,7 +34,7 @@ BLOCK *ghost_root = NULL;
 BLOCK *dead_array = NULL;
 int dead_array_size = 0;
 
-/* LOCAL PATCH (eBookSync): track every allocated arena so zx0_reset() can free
+/* LOCAL PATCH (eOS): track every allocated arena so zx0_reset() can free
    them. Upstream leaks them, which is fine for a one-shot CLI but not for a
    shared library that compresses thousands of bands in one process. */
 typedef struct arena_t { struct arena_t *next; } ARENA;

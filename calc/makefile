@@ -2,8 +2,8 @@
 # Makefile Options
 # ----------------------------
 
-NAME = COMICS
-DESCRIPTION = "eBookSync comic reader"
+NAME = EOS
+DESCRIPTION = "eOS"
 COMPRESSED = YES
 ARCHIVED = YES
 
@@ -16,5 +16,8 @@ CXXFLAGS = -Wall -Wextra -Oz
 # calculator cannot read the repository, so bake it into a header on every
 # build; editing about.txt is all that is needed.
 $(shell sh ../tools/make_about.sh ../about.txt src/about.h)
+
+# The build number the sync page compares against web/eos/build.json.
+$(shell sh ../tools/make_build.sh BUILD src/build.h)
 
 include $(shell cedev-config --makefile)

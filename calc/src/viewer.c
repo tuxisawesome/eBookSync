@@ -220,7 +220,7 @@ bool viewer_run(uint16_t strip_index) {
     entry.pos = view.vy;
     entry.layer = view.layer;
     if (marked_read && !(entry.flags & LIB_FLAG_READ))
-        entry.read_at = (uint32_t)time(NULL);
+        entry.read_at = lib_now();
     entry.flags = marked_read ? (uint8_t)(entry.flags | LIB_FLAG_READ)
                               : (uint8_t)(entry.flags & ~LIB_FLAG_READ);
     lib_save_strip(strip_index, &entry);

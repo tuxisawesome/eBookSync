@@ -1,22 +1,21 @@
 /*
- * The eBookSync USB protocol.
+ * The eOS link protocol.
  *
- * The reader takes over the USB port and presents itself as a vendor-specific
- * device, so the sync page can claim it with WebUSB directly. Every message is
- * an 8-byte header and an optional payload; the computer sends a request and
- * the calculator answers with the same command and sequence number.
+ * The calculator presents itself as a USB CDC serial port through srldrvce and
+ * the sync page drives it with the Web Serial API. Every message is an 8-byte
+ * header and an optional payload; the computer sends a request and the
+ * calculator answers with the same command and sequence number.
  *
  * All fields are little-endian. See docs/PROTOCOL.md, and keep this file in
- * step with web/js/usb.js.
+ * step with web/js/link.js.
  */
-
 #ifndef PROTO_H
 #define PROTO_H
 
 #include <stdbool.h>
 #include <stdint.h>
 
-#define PROTO_VERSION       1
+#define PROTO_VERSION       2
 
 /*
  * The calculator is a USB CDC serial port, so the computer finds it by the
@@ -32,11 +31,34 @@ typedef enum {
     PROTO_LIST       = 0x02,   /* -> the resident strips and their read state */
     PROTO_PUT_CHUNK  = 0x03,   /* <- one 16 KB chunk of a strip */
     PROTO_DEL        = 0x04,   /* <- delete every chunk of a strip */
-    PROTO_INDEX_GET  = 0x05,   /* -> the CSLIB index */
-    PROTO_INDEX_PUT  = 0x06,   /* <- replace the CSLIB index */
+    PROTO_INDEX_GET  = 0x05,   /* -> the EOSLIB index */
+    PROTO_INDEX_PUT  = 0x06,   /* <- replace the EOSLIB index */
     PROTO_SPACE      = 0x07,   /* -> free archive space */
     PROTO_BYE        = 0x08,   /* <- leave sync mode */
     PROTO_RESET      = 0x09,   /* <- delete the whole library */
+
+    /*
+     * Pushing a new build of the reader. The image arrives the way a comic
+     * does -- one archived appvar per chunk -- because it does not fit in RAM
+     * whole: sync already holds 16 KB for the payload and 2 KB for the serial
+     * ring, out of about 50 KB.
+     */
+    PROTO_UPDATE_BEGIN = 0x0A, /* <- u16 build, u32 bytes, u16 chunks, u32 crc */
+    PROTO_UPDATE_CHUNK = 0x0B, /* <- one chunk; arg = target | (index << 8) */
+    PROTO_UPDATE_END   = 0x0C, /* -> verify the CRC and arm the update */
+
+    /*
+     * Chat. None of these care which library the calculator is holding -- only
+     * the comics do, because only the comics can be mixed up by the answer.
+     */
+    PROTO_CHAT_STATE      = 0x0D, /* -> what is here and what is queued */
+    PROTO_CHAT_OUT_GET    = 0x0E, /* -> one queued outbound message */
+    PROTO_CHAT_OUT_ACK    = 0x0F, /* <- the computer has stored the first N */
+    PROTO_CHAT_ROSTER_PUT = 0x10, /* <- conversations and who is in them */
+    PROTO_CHAT_IN_PUT     = 0x11, /* <- messages to append; arg = conversation */
+
+    /* The CE's clock is often unset, and message order depends on it. */
+    PROTO_CLOCK_SET       = 0x12, /* <- u32 unix seconds */
 
     /*
      * Not a command: an unprompted notice that the calculator is about to be
@@ -48,11 +70,29 @@ typedef enum {
     PROTO_BUSY       = 0xFE,
 } proto_cmd_t;
 
+/*
+ * HELLO's flag byte.
+ *
+ * Both answers cost an OS call, so both are gathered once before USB starts --
+ * see rule 4 in usb.c. Asking the operating system anything from inside a
+ * command handler is what froze the calculator the last time.
+ */
+#define PROTO_FLAG_UPDATER   0x01   /* prgmEOSUP is installed */
+#define PROTO_FLAG_ARMED     0x02   /* a reader update is waiting for it */
+
 /* What HELLO says about the library already on the calculator. */
 typedef enum {
     PROTO_LIBRARY_EMPTY     = 0,   /* nothing here yet; anything may be sent */
     PROTO_LIBRARY_SAME      = 1,   /* same library as the computer's */
     PROTO_LIBRARY_DIFFERENT = 2,   /* someone else's comics are on here */
+
+    /*
+     * The computer did not say which library it has, so the question cannot be
+     * answered. That happens when no comics folder has been chosen -- a
+     * perfectly ordinary way to connect, since neither the chat nor an update
+     * is about comics. It is not "different": nothing has been compared.
+     */
+    PROTO_LIBRARY_UNKNOWN   = 3,
 } proto_library_t;
 
 typedef enum {
@@ -63,6 +103,7 @@ typedef enum {
     PROTO_WRITE_FAIL  = 4,     /* could not create or archive the variable */
     PROTO_NOT_FOUND   = 5,
     PROTO_TRUNCATED   = 6,     /* the payload ended early */
+    PROTO_BAD_STATE   = 7,     /* the command does not apply right now */
 } proto_status_t;
 
 /*

@@ -1,0 +1,18 @@
+{% extends "admin/base.html" %}
+{% block body %}
+<section class="panel narrow">
+  <h2>First run</h2>
+  <p class="hint">
+    There are no accounts yet, so this relay will let you make the first one.
+    It stops offering as soon as one exists.
+  </p>
+  <form method="post" action="{{ url_for('admin.bootstrap') }}">
+    <label class="field"><span>Username</span>
+      <input name="username" autocomplete="username" autofocus required></label>
+    <label class="field"><span>Password</span>
+      <input name="password" type="password" autocomplete="new-password"
+             minlength="8" required></label>
+    <button class="primary" type="submit">Create administrator</button>
+  </form>
+</section>
+{% endblock %}

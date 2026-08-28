@@ -8,36 +8,9 @@
  * exactly the strips it affects.
  */
 
-const DB_NAME = 'ebooksync-cache';
-const DB_STORE = 'containers';
-const VERSION = 1;
+import { makeStore } from './idb.js';
 
-function openDatabase() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, VERSION);
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(DB_STORE)) {
-        request.result.createObjectStore(DB_STORE);
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function withStore(mode, action) {
-  const db = await openDatabase();
-  try {
-    return await new Promise((resolve, reject) => {
-      const tx = db.transaction(DB_STORE, mode);
-      const request = action(tx.objectStore(DB_STORE));
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  } finally {
-    db.close();
-  }
-}
+const withStore = makeStore('eos-cache', 'containers', { legacy: 'ebooksync-cache' });
 
 /** Everything about the settings that changes the bytes we produce. */
 export function settingsKey(settings) {

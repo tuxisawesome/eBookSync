@@ -36,8 +36,11 @@
 
 #include "proto.h"
 
+#include "build.h"
+#include "chat.h"
 #include "csx.h"
 #include "library.h"
+#include "update.h"
 
 #include <fileioc.h>
 #include <srldrvce.h>
@@ -101,6 +104,18 @@ static uint32_t payload_have;
 static uint8_t reply_header[PROTO_HEADER_SIZE];
 static uint8_t reply_header_sent;
 static uint8_t reply_small[16];  /* bodies that are a handful of bytes */
+
+/*
+ * A reply whose first bytes are not the ones in flash.
+ *
+ * INDEX_GET is the only user: the index is far too big to copy into RAM, but
+ * its header has to be edited before it goes out, so the header is copied here
+ * and the rest still streams straight from flash behind it.
+ */
+static uint8_t reply_prefix[LIB_HEADER_SIZE];
+static uint16_t reply_prefix_len;
+static uint16_t reply_prefix_sent;
+
 static const uint8_t *reply_body;
 static uint32_t reply_body_len;
 static uint32_t reply_body_sent;
@@ -110,6 +125,7 @@ static uint32_t reply_body_sent;
  * See rule 3: none of the read-only commands may call the OS.
  */
 static uint24_t cached_archive_free;
+static uint8_t cached_flags;
 static const uint8_t *cached_index;
 static uint16_t cached_index_size;
 
@@ -145,27 +161,50 @@ static void put16(uint8_t *p, uint16_t value) {
     p[1] = (uint8_t)(value >> 8);
 }
 
+static void put32(uint8_t *p, uint32_t value) {
+    p[0] = (uint8_t)value;
+    p[1] = (uint8_t)(value >> 8);
+    p[2] = (uint8_t)(value >> 16);
+    p[3] = (uint8_t)(value >> 24);
+}
+
 static void put24(uint8_t *p, uint24_t value) {
     p[0] = (uint8_t)value;
     p[1] = (uint8_t)(value >> 8);
     p[2] = (uint8_t)(value >> 16);
 }
 
-/* Queue a reply. `body` may be NULL, and may point into flash. */
-static void answer(uint16_t status, const uint8_t *body, uint32_t length) {
+/*
+ * Queue a reply of `reply_prefix[0..prefix_len)` followed by `body`.
+ *
+ * `body` may be NULL, and may point into flash. The prefix exists for INDEX_GET
+ * alone: the index is far too big to copy into RAM, but its header has to be
+ * edited before it goes out, so the header is copied and the rest still streams
+ * from flash behind it.
+ */
+static void answer_prefixed(uint16_t status, uint16_t prefix_len,
+                            const uint8_t *body, uint32_t length) {
+    uint32_t total = prefix_len + (body ? length : 0);
+
     reply_header[0] = command;
     reply_header[1] = sequence;
     put16(reply_header + 2, status);
-    reply_header[4] = (uint8_t)length;
-    reply_header[5] = (uint8_t)(length >> 8);
-    reply_header[6] = (uint8_t)(length >> 16);
-    reply_header[7] = (uint8_t)(length >> 24);
+    reply_header[4] = (uint8_t)total;
+    reply_header[5] = (uint8_t)(total >> 8);
+    reply_header[6] = (uint8_t)(total >> 16);
+    reply_header[7] = (uint8_t)(total >> 24);
 
     reply_header_sent = 0;
+    reply_prefix_len = prefix_len;
+    reply_prefix_sent = 0;
     reply_body = body;
     reply_body_len = body ? length : 0;
     reply_body_sent = 0;
     link_state = LINK_REPLY;
+}
+
+static void answer(uint16_t status, const uint8_t *body, uint32_t length) {
+    answer_prefixed(status, 0, body, length);
 }
 
 /* ---------------------------------------------------------------- commands */
@@ -179,12 +218,25 @@ static void answer(uint16_t status, const uint8_t *body, uint32_t length) {
 static void do_hello(void) {
     proto_library_t which = PROTO_LIBRARY_EMPTY;
 
+    /* All zeros means the computer has no library to compare, not a library
+     * whose identity happens to be zero. */
+    bool told = false;
+    if (payload_want >= LIB_ID_SIZE) {
+        for (uint8_t i = 0; i < LIB_ID_SIZE; i++) {
+            if (payload[i]) {
+                told = true;
+                break;
+            }
+        }
+    }
+
     const uint8_t *here = lib_id();
     if (here) {
-        which = (payload_want >= LIB_ID_SIZE
-                 && memcmp(here, payload, LIB_ID_SIZE) == 0)
-            ? PROTO_LIBRARY_SAME
-            : PROTO_LIBRARY_DIFFERENT;
+        which = !told
+            ? PROTO_LIBRARY_UNKNOWN
+            : (memcmp(here, payload, LIB_ID_SIZE) == 0
+                ? PROTO_LIBRARY_SAME
+                : PROTO_LIBRARY_DIFFERENT);
     }
     library_state = (uint8_t)which;
 
@@ -193,15 +245,32 @@ static void do_hello(void) {
     reply_small[4] = CSX_MAX_CHUNKS;
     reply_small[5] = CSX_CHUNK_SIZE / 256;
     reply_small[6] = (uint8_t)which;
-    answer(PROTO_OK, reply_small, 7);
+    put16(reply_small + 7, EOS_BUILD);
+    reply_small[9] = cached_flags;
+    answer(PROTO_OK, reply_small, 10);
+}
+
+/* Re-map the index after anything that moved or replaced it. */
+static void refresh_index_cache(void) {
+    cached_index = NULL;
+    cached_index_size = 0;
+
+    uint8_t handle = ti_Open(LIB_NAME, "r");
+    if (!handle)
+        return;
+
+    cached_index_size = (uint16_t)ti_GetSize(handle);
+    cached_index = ti_GetDataPtr(handle);
+    ti_Close(handle);
 }
 
 static void do_reset(void) {
     uint16_t removed = lib_reset();
     library_state = PROTO_LIBRARY_EMPTY;
 
-    cached_index = NULL;
-    cached_index_size = 0;
+    /* lib_reset empties the index rather than deleting it -- the device block
+     * is in there -- so there is still something to point at. */
+    refresh_index_cache();
 
     put16(reply_small, removed);
     answer(PROTO_OK, reply_small, 2);
@@ -247,11 +316,24 @@ static void do_list(void) {
 }
 
 static void do_index_get(void) {
-    if (!cached_index || !cached_index_size) {
+    if (!cached_index || cached_index_size < LIB_HEADER_SIZE) {
         answer(PROTO_OK, NULL, 0);
         return;
     }
-    answer(PROTO_OK, cached_index, cached_index_size);
+
+    /*
+     * The device block goes out as zeros. That keeps the password salt and hash
+     * off the wire, where a computer that is not this library's could otherwise
+     * ask for them -- and it is also what lets the page compare this against the
+     * index it would build, which has zeros there. Sending the real block would
+     * make the index look stale on every single sync.
+     */
+    memcpy(reply_prefix, cached_index, LIB_HEADER_SIZE);
+    memset(reply_prefix + LIB_DEVICE_OFFSET, 0, LIB_DEVICE_SIZE);
+
+    answer_prefixed(PROTO_OK, LIB_HEADER_SIZE,
+                    cached_index + LIB_HEADER_SIZE,
+                    cached_index_size - LIB_HEADER_SIZE);
 }
 
 /* Create one appvar from what is already in `payload`, and archive it. */
@@ -283,22 +365,198 @@ static void do_put_chunk(void) {
 }
 
 static void do_index_put(void) {
+    /* Anything shorter has no header, so storing it would lose the device block
+     * and leave nothing that lib_open would accept. */
+    if (payload_want < LIB_HEADER_SIZE) {
+        answer(PROTO_BAD_LENGTH, NULL, 0);
+        return;
+    }
+
+    /*
+     * The computer replaces this variable whole and has no idea the device block
+     * is in it -- it sends zeros there. Carry the live block across first, or
+     * every index push would quietly clear the password.
+     */
+    const uint8_t *device = lib_device();
+    if (device)
+        memcpy(payload + LIB_DEVICE_OFFSET, device, LIB_DEVICE_SIZE);
+    else
+        memset(payload + LIB_DEVICE_OFFSET, 0, LIB_DEVICE_SIZE);
+
     bool ok = store(LIB_NAME, payload_want);
     if (ok) {
         /* Every pointer into the old index is stale now. */
         lib_open();
-        cached_index = NULL;
-        cached_index_size = 0;
-
-        uint8_t handle = ti_Open(LIB_NAME, "r");
-        if (handle) {
-            cached_index_size = (uint16_t)ti_GetSize(handle);
-            cached_index = ti_GetDataPtr(handle);
-            ti_Close(handle);
-        }
+        refresh_index_cache();
     }
     answer(ok ? PROTO_OK : PROTO_WRITE_FAIL, NULL, 0);
 }
+
+/* ----------------------------------------------------------------- update */
+
+/*
+ * The update in flight, if any. Held only for the length of a session: an
+ * update that is interrupted leaves chunks behind but no manifest, and the next
+ * UPDATE_BEGIN sweeps them.
+ */
+static update_manifest_t incoming;
+static bool receiving_update;
+
+static void do_update_begin(void) {
+    if (payload_want < 12) {
+        answer(PROTO_BAD_LENGTH, NULL, 0);
+        return;
+    }
+
+    incoming.target = (uint8_t)argument;
+    incoming.build = read16(payload);
+    incoming.bytes = read32(payload + 2);
+    incoming.chunks = read16(payload + 6);
+    incoming.crc = read32(payload + 8);
+
+    if (incoming.target > UPDATE_TARGET_UPDATER || !incoming.bytes ||
+        !incoming.chunks || incoming.chunks > UPDATE_MAX_CHUNKS ||
+        incoming.bytes > (uint32_t)incoming.chunks * UPDATE_CHUNK_SIZE) {
+        receiving_update = false;
+        answer(PROTO_BAD_LENGTH, NULL, 0);
+        return;
+    }
+
+    /* Anything already here is a different update, or the wreckage of one that
+     * was interrupted. Either way it is in the way. */
+    update_discard();
+    receiving_update = true;
+    answer(PROTO_OK, NULL, 0);
+}
+
+static void do_update_chunk(void) {
+    if (!receiving_update) {
+        answer(PROTO_BAD_STATE, NULL, 0);
+        return;
+    }
+
+    uint8_t index = (uint8_t)(argument >> 8);
+    if (index >= incoming.chunks) {
+        answer(PROTO_BAD_LENGTH, NULL, 0);
+        return;
+    }
+
+    char name[7];
+    update_chunk_name(name, index);
+    answer(store(name, payload_want) ? PROTO_OK : PROTO_NO_ROOM, NULL, 0);
+}
+
+static void do_update_end(void) {
+    if (!receiving_update) {
+        answer(PROTO_BAD_STATE, NULL, 0);
+        return;
+    }
+    receiving_update = false;
+
+    if (!update_verify(&incoming)) {
+        /* Nothing was replaced, so there is nothing to roll back -- just take
+         * the damaged image away so it cannot be installed later. */
+        update_discard();
+        answer(PROTO_TRUNCATED, NULL, 0);
+        return;
+    }
+
+    /*
+     * An updater update is applied here and now. EOSUP is not running, so this
+     * program can replace it, and doing it immediately means the user never
+     * sees it. A reader update cannot be applied by the reader, so it is armed
+     * and EOSUP installs it later.
+     */
+    if (incoming.target == UPDATE_TARGET_UPDATER) {
+        bool ok = update_install(UPDATE_UPDATER_NAME, &incoming);
+        update_discard();
+        if (ok)
+            cached_flags |= PROTO_FLAG_UPDATER;
+        answer(ok ? PROTO_OK : PROTO_WRITE_FAIL, NULL, 0);
+        return;
+    }
+
+    bool ok = update_arm(&incoming);
+    if (ok)
+        cached_flags |= PROTO_FLAG_ARMED;
+    answer(ok ? PROTO_OK : PROTO_WRITE_FAIL, NULL, 0);
+}
+
+/* ------------------------------------------------------------------- chat */
+
+/*
+ * None of these care which library the calculator is holding.
+ *
+ * Only the comics can be mixed up by plugging into the wrong computer -- the
+ * chat belongs to whoever's credentials the computer is using, and the
+ * calculator is just a terminal for it. See "How a sync goes".
+ */
+static void do_chat_state(void) {
+    if (!payload) {
+        answer(PROTO_WRITE_FAIL, NULL, 0);
+        return;
+    }
+
+    /* Built in the payload buffer, which is idle while a reply goes out and is
+     * far larger than sixteen conversations can ever need. */
+    uint8_t count = chat_conversation_count();
+    payload[0] = CHAT_VERSION;
+    payload[1] = count;
+
+    uint24_t at = 2;
+    for (uint8_t i = 0; i < count; i++) {
+        chat_conversation_t conversation;
+        chat_get_conversation(i, &conversation);
+
+        put16(payload + at, conversation.id);
+        put32(payload + at + 2, conversation.last_server_id);
+        at += 6;
+    }
+
+    put16(payload + at, chat_outbox_count());
+    put16(payload + at + 2, chat_outbox_bytes());
+
+    answer(PROTO_OK, payload, at + 4);
+}
+
+static void do_chat_out_get(void) {
+    uint16_t length = 0;
+    if (!chat_outbox_get(argument, payload, &length)) {
+        answer(PROTO_NOT_FOUND, NULL, 0);
+        return;
+    }
+    answer(PROTO_OK, payload, length);
+}
+
+static void do_chat_out_ack(void) {
+    answer(chat_outbox_drop(argument) ? PROTO_OK : PROTO_WRITE_FAIL, NULL, 0);
+}
+
+static void do_chat_roster_put(void) {
+    answer(chat_put_table(payload, payload_want) ? PROTO_OK : PROTO_BAD_LENGTH, NULL, 0);
+}
+
+static void do_chat_in_put(void) {
+    answer(chat_append(argument, payload, payload_want) ? PROTO_OK : PROTO_BAD_LENGTH,
+           NULL, 0);
+}
+
+/*
+ * The computer's idea of the time.
+ *
+ * Sent at the start of every sync. The calculator keeps the difference rather
+ * than touching the RTC, so nothing here depends on what epoch the clock counts
+ * from -- only on it running. See lib_set_clock().
+ */
+static void do_clock_set(void) {
+    if (payload_want < 4) {
+        answer(PROTO_BAD_LENGTH, NULL, 0);
+        return;
+    }
+    answer(lib_set_clock(read32(payload)) ? PROTO_OK : PROTO_WRITE_FAIL, NULL, 0);
+}
+
+/* ---------------------------------------------------------------- the rest */
 
 static void do_delete(void) {
     uint8_t removed = csx_delete((uint8_t)argument);
@@ -323,6 +581,18 @@ static void execute(void) {
         case PROTO_INDEX_PUT: do_index_put(); break;
         case PROTO_SPACE:     do_space(); break;
         case PROTO_RESET:     do_reset(); break;
+
+        case PROTO_UPDATE_BEGIN: do_update_begin(); break;
+        case PROTO_UPDATE_CHUNK: do_update_chunk(); break;
+        case PROTO_UPDATE_END:   do_update_end(); break;
+
+        case PROTO_CLOCK_SET:    do_clock_set(); break;
+
+        case PROTO_CHAT_STATE:      do_chat_state(); break;
+        case PROTO_CHAT_OUT_GET:    do_chat_out_get(); break;
+        case PROTO_CHAT_OUT_ACK:    do_chat_out_ack(); break;
+        case PROTO_CHAT_ROSTER_PUT: do_chat_roster_put(); break;
+        case PROTO_CHAT_IN_PUT:     do_chat_in_put(); break;
         case PROTO_BYE:       closing = true; answer(PROTO_OK, NULL, 0); break;
         default:              answer(PROTO_BAD_CMD, NULL, 0); break;
     }
@@ -416,6 +686,18 @@ static void pump(void) {
                 return;
             }
 
+            if (reply_prefix_sent < reply_prefix_len) {
+                int sent = srl_Write(&serial, reply_prefix + reply_prefix_sent,
+                                     reply_prefix_len - reply_prefix_sent);
+                if (sent < 0) {
+                    fail();
+                    return;
+                }
+                reply_prefix_sent += (uint16_t)sent;
+                bytes_moved += (uint24_t)sent;
+                return;
+            }
+
             if (reply_body_sent < reply_body_len) {
                 uint32_t left = reply_body_len - reply_body_sent;
                 size_t take = left > SLICE ? SLICE : (size_t)left;
@@ -490,16 +772,9 @@ static void gc_after(void) {
      * the variables it was pointing into. Fetch them again.
      */
     lib_open();
+    chat_open();
 
-    cached_index = NULL;
-    cached_index_size = 0;
-
-    uint8_t handle = ti_Open(LIB_NAME, "r");
-    if (handle) {
-        cached_index_size = (uint16_t)ti_GetSize(handle);
-        cached_index = ti_GetDataPtr(handle);
-        ti_Close(handle);
-    }
+    refresh_index_cache();
 
     /* And the free space it just recovered is different. */
     os_ArcChk();
@@ -556,19 +831,29 @@ static usb_error_t handle_event(usb_event_t event, void *event_data,
  *
  * os_ArcChk() is a single call and leaves its answer in os_TempFreeArc.
  */
+/* Is prgmEOSUP installed, and is a reader update waiting for it? */
+static uint8_t gather_update_flags(void) {
+    uint8_t flags = 0;
+
+    uint8_t handle = ti_OpenVar(UPDATE_UPDATER_NAME, "r", OS_TYPE_PRGM);
+    if (handle) {
+        ti_Close(handle);
+        flags |= PROTO_FLAG_UPDATER;
+    }
+
+    update_manifest_t armed;
+    if (update_pending(&armed) && armed.target == UPDATE_TARGET_READER)
+        flags |= PROTO_FLAG_ARMED;
+
+    return flags;
+}
+
 static void gather_state(void) {
     os_ArcChk();
     cached_archive_free = os_TempFreeArc;
+    cached_flags = gather_update_flags();
 
-    cached_index = NULL;
-    cached_index_size = 0;
-
-    uint8_t handle = ti_Open(LIB_NAME, "r");
-    if (handle) {
-        cached_index_size = (uint16_t)ti_GetSize(handle);
-        cached_index = ti_GetDataPtr(handle);
-        ti_Close(handle);
-    }
+    refresh_index_cache();
 }
 
 static const char *status_text(void) {
@@ -596,7 +881,9 @@ bool proto_run(proto_progress_t progress, bool echo_only) {
     loop_count = 0;
     bytes_moved = 0;
     library_state = PROTO_LIBRARY_EMPTY;
+    receiving_update = false;
 
+    chat_open();
     gather_state();
     gc_count = 0;
     ti_SetGCBehavior(gc_before, gc_after);

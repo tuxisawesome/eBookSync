@@ -1,6 +1,6 @@
-"""The CSLIB library index: what is on the calculator, and what it is called.
+"""The EOSLIB library index: what is on the calculator, and what it is called.
 
-CSLIB is a single appvar describing only the content actually resident on the
+EOSLIB is a single appvar describing only the content actually resident on the
 calculator -- the computer stays the source of truth for the whole library. It
 carries the book/strip tree, per-strip read state and saved scroll position, and
 the pre-rendered title bitmaps.
@@ -13,22 +13,39 @@ drawing.
 See docs/FORMAT.md for the byte layout.
 """
 
+import hashlib
 import struct
 
 from . import titles as titles_mod, zx0
 
-MAGIC = b"CSLIB"
-VERSION = 2
-NAME = "CSLIB"
+MAGIC = b"EOSLB"
+VERSION = 3
+NAME = "EOSLIB"
 
-HEADER_FMT = "<5sBHHH16s"   # 28 bytes, ending in the library id
+HEADER_FMT = "<5sBHHH16s64s"   # 92 bytes: 28, then the device block
+
+# The last 64 bytes belong to the calculator -- its password and its own
+# settings. The computer writes zeros; the calculator splices its own block
+# back in on INDEX_PUT and zeros it again on INDEX_GET.
+DEVICE_OFFSET = 28
+DEVICE_SIZE = 64
+
+# Offsets within the device block. See docs/FORMAT.md.
+PW_FLAGS = 0
+PW_SALT = 1
+PW_HASH = 17
+PW_FAILURES = 49
+CLOCK_OFFSET = 50
+
+PW_SET = 0x01
+SALT_SIZE = 16
 BOOK_FMT = "<HHH"           # 6 bytes
 STRIP_FMT = "<BBHBBIHBBH"   # 16 bytes
 
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
 BOOK_SIZE = struct.calcsize(BOOK_FMT)
 STRIP_SIZE = struct.calcsize(STRIP_FMT)
-assert (HEADER_SIZE, BOOK_SIZE, STRIP_SIZE) == (28, 6, 16)
+assert (HEADER_SIZE, BOOK_SIZE, STRIP_SIZE) == (92, 6, 16)
 
 FLAG_READ = 0x01
 
@@ -106,7 +123,8 @@ def build(books, renderer=None, library_id=b"\0" * 16):
         )
 
     header = struct.pack(HEADER_FMT, MAGIC, VERSION, len(books), len(strips), 0,
-                         bytes(library_id)[:16].ljust(16, b"\0"))
+                         bytes(library_id)[:16].ljust(16, b"\0"),
+                         b"\0" * DEVICE_SIZE)
     index = bytes(header) + bytes(book_rows) + bytes(strip_rows) + bytes(blob)
     assert len(header) + len(book_rows) + len(strip_rows) == title_base
     return index
@@ -114,12 +132,12 @@ def build(books, renderer=None, library_id=b"\0" * 16):
 
 def parse(data):
     """Read an index back, for verification and for merging calculator state."""
-    magic, version, book_count, strip_count, _, library_id = struct.unpack_from(
+    magic, version, book_count, strip_count, _, library_id, _device = struct.unpack_from(
         HEADER_FMT, data, 0)
     if magic != MAGIC:
-        raise ValueError("not a CSLIB index")
+        raise ValueError("not an EOSLIB index")
     if version != VERSION:
-        raise ValueError(f"unsupported CSLIB version {version}")
+        raise ValueError(f"unsupported EOSLIB version {version}")
 
     def title_at(offset):
         width, height, length = struct.unpack_from("<HBH", data, offset)
@@ -148,3 +166,33 @@ def parse(data):
     for book in books:
         book.library_id = library_id
     return books
+
+
+def set_password(index, password, salt=b"\x01" * SALT_SIZE, failures=0):
+    """Put a password into an index's device block, the way the reader would.
+
+    A third implementation of the same thing -- calc/src/library.c is the
+    reader's and web/js has none, since the computer must never see this -- so
+    the host tests can check the calculator agrees with something that did not
+    come from the same code.
+    """
+    if len(salt) != SALT_SIZE:
+        raise ValueError(f"salt must be {SALT_SIZE} bytes")
+
+    out = bytearray(index)
+    block = bytearray(DEVICE_SIZE)
+
+    if password:
+        block[PW_FLAGS] = PW_SET
+        block[PW_SALT:PW_SALT + SALT_SIZE] = salt
+        digest = hashlib.sha256(salt + password.encode()).digest()
+        block[PW_HASH:PW_HASH + 32] = digest
+
+    block[PW_FAILURES] = failures
+    out[DEVICE_OFFSET:DEVICE_OFFSET + DEVICE_SIZE] = block
+    return bytes(out)
+
+
+def device_block(index):
+    """The device block of an index, for checking what the reader wrote back."""
+    return bytes(index[DEVICE_OFFSET:DEVICE_OFFSET + DEVICE_SIZE])

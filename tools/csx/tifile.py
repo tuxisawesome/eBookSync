@@ -26,7 +26,7 @@ import struct
 
 SIGNATURE = b"**TI83F*\x1a\x0a\x00"
 TYPE_APPVAR = 0x15
-DEFAULT_COMMENT = b"eBookSync"
+DEFAULT_COMMENT = b"eOS"
 
 # A variable's length field is 16 bit, so no single appvar can exceed this.
 MAX_VAR_SIZE = 0xFFFF - 2

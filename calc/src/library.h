@@ -1,5 +1,5 @@
 /*
- * CSLIB: the index of what is actually on the calculator.
+ * EOSLIB: the index of what is actually on the calculator.
  *
  * Parsed in place from flash rather than copied into RAM -- the band cache
  * needs every byte it can get. Only the 16-byte strip record is ever written
@@ -15,8 +15,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define LIB_NAME        "CSLIB"
-#define LIB_VERSION     2
+#define LIB_NAME        "EOSLIB"
+#define LIB_MAGIC       "EOSLB"
+#define LIB_VERSION     3
+
+/* What eBookSync called the same two things, swept once on first run. */
+#define LIB_LEGACY_NAME "CSLIB"
 
 /* Identifies which library on the computer these comics came from. */
 #define LIB_ID_SIZE     16
@@ -42,8 +46,105 @@ typedef struct {
     uint16_t strip_count;
 } lib_book_t;
 
+/*
+ * The last 64 bytes of the header belong to the calculator rather than to the
+ * computer: the password, and settings the computer has no business knowing.
+ *
+ * It lives here, and not in an appvar of its own, so that deleting it to get
+ * past the password also destroys the table of contents -- book grouping, the
+ * title bitmaps, the slot to strip mapping, read state and chunk counts. What
+ * would be left is megabytes of EO** appvars with no way to tell what any of
+ * them is. That is the whole deterrent: the bypass costs the library until you
+ * are back at the computer that can rebuild it.
+ *
+ * The computer replaces this variable on every index push, so INDEX_PUT splices
+ * the old block over the incoming bytes and INDEX_GET zeroes it in the reply.
+ */
+#define LIB_HEADER_SIZE   92
+#define LIB_DEVICE_OFFSET 28
+#define LIB_DEVICE_SIZE   64
+
 /* Map the index. False when there is no library on the calculator yet. */
 bool lib_open(void);
+
+/*
+ * The device block, or NULL if there is no index. Points into flash.
+ *
+ * lib_set_device() rewrites it in place, which unarchives and re-archives the
+ * index, so every cached pointer into it moves; it re-maps before returning.
+ */
+const uint8_t *lib_device(void);
+bool lib_set_device(const uint8_t *block);
+
+/*
+ * Unix seconds, which is not what the calculator's clock gives you.
+ *
+ * The CE has an RTC, but time() counts from an epoch this code has no business
+ * assuming and the clock is very often simply unset. So the computer sends the
+ * real time at the start of every sync and the difference is kept in the device
+ * block; lib_now() adds it back. Nothing here depends on the RTC being right,
+ * only on it running.
+ *
+ * lib_set_clock() writes only when the correction has moved by more than a
+ * minute -- a write is an unarchive and re-archive of the index, and drift of a
+ * few seconds is not worth one on every sync.
+ */
+uint32_t lib_now(void);
+bool lib_set_clock(uint32_t unix_seconds);
+
+/*
+ * The password, which lives in the device block for the reason above.
+ *
+ * Stored as a random 16-byte salt and SHA-256(salt || password), so the
+ * password itself is not on the calculator and the same password on two
+ * calculators does not produce the same bytes.
+ *
+ * Be clear about what this is: a deterrent, not security. Anyone with a cable
+ * and the sync page can already read what is stored, and anyone willing to lose
+ * the library can delete the index. What it buys is that a bypass costs the
+ * whole table of contents until the owner is back at the computer that can
+ * rebuild it.
+ */
+#define LIB_PASSWORD_MAX 32
+
+bool lib_password_set(void);
+bool lib_password_check(const char *password);
+
+/* Set or, with NULL, remove. Creates an index if there is not one yet. */
+bool lib_password_store(const char *password);
+
+/*
+ * Failed attempts since the last successful unlock.
+ *
+ * Kept across power cycles, and not as a rate limit -- pulling the batteries
+ * would defeat that, and locking the owner out permanently would cost them the
+ * library. It is tamper evidence: the number is shown to whoever does get in,
+ * so an attempt to guess it does not go unnoticed.
+ */
+uint8_t lib_password_failures(void);
+bool lib_password_note_failure(void);
+bool lib_password_clear_failures(void);
+
+/*
+ * Make sure an index exists, creating an empty one if it does not.
+ *
+ * Setting a password before the first sync has to have somewhere to put it, and
+ * an index with no books in it is a perfectly ordinary thing for a calculator
+ * that has never synced.
+ */
+bool lib_ensure(void);
+
+/*
+ * Delete anything eBookSync left behind, returning how many appvars went.
+ *
+ * eOS renamed every variable it owns, so an upgraded calculator is holding a
+ * library it can no longer read and will never write to again -- typically
+ * megabytes of it. Nothing else ever cleans that up.
+ */
+uint16_t lib_sweep_legacy(void);
+
+/* Is there an eBookSync library here that eOS cannot read? */
+bool lib_has_legacy(void);
 
 /*
  * The library's identifier, or NULL if there is no library.
@@ -51,13 +152,26 @@ bool lib_open(void);
  * The computer generates one per library folder and sends it with every
  * connection. If it does not match, these comics came from somewhere else and
  * mixing the two would leave a library the computer cannot account for.
+ *
+ * An all-zero id means no identity rather than an identity of zero -- that is
+ * what an emptied index carries, and what the page sends when no library folder
+ * has been chosen. Both must read as "empty", not as "someone else's".
  */
 const uint8_t *lib_id(void);
 
 /* Mark every strip of a book read or unread, in one rewrite of the index. */
 bool lib_set_book_read(const lib_book_t *book, bool read);
 
-/* Delete the index and every strip it lists. Returns strips removed. */
+/*
+ * Delete every strip, and empty the index without deleting it.
+ *
+ * The index is not deleted because the device block is in it: erasing the
+ * library must not clear the password as a side effect. What is left is a valid
+ * index with no books, no strips and no library id, so the next computer to
+ * connect is told the calculator is empty rather than holding someone else's.
+ *
+ * Returns strips removed.
+ */
 uint16_t lib_reset(void);
 
 uint16_t lib_book_count(void);

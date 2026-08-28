@@ -1,0 +1,79 @@
+{% extends "admin/base.html" %}
+{% block title %}People — eOS admin{% endblock %}
+{% block body %}
+
+<section class="panel">
+  <h2>People</h2>
+  <table>
+    <thead>
+      <tr><th>Username</th><th>Name</th><th>Calculator</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for user in users %}
+        <tr class="{{ 'disabled' if user.disabled }}">
+          <td>
+            {{ user.username }}
+            {% if user.is_admin %}<span class="chip">admin</span>{% endif %}
+            {% if user.disabled %}<span class="chip off">disabled</span>{% endif %}
+          </td>
+          <td>{{ user.display_name }}</td>
+          <td class="dim">
+            {% if user.has_calculator %}
+              synced <time data-unix="{{ user.last_calc_sync or 0 }}">—</time>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="actions">
+            <form method="post" action="{{ url_for('admin.reset_password', user_id=user.id) }}">
+              <input name="password" type="text" placeholder="new password (or blank)"
+                     autocomplete="off">
+              <button type="submit">Reset</button>
+            </form>
+            <form method="post" action="{{ url_for('admin.toggle_admin', user_id=user.id) }}">
+              <button type="submit">{{ 'Un-admin' if user.is_admin else 'Make admin' }}</button>
+            </form>
+            <form method="post" action="{{ url_for('admin.toggle_disabled', user_id=user.id) }}">
+              <button type="submit">{{ 'Enable' if user.disabled else 'Disable' }}</button>
+            </form>
+            <form method="post" action="{{ url_for('admin.delete_user', user_id=user.id) }}"
+                  onsubmit="return confirm('Delete {{ user.username }}? Their messages stay, without a name on them.')">
+              <button type="submit" class="danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint">
+    Disabling signs someone out everywhere and keeps their history. Deleting
+    removes the account and leaves their messages unattributed — the other half
+    of a conversation would be unreadable otherwise.
+  </p>
+</section>
+
+<section class="panel">
+  <h2>Add someone</h2>
+  <form method="post" action="{{ url_for('admin.add_user') }}" class="row-form">
+    <label class="field"><span>Username</span><input name="username" required></label>
+    <label class="field"><span>Display name</span><input name="display_name"></label>
+    <label class="field"><span>Password</span>
+      <input name="password" type="text" placeholder="leave blank to generate one"></label>
+    <label class="check"><input name="is_admin" type="checkbox"> Administrator</label>
+    <button class="primary" type="submit">Add</button>
+  </form>
+  <p class="hint">
+    A generated password is shown once, here, and never again — copy it before
+    you navigate away.
+  </p>
+</section>
+
+<script>
+  /* Times are stored as unix seconds so every client agrees on them; only the
+   * rendering is local. */
+  for (const el of document.querySelectorAll('time[data-unix]')) {
+    const seconds = Number(el.dataset.unix);
+    el.textContent = seconds ? new Date(seconds * 1000).toLocaleString() : 'never';
+  }
+</script>
+{% endblock %}

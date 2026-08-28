@@ -43,4 +43,13 @@ void shim_reset_vars(void);
 /* Look up a variable's current payload, so tests can check what was written. */
 const uint8_t *shim_var_data(const char *name, size_t *size);
 
+/*
+ * Walk every variable that exists right now.
+ *
+ * Returns false once `index` runs past the end. Tests use this to dump the
+ * whole appvar space after a session, which is the only way to see what a
+ * command actually wrote -- a reply says "OK", not what landed in flash.
+ */
+bool shim_var_at(int index, const char **name, const uint8_t **data, size_t *size);
+
 #endif /* SHIM_H */

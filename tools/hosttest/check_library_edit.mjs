@@ -2,7 +2,7 @@
  * Check the library editor's bookkeeping, and that the order you arrange in the
  * browser is the order the calculator ends up showing.
  *
- * The second half is the one that matters: it builds a CSLIB from reordered
+ * The second half is the one that matters: it builds an EOSLIB from reordered
  * metadata and runs it through calc/src/library.c, the real parser, so a claim
  * like "reordering is preserved onto the calculator" is checked end to end
  * rather than asserted.
@@ -21,6 +21,7 @@ import {
   reconcile, removeStripKey, renameBookKey, renameStripKey, reorderBook, reorderStrip,
   stripNames,
 } from '../../web/js/meta.js';
+import * as lib from '../../web/js/library.js';
 import { buildIndexFor } from '../../web/js/sync.js';
 import { writeAppvar } from '../../web/js/tifile.js';
 
@@ -197,7 +198,7 @@ const checksum = (packed) => {
 function readBack(meta, books) {
   const index = buildIndexFor(meta, books, { render: fakeRender });
   const dir = mkdtempSync(join(tmpdir(), 'ebooksync-order-'));
-  writeFileSync(join(dir, 'CSLIB.8xv'), writeAppvar('CSLIB', index));
+  writeFileSync(join(dir, `${lib.NAME}.8xv`), writeAppvar(lib.NAME, index));
 
   const output = execFileSync(join(HERE, 'lib_probe'), [dir], { encoding: 'utf8' });
   const rows = { book: [], strip: [] };

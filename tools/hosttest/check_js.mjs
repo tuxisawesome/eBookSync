@@ -11,7 +11,7 @@
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
-import { buildContainer } from '../../web/js/convert.js';
+import { buildContainer, chunkName } from '../../web/js/convert.js';
 import { writeAppvar } from '../../web/js/tifile.js';
 
 const [, , layersPath, outDir] = process.argv;
@@ -38,9 +38,8 @@ const result = buildContainer({ layers, palette: spec.palette });
 console.error(`js: ${result.chunks.length} chunks, ${result.totalBytes} bytes, `
   + `ratio ${(result.rawBytes / result.totalBytes).toFixed(2)}x`);
 
-const hex = (v) => v.toString(16).toUpperCase().padStart(2, '0');
 result.chunks.forEach((chunk, i) => {
-  const name = `CS00${hex(i)}`;
+  const name = chunkName(0, i);
   writeFileSync(`${outDir}/${name}.8xv`, writeAppvar(name, chunk));
 });
 

@@ -9,8 +9,8 @@
  * Safari, which is the same constraint WebUSB imposes anyway.
  */
 
-const DB_NAME = 'ebooksync';
-const DB_STORE = 'handles';
+import { makeStore } from './idb.js';
+
 const HANDLE_KEY = 'library-root';
 
 const IMAGE_PATTERN = /\.(jpe?g)$/i;
@@ -22,32 +22,7 @@ export function isSupported() {
   return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 }
 
-function openDatabase() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(DB_STORE)) {
-        request.result.createObjectStore(DB_STORE);
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function withStore(mode, action) {
-  const db = await openDatabase();
-  try {
-    return await new Promise((resolve, reject) => {
-      const tx = db.transaction(DB_STORE, mode);
-      const request = action(tx.objectStore(DB_STORE));
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  } finally {
-    db.close();
-  }
-}
+const withStore = makeStore('eos', 'handles', { legacy: 'ebooksync' });
 
 export async function rememberDirectory(handle) {
   await withStore('readwrite', (store) => store.put(handle, HANDLE_KEY));
@@ -80,7 +55,7 @@ export async function restoreDirectory({ prompt = false } = {}) {
 }
 
 export async function pickDirectory() {
-  const handle = await window.showDirectoryPicker({ id: 'ebooksync', mode: 'readwrite' });
+  const handle = await window.showDirectoryPicker({ id: 'eos', mode: 'readwrite' });
   await rememberDirectory(handle);
   return handle;
 }

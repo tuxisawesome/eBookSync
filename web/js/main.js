@@ -6,8 +6,8 @@
  * library editable: drop files in, create and delete and rename books and
  * strips, and drag them into the order you want to read them.
  *
- * Order lives in ebooksync.json, not in filenames, and flows straight through
- * to the calculator: CSLIB lists books and strips in array order and the reader
+ * Order lives in eos.json, not in filenames, and flows straight through
+ * to the calculator: EOSLIB lists books and strips in array order and the reader
  * draws them in the order it finds them.
  */
 
@@ -15,7 +15,14 @@ import * as cacheStore from './cache.js';
 import * as fs from './fs.js';
 import * as metaStore from './meta.js';
 import * as syncEngine from './sync.js';
-import { Calculator, LIBRARY, isSupported as linkSupported } from './link.js';
+import * as updater from './update.js';
+import * as chatUi from './chatui.js';
+import * as chatSync from './chatsync.js';
+import * as chatStore from './chatstore.js';
+import {
+  Calculator, LIBRARY, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
+  isSupported as linkSupported,
+} from './link.js';
 
 const el = (id) => document.getElementById(id);
 
@@ -40,6 +47,9 @@ const ui = {
   deviceFree: el('device-free'),
   deviceCount: el('device-count'),
   deviceLibrary: el('device-library'),
+  deviceBuild: el('device-build'),
+  update: el('update'),
+  updateNotice: el('update-notice'),
   lastSync: el('last-sync'),
   selectionSummary: el('selection-summary'),
   meterFill: el('meter-fill'),
@@ -64,6 +74,14 @@ const state = {
   deviceIndex: null,
   library: null,
   freeArchive: null,
+  /* The HELLO reply, so the rest of the page can see the protocol version and
+   * build number rather than only what they happened to be used for. */
+  hello: null,
+  /* The builds staged next to this page, and what this calculator needs of
+   * them. Null until a calculator answers, and when the page is opened off
+   * disk, where fetch cannot reach a relative path. */
+  catalogue: null,
+  updatePlan: null,
   expanded: new Set(),
   filter: '',
   pool: null,
@@ -419,11 +437,47 @@ function refreshDevice() {
     [LIBRARY.EMPTY]: 'empty',
     [LIBRARY.SAME]: 'this one',
     [LIBRARY.DIFFERENT]: 'a different one',
+    [LIBRARY.UNKNOWN]: 'not compared — no folder chosen',
   };
   ui.deviceLibrary.textContent = state.calculator
     ? (library[state.library] || '—') : '—';
+
+  /* Erasing is only ever offered when we know what is there. With no folder
+   * chosen nothing has been compared, and offering to wipe somebody's comics on
+   * that basis would be reckless. */
   ui.reset.hidden = !state.calculator
+    || state.library === LIBRARY.UNKNOWN
     || (state.library === LIBRARY.EMPTY && state.resident.length === 0);
+  refreshUpdate();
+}
+
+/* The build row, the notice and the Update button, from state alone. */
+function refreshUpdate() {
+  const { hello, updatePlan } = state;
+
+  ui.deviceBuild.textContent = hello && hello.build ? `build ${hello.build}` : '—';
+
+  const wanted = updatePlan && (updatePlan.reader || updatePlan.updater);
+  ui.update.hidden = !wanted;
+  if (wanted) {
+    ui.update.textContent = updatePlan.reader
+      ? `Update the calculator to build ${updatePlan.build}…`
+      : 'Install the updater…';
+  }
+
+  /*
+   * A reader update that has been sent is not installed yet, and cannot be:
+   * the reader is running from the variable prgmEOSUP has to replace. Saying so
+   * is the whole mechanism -- an update nobody knows to install is the same as
+   * no update at all.
+   */
+  if (hello && hello.updateArmed) {
+    ui.updateNotice.hidden = false;
+    ui.updateNotice.textContent = 'An update is waiting on the calculator. Quit the '
+      + 'reader and run prgmEOSUP to install it, then run EOS again.';
+  } else {
+    ui.updateNotice.hidden = true;
+  }
 }
 
 function refreshSettings() {
@@ -665,10 +719,54 @@ async function connect() {
         + 'prompt on it. Waiting…';
     };
 
-    const hello = await calculator.hello(metaStore.libraryIdBytes(state.meta));
+    /*
+     * With no library folder chosen, send a zero id rather than the one
+     * defaultMeta() minted. All-zero means "no identity" to the calculator, so
+     * it reports itself as empty rather than as holding somebody else's comics
+     * -- which is what a random id would have looked like. Connecting for the
+     * chat or an update alone is a perfectly ordinary thing to want.
+     */
+    const libraryId = state.root
+      ? metaStore.libraryIdBytes(state.meta)
+      : new Uint8Array(16);
+
+    const hello = await calculator.hello(libraryId);
     state.calculator = calculator;
+    state.hello = hello;
     state.library = hello.library;
     state.freeArchive = hello.freeArchive;
+
+    /*
+     * Work out what there is to push before anything else uses the link. The
+     * builds are static files next to this page, so this is a fetch, not a
+     * conversation with the calculator -- and it returns null when the page was
+     * opened off disk, where a relative fetch cannot reach.
+     */
+    state.catalogue = await updater.loadCatalogue();
+    state.updatePlan = updater.plan(hello, state.catalogue);
+
+    /* Nothing below this speaks the calculator's dialect, so stop here and say
+     * so. The link stays open: an update is pushed over it, not around it. */
+    const compatibility = describeCompatibility(hello);
+    if (!compatibility.canSync) {
+      state.resident = [];
+      state.deviceIndex = null;
+      renderTree();
+      refreshSelection();
+      refreshDevice();
+      setStatus(compatibility.message, 'error');
+      return;
+    }
+
+    /*
+     * The CE's clock is very often unset, and read timestamps depend on it.
+     * A failure here is not worth abandoning a sync over -- worst case the
+     * calculator keeps its own idea of the time.
+     */
+    try {
+      await calculator.setClock(Math.floor(Date.now() / 1000));
+    } catch { /* not fatal */ }
+
     state.resident = await calculator.list();
     state.deviceIndex = await calculator.getIndex();
 
@@ -685,7 +783,9 @@ async function connect() {
       ui.reset.hidden = false;
     } else {
       ui.reset.hidden = state.resident.length === 0;
-      setStatus(`Connected. ${state.resident.length} strips on the calculator.`);
+      setStatus(state.root
+        ? `Connected. ${state.resident.length} strips on the calculator.`
+        : 'Connected. Choose a comics folder to sync a library, or use the Chat tab.');
     }
 
     renderTree();
@@ -694,14 +794,54 @@ async function connect() {
     await saveMetaNow();
   } catch (error) {
     state.calculator = null;
+    state.hello = null;
+    state.updatePlan = null;
     refreshDevice();
     setStatus(describeConnectError(error), 'error');
   }
 }
 
+/**
+ * What this page can do with the calculator that just answered HELLO.
+ *
+ * link.js reports a version mismatch rather than throwing on it, because the
+ * update travels over this same link: a page that refused to talk to an
+ * out-of-date calculator could never push it the build that would fix it.
+ * Deciding what to offer is this function's job.
+ */
+function describeCompatibility(hello) {
+  if (hello.version < MIN_PROTOCOL_VERSION) {
+    return {
+      canSync: false,
+      canUpdate: false,
+      message: `This calculator is running eBookSync (protocol ${hello.version}), which `
+        + 'cannot be updated over the cable. Install EOS.8xp once with TI Connect CE or '
+        + 'ticalc.link, and everything after that arrives over this link.',
+    };
+  }
+  if (hello.version > PROTOCOL_VERSION) {
+    return {
+      canSync: false,
+      canUpdate: false,
+      message: `The calculator speaks protocol ${hello.version} and this page speaks `
+        + `${PROTOCOL_VERSION} -- the page is the out-of-date half. Reload it, or pull the `
+        + 'latest sync page.',
+    };
+  }
+  if (!hello.compatible) {
+    return {
+      canSync: false,
+      canUpdate: true,
+      message: `This calculator speaks protocol ${hello.version}; this page speaks `
+        + `${PROTOCOL_VERSION}. Update the reader to sync your library.`,
+    };
+  }
+  return { canSync: true, canUpdate: true, message: null };
+}
+
 function describeConnectError(error) {
   if (error.name === 'NotFoundError') {
-    return 'No calculator chosen. Run COMICS, press 2nd for the Sync screen, plug the '
+    return 'No calculator chosen. Run EOS, press 2nd for the Sync screen, plug the '
       + 'cable in, then try again.';
   }
   if (error.name === 'InvalidStateError') {
@@ -782,6 +922,18 @@ function describePlan(plan) {
 }
 
 async function runSync() {
+  const compatibility = state.hello && describeCompatibility(state.hello);
+  if (compatibility && !compatibility.canSync) {
+    setStatus(compatibility.message, 'error');
+    return;
+  }
+
+  if (!state.root) {
+    setStatus('Choose the folder holding your comics before syncing a library. '
+      + 'Chat and updates work without one.', 'error');
+    return;
+  }
+
   if (state.library === LIBRARY.DIFFERENT) {
     setStatus('This calculator holds a different library. Erase it first.', 'error');
     return;
@@ -821,6 +973,13 @@ async function runSync() {
   };
 
   state.pool = state.pool || new syncEngine.ConversionPool();
+
+  /*
+   * Messages first, comics second. The chat exchange is seconds; a library sync
+   * is minutes, and stopping it halfway is a normal thing to do. Doing the
+   * quick half first means an interrupted sync still brought the messages.
+   */
+  await exchangeChat(appendLog);
 
   try {
     const result = await syncEngine.execute(state.calculator, state.meta, state.books, plan, {
@@ -874,6 +1033,126 @@ async function runSync() {
     refreshSelection();
     refreshDevice();
   }
+}
+
+/**
+ * Push the staged build.
+ *
+ * The reader half is not installed by this -- it cannot be, since the reader is
+ * running from the variable that has to be replaced -- so the honest report at
+ * the end is "sent, now go and run prgmEOSUP". The updater half is installed by
+ * the reader as it arrives, and needs nothing from the user at all.
+ */
+async function runUpdate() {
+  const { calculator, catalogue, updatePlan } = state;
+  if (!calculator || !catalogue || !updatePlan) return;
+  if (!updatePlan.reader && !updatePlan.updater) return;
+
+  const summary = updatePlan.reader
+    ? `Send build ${updatePlan.build} to the calculator?\n\n`
+      + 'Nothing is replaced until you quit the reader and run prgmEOSUP. '
+      + 'Your comics are not touched.'
+    : 'Install the updater on the calculator?\n\nThis is what applies future updates.';
+  if (!window.confirm(summary)) return;
+
+  ui.progressTitle.textContent = 'Updating the calculator';
+  ui.progressStatus.textContent = 'Starting…';
+  ui.progressLog.textContent = '';
+  ui.progressFill.style.width = '0%';
+  ui.progressStop.hidden = true;
+  ui.progressClose.hidden = true;
+  ui.progressDialog.showModal();
+
+  const log = (line) => {
+    ui.progressStatus.textContent = line;
+    ui.progressLog.textContent += `${line}\n`;
+    ui.progressLog.scrollTop = ui.progressLog.scrollHeight;
+  };
+
+  try {
+    const done = await updater.execute(calculator, catalogue, updatePlan, { onStatus: log });
+
+    /* Ask again rather than assuming: the calculator is the only thing that
+     * knows what it now holds, and it has just been written to. */
+    state.hello = await calculator.hello(metaStore.libraryIdBytes(state.meta));
+    state.updatePlan = updater.plan(state.hello, catalogue);
+
+    if (done.reader) {
+      log(`Build ${updatePlan.build} is on the calculator.`);
+      log('Quit the reader and run prgmEOSUP to install it.');
+      setStatus(`Build ${updatePlan.build} sent. Quit the reader and run prgmEOSUP `
+        + 'to install it, then run EOS again.');
+    } else {
+      log('The updater is installed.');
+      setStatus('The updater is installed.');
+    }
+    ui.progressFill.style.width = '100%';
+  } catch (error) {
+    log(`Failed: ${error.message}`);
+    setStatus(`Could not update the calculator: ${error.message}`, 'error');
+  } finally {
+    ui.progressStop.hidden = true;
+    ui.progressClose.hidden = false;
+    refreshDevice();
+  }
+}
+
+/**
+ * The chat half of a sync.
+ *
+ * Deliberately its own step, and deliberately not gated on the library. Only
+ * the comics care which computer they came from -- mixing two libraries would
+ * leave the calculator holding strips this page cannot account for -- but the
+ * chat belongs to whoever this page is signed in to the relay as, and the
+ * calculator is a second terminal for that account.
+ *
+ * Never fatal. A relay that is unreachable, or an account that is not signed
+ * in, must not stop comics moving.
+ */
+async function exchangeChat(log = () => {}) {
+  const calculator = state.calculator;
+  if (!calculator) return null;
+
+  const account = chatUi.account();
+  if (!account) {
+    log('Chat: not signed in to a relay, skipping.');
+    return null;
+  }
+
+  let summary = null;
+  try {
+    summary = await chatSync.exchange(calculator, chatStore, {
+      userId: account.id,
+      onStatus: log,
+    });
+
+    if (summary.skipped) log(`Chat: ${summary.skipped}.`);
+    else {
+      log(`Chat: sent ${summary.sent}, took ${summary.taken}.`);
+    }
+  } catch (error) {
+    log(`Chat: could not exchange messages (${error.message}).`);
+    return null;
+  }
+
+  /*
+   * Uploading is separate, and separately allowed to fail. Anything taken off
+   * the calculator is already stored here, so a relay that is down costs a
+   * delay rather than a message.
+   */
+  try {
+    const relay = chatUi.relay();
+    if (relay) {
+      const drained = await chatSync.drain(relay, chatStore, { onStatus: log });
+      if (drained.uploaded) log(`Chat: sent ${drained.uploaded} to the relay.`);
+      if (summary && summary.taken) await relay.noteCalculatorSync();
+      await chatUi.refresh();
+    }
+  } catch (error) {
+    log(`Chat: the relay is unreachable (${error.message}). Messages are safe here.`);
+  }
+
+  return summary;
 }
 
 async function resetCalculator() {
@@ -981,16 +1260,22 @@ async function start() {
   bindTreeDrop();
   refreshSettings();
 
+  /* The chat panel keeps its own state and its own polling; it only needs the
+   * library half to exist so the tabs have something to switch between. */
+  chatUi.start().catch((error) => {
+    console.warn('chat panel did not start:', error);
+  });
+
   ui.chooseFolder.addEventListener('click', async () => {
     try {
       await loadLibrary(await fs.pickDirectory());
-      ui.connect.disabled = false;
     } catch (error) {
       if (error.name !== 'AbortError') setStatus(`Could not open that folder: ${error.message}`, 'error');
     }
   });
 
   ui.newBook.addEventListener('click', opNewBook);
+  ui.update.addEventListener('click', runUpdate);
   ui.reset.addEventListener('click', resetCalculator);
   ui.connect.addEventListener('click', connect);
   ui.sync.addEventListener('click', runSync);
@@ -998,12 +1283,8 @@ async function start() {
 
   /* If we already have permission from last time, pick up where we left off. */
   const remembered = await fs.restoreDirectory();
-  if (remembered) {
-    await loadLibrary(remembered);
-    ui.connect.disabled = false;
-  } else {
-    ui.chooseFolder.focus();
-  }
+  if (remembered) await loadLibrary(remembered);
+  else ui.chooseFolder.focus();
 
   window.addEventListener('beforeunload', () => {
     if (state.pool) state.pool.terminate();
@@ -1014,4 +1295,4 @@ start().catch((error) => setStatus(`Startup failed: ${error.message}`, 'error'))
 
 /* Exposed for the browser console: clearing the conversion cache is the fix for
  * "it converted something wrong", and there is no reason to spend UI on it. */
-window.ebooksync = { state, cache: cacheStore };
+window.eos = { state, cache: cacheStore };

@@ -14,6 +14,7 @@
 #include "library.h"
 #include "usbdrvce.h"
 
+#include <dirent.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -32,17 +33,31 @@ static bool progress(const char *state, uint8_t slot, uint8_t chunk, uint8_t cou
 int main(int argc, char **argv) {
     wire_reset();
 
+    /*
+     * Load every .8xv in the directory, not just the index. A strip is an index
+     * entry plus its chunk appvars, and a test that seeds only the first is
+     * testing a calculator that cannot exist.
+     */
     if (argc >= 3 && strcmp(argv[1], "--lib") == 0) {
-        char path[4096];
-        snprintf(path, sizeof path, "%s/CSLIB.8xv", argv[2]);
+        DIR *dir = opendir(argv[2]);
+        for (struct dirent *entry; dir && (entry = readdir(dir)); ) {
+            const char *dot = strrchr(entry->d_name, '.');
+            if (!dot || strcmp(dot, ".8xv") != 0)
+                continue;
 
-        char name[9];
-        size_t size;
-        uint8_t *data = read_appvar(path, name, &size);
-        if (data) {
-            shim_add_var(name, data, size);
-            free(data);
+            char path[4096];
+            snprintf(path, sizeof path, "%s/%s", argv[2], entry->d_name);
+
+            char name[9];
+            size_t size;
+            uint8_t *data = read_appvar(path, name, &size);
+            if (data) {
+                shim_add_var(name, data, size);
+                free(data);
+            }
         }
+        if (dir)
+            closedir(dir);
     }
 
     /* main.c maps the index at startup, before ever reaching the sync screen,
@@ -61,6 +76,33 @@ int main(int argc, char **argv) {
     }
 
     bool ok = proto_run(progress, false);
+
+    /*
+     * With --save, write every variable out as <dir>/<NAME>.bin.
+     *
+     * A reply only ever says "OK". What a command actually left in flash --
+     * whether INDEX_PUT carried the device block across, whether a chunk landed
+     * whole -- is invisible from the wire, and this is the only way to look.
+     */
+    const char *save = NULL;
+    for (int i = 1; i + 1 < argc; i++) {
+        if (strcmp(argv[i], "--save") == 0)
+            save = argv[i + 1];
+    }
+    if (save) {
+        const char *name;
+        const uint8_t *data;
+        size_t size;
+        for (int i = 0; shim_var_at(i, &name, &data, &size); i++) {
+            char path[4096];
+            snprintf(path, sizeof path, "%s/%s.bin", save, name);
+            FILE *file = fopen(path, "wb");
+            if (!file)
+                continue;
+            fwrite(data, 1, size, file);
+            fclose(file);
+        }
+    }
 
     fprintf(stderr, "proto_run returned %d, overflows %d, os calls %u\n",
             ok, wire_overflows(), shim_os_calls());

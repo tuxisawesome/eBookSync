@@ -13,6 +13,7 @@
 
 typedef struct {
     char name[9];
+    uint8_t type;
     uint8_t *data;
     size_t size;
     bool used;
@@ -42,6 +43,7 @@ void shim_add_var(const char *name, const void *data, size_t size) {
     for (int i = 0; i < MAX_VARS; i++) {
         if (!vars[i].used) {
             vars[i].used = true;
+            vars[i].type = OS_TYPE_APPVAR;
             snprintf(vars[i].name, sizeof vars[i].name, "%s", name);
             vars[i].data = malloc(size ? size : 1);
             memcpy(vars[i].data, data, size);
@@ -64,25 +66,59 @@ const uint8_t *shim_var_data(const char *name, size_t *size) {
     return NULL;
 }
 
-uint8_t ti_Open(const char *name, const char *mode) {
+bool shim_var_at(int index, const char **name, const uint8_t **data, size_t *size) {
+    for (int i = 0; i < MAX_VARS; i++) {
+        if (!vars[i].used)
+            continue;
+        if (index--)
+            continue;
+        *name = vars[i].name;
+        *data = vars[i].data;
+        *size = vars[i].size;
+        return true;
+    }
+    return false;
+}
+
+static int find_var(const char *name, uint8_t type) {
+    for (int i = 0; i < MAX_VARS; i++) {
+        if (vars[i].used && vars[i].type == type && strcmp(vars[i].name, name) == 0)
+            return i;
+    }
+    return -1;
+}
+
+uint8_t ti_OpenVar(const char *name, const char *mode, uint8_t type) {
     COUNT_OS_CALL();
     /* A write mode creates the variable if it is not there, the way fileioc
      * does; the reader relies on that when a chunk arrives. */
-    if (mode && (*mode == 'w' || *mode == 'a') && !shim_var_data(name, NULL)) {
-        shim_add_var(name, "", 0);
-    }
-
-    for (int i = 0; i < MAX_VARS; i++) {
-        if (vars[i].used && strcmp(vars[i].name, name) == 0) {
-            uint8_t handle = next_handle++;
-            if (next_handle >= 16)
-                next_handle = 1;
-            open_handle_var[handle] = (uint8_t)i;
-            open_handle_pos[handle] = 0;
-            return handle;
+    if (mode && (*mode == 'w' || *mode == 'a') && find_var(name, type) < 0) {
+        for (int i = 0; i < MAX_VARS; i++) {
+            if (vars[i].used)
+                continue;
+            vars[i].used = true;
+            vars[i].type = type;
+            snprintf(vars[i].name, sizeof vars[i].name, "%s", name);
+            vars[i].data = malloc(1);
+            vars[i].size = 0;
+            break;
         }
     }
-    return 0;
+
+    int index = find_var(name, type);
+    if (index < 0)
+        return 0;
+
+    uint8_t handle = next_handle++;
+    if (next_handle >= 16)
+        next_handle = 1;
+    open_handle_var[handle] = (uint8_t)index;
+    open_handle_pos[handle] = 0;
+    return handle;
+}
+
+uint8_t ti_Open(const char *name, const char *mode) {
+    return ti_OpenVar(name, mode, OS_TYPE_APPVAR);
 }
 
 int ti_Close(uint8_t handle) { (void)handle; return 1; }
@@ -93,17 +129,20 @@ void *ti_GetDataPtr(uint8_t handle) {
     return var->data + open_handle_pos[handle];
 }
 
-int ti_Delete(const char *name) {
+int ti_DeleteVar(const char *name, uint8_t type) {
     COUNT_OS_CALL();
-    for (int i = 0; i < MAX_VARS; i++) {
-        if (vars[i].used && strcmp(vars[i].name, name) == 0) {
-            free(vars[i].data);
-            vars[i].data = NULL;
-            vars[i].used = false;
-            return 1;
-        }
-    }
-    return 0;
+    int index = find_var(name, type);
+    if (index < 0)
+        return 0;
+
+    free(vars[index].data);
+    vars[index].data = NULL;
+    vars[index].used = false;
+    return 1;
+}
+
+int ti_Delete(const char *name) {
+    return ti_DeleteVar(name, OS_TYPE_APPVAR);
 }
 
 int ti_Seek(int offset, unsigned origin, uint8_t handle) {
@@ -187,6 +226,10 @@ void gfx_FillRectangle_NoClip(uint24_t x, uint24_t y, uint24_t w, uint24_t h) {
         for (uint24_t col = x; col < x + w && col < GFX_LCD_WIDTH; col++)
             shim_vbuffer[row][col] = fill_color;
     }
+}
+
+void gfx_Rectangle_NoClip(uint24_t x, uint24_t y, uint24_t w, uint24_t h) {
+    (void)x; (void)y; (void)w; (void)h;
 }
 
 uint8_t gfx_SetTextFGColor(uint8_t color) { (void)color; return 0; }

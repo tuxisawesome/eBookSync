@@ -10,12 +10,15 @@
 
 #include "input.h"
 #include "about.h"
+#include "chat.h"
+#include "keyin.h"
 #include "library.h"
 #include "proto.h"
 #include "render.h"
 
 #include <graphx.h>
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 #include <tice.h>
 #include <string.h>
@@ -101,6 +104,17 @@ void ui_draw_title(uint16_t title_offset, int x, int y, bool selected) {
                 dst[col] = (uint8_t)(ramp + level);
         }
     }
+}
+
+void ui_notice(const char *line1, const char *line2) {
+    gfx_FillScreen(UI_BG);
+    gfx_SetTextFGColor(UI_FG);
+    gfx_SetTextBGColor(UI_BG);
+    gfx_PrintStringXY(line1, 10, 100);
+    if (line2)
+        gfx_PrintStringXY(line2, 10, 118);
+    gfx_SwapDraw();
+    gfx_Blit(gfx_screen);
 }
 
 void ui_message(const char *line1, const char *line2) {
@@ -253,7 +267,7 @@ ui_result_t ui_book_menu(uint16_t *selection) {
             }
 
             draw_scrollbar(&list);
-            ui_footer("enter open  2nd sync  del read  mode setup");
+            ui_footer("enter open 2nd sync y= chat mode setup");
             dirty = false;
             drew = true;
         }
@@ -269,8 +283,10 @@ ui_result_t ui_book_menu(uint16_t *selection) {
         }
         if (input_pressed(kb_Key2nd))
             return UI_SYNC;
-        if (input_pressed(kb_KeyAlpha))
-            return UI_ECHO;
+        if (input_pressed(kb_KeyYequ)) {
+            *selection = list.selected;
+            return UI_CHAT;
+        }
         if (input_pressed(kb_KeyMode)) {
             *selection = list.selected;
             return UI_SETUP;
@@ -352,7 +368,7 @@ ui_result_t ui_strip_menu(uint16_t book_index, uint16_t *selection) {
             lib_get_strip(index, &strip);
             strip.flags ^= LIB_FLAG_READ;
             if (strip.flags & LIB_FLAG_READ)
-                strip.read_at = (uint32_t)time(NULL);
+                strip.read_at = lib_now();
             lib_save_strip(index, &strip);
             lib_get_book(book_index, &book);
             dirty = true;
@@ -434,9 +450,65 @@ void ui_about_screen(void) {
     }
 }
 
+/*
+ * Set, change or remove the password.
+ *
+ * Changing it needs the current one. Not because a bypass is hard -- see
+ * lib_password_check() -- but because a settings screen that lets anyone who
+ * reached it change the lock is not a lock at all, and this screen is reachable
+ * from behind the prompt.
+ */
+static void password_screen(void) {
+    char entered[LIB_PASSWORD_MAX + 1];
+
+    if (lib_password_set()) {
+        if (!keyin_text("Current password", NULL, entered,
+                        LIB_PASSWORD_MAX, KEYIN_MASKED, NULL))
+            return;
+        if (!lib_password_check(entered)) {
+            lib_password_note_failure();
+            ui_message("Wrong password.", "Nothing was changed.");
+            return;
+        }
+
+        if (ui_confirm("Remove the password?", "2nd removes, clear changes it")) {
+            ui_message(lib_password_store(NULL) ? "Password removed."
+                                                : "Could not save that.", NULL);
+            return;
+        }
+    }
+
+    if (!keyin_text("New password", "alpha for letters, del to fix", entered,
+                    LIB_PASSWORD_MAX, KEYIN_MASKED, NULL))
+        return;
+
+    if (!*entered) {
+        ui_message("Nothing entered.", "The password is unchanged.");
+        return;
+    }
+
+    char again[LIB_PASSWORD_MAX + 1];
+    if (!keyin_text("Type it again", NULL, again, LIB_PASSWORD_MAX, KEYIN_MASKED, NULL))
+        return;
+
+    if (strcmp(entered, again) != 0) {
+        ui_message("Those do not match.", "The password is unchanged.");
+        return;
+    }
+
+    if (!lib_password_store(entered)) {
+        ui_message("Could not save that.", "Is the archive full?");
+        return;
+    }
+
+    ui_message("Password set.", "You will be asked on startup.");
+}
+
 void ui_setup_screen(void) {
     static const char *const entries[] = {
+        "Password",
         "Erase the library",
+        "Link echo test",
         "About",
     };
     const uint8_t count = sizeof entries / sizeof *entries;
@@ -476,10 +548,26 @@ void ui_setup_screen(void) {
 
             gfx_SetTextFGColor(UI_DIM);
             gfx_SetTextBGColor(UI_BG);
-            if (selected == 0) {
-                gfx_PrintStringXY("Deletes every comic on this", 10, 140);
-                gfx_PrintStringXY("calculator. The computer keeps", 10, 158);
-                gfx_PrintStringXY("its copies.", 10, 176);
+            switch (selected) {
+                case 0:
+                    gfx_PrintStringXY(lib_password_set()
+                        ? "Asked for when eOS starts."
+                        : "No password set.", 10, 140);
+                    gfx_PrintStringXY("It keeps people out of your", 10, 158);
+                    gfx_PrintStringXY("comics, not a determined one.", 10, 176);
+                    break;
+                case 1:
+                    gfx_PrintStringXY("Deletes every comic on this", 10, 140);
+                    gfx_PrintStringXY("calculator. The computer keeps", 10, 158);
+                    gfx_PrintStringXY("its copies.", 10, 176);
+                    break;
+                case 2:
+                    gfx_PrintStringXY("Echoes bytes straight back to", 10, 140);
+                    gfx_PrintStringXY("the computer. For working out", 10, 158);
+                    gfx_PrintStringXY("why a sync will not start.", 10, 176);
+                    break;
+                default:
+                    break;
             }
 
             ui_footer("enter  choose          clear  back");
@@ -500,15 +588,27 @@ void ui_setup_screen(void) {
         }
 
         if (input_pressed(kb_KeyEnter)) {
-            if (selected == 0) {
-                if (ui_confirm("Erase every comic on this", "calculator?")) {
-                    uint16_t removed = lib_reset();
-                    char message[40];
-                    sprintf(message, "Removed %u strip(s).", removed);
-                    ui_message(message, "Sync again to refill it.");
-                }
-            } else {
-                ui_about_screen();
+            switch (selected) {
+                case 0:
+                    password_screen();
+                    break;
+
+                case 1:
+                    if (ui_confirm("Erase every comic on this", "calculator?")) {
+                        uint16_t removed = lib_reset();
+                        char message[40];
+                        sprintf(message, "Removed %u strip(s).", removed);
+                        ui_message(message, "Sync again to refill it.");
+                    }
+                    break;
+
+                case 2:
+                    ui_sync_run(true);
+                    break;
+
+                default:
+                    ui_about_screen();
+                    break;
             }
             input_reset();
             dirty = true;
@@ -517,6 +617,304 @@ void ui_setup_screen(void) {
         if (input_pressed(kb_KeyClear))
             return;
     }
+}
+
+/* -------------------------------------------------------------------- chat */
+
+/*
+ * Messages, drawn with the built-in 8x8 font.
+ *
+ * ASCII only, and not by oversight: the calculator has no CJK font, which is
+ * the same reason comic titles are pre-rendered bitmaps on the computer. A
+ * message cannot be pre-rendered -- it is text, and it has to be composable
+ * here -- so anything outside ASCII is folded down by the sync page before it
+ * ever reaches this screen.
+ */
+
+#define CHAT_COLS      38
+#define CHAT_LINE_H    10
+#define CHAT_TOP       26
+#define CHAT_ROWS      ((GFX_LCD_HEIGHT - CHAT_TOP - 22) / CHAT_LINE_H)
+
+/* Wrap `text` at word boundaries, calling `emit` for each line. */
+static uint8_t wrap(const char *text, char lines[][CHAT_COLS + 1], uint8_t max) {
+    uint8_t used = 0;
+    uint16_t at = 0;
+
+    while (text[at] && used < max) {
+        uint16_t take = 0;
+        uint16_t last_space = 0;
+
+        while (take < CHAT_COLS && text[at + take]) {
+            if (text[at + take] == ' ')
+                last_space = take;
+            take++;
+        }
+
+        /* Break at the last space if the line actually overflowed, so a word is
+         * not cut in half for the sake of two characters. */
+        if (text[at + take] && last_space)
+            take = last_space;
+
+        memcpy(lines[used], text + at, take);
+        lines[used][take] = '\0';
+        used++;
+
+        at += take;
+        while (text[at] == ' ')
+            at++;
+    }
+
+    return used;
+}
+
+/* Every wrapped line of a conversation, newest last, as far back as fits. */
+#define CHAT_MAX_LINES 64
+
+typedef struct {
+    char text[CHAT_COLS + 1];
+    bool mine;
+    bool heading;
+} chat_line_t;
+
+static uint8_t build_lines(uint8_t conversation, chat_line_t *out, uint8_t max) {
+    uint16_t count = chat_message_count(conversation);
+    uint8_t used = 0;
+
+    /*
+     * Walked from the newest backwards and then reversed, because the end of a
+     * conversation is the part anyone wants and the start is what should be cut
+     * when it does not fit.
+     */
+    uint16_t first = 0;
+    uint8_t needed = 0;
+    for (uint16_t i = count; i-- > 0; ) {
+        chat_message_t message;
+        if (!chat_get_message(conversation, i, &message))
+            break;
+
+        char wrapped[8][CHAT_COLS + 1];
+        uint8_t lines = wrap(message.body, wrapped, 8);
+        if (needed + lines + 1 > max)
+            break;
+
+        needed += lines + 1;
+        first = i;
+    }
+
+    for (uint16_t i = first; i < count && used < max; i++) {
+        chat_message_t message;
+        if (!chat_get_message(conversation, i, &message))
+            break;
+
+        bool mine = (message.flags & CHAT_FLAG_MINE) != 0;
+
+        snprintf(out[used].text, sizeof out[used].text, "%s",
+                 mine ? "you" : message.sender);
+        out[used].mine = mine;
+        out[used].heading = true;
+        used++;
+
+        char wrapped[8][CHAT_COLS + 1];
+        uint8_t lines = wrap(message.body, wrapped, 8);
+        for (uint8_t l = 0; l < lines && used < max; l++) {
+            memcpy(out[used].text, wrapped[l], sizeof wrapped[l]);
+            out[used].mine = mine;
+            out[used].heading = false;
+            used++;
+        }
+    }
+
+    return used;
+}
+
+static void compose(uint16_t conversation_id, const char *name) {
+    char body[CHAT_BODY_MAX + 1];
+    char prompt[40];
+    snprintf(prompt, sizeof prompt, "To %s", name);
+
+    if (!keyin_text(prompt, "sent at the next sync", body, CHAT_BODY_MAX,
+                    KEYIN_TEXT, NULL))
+        return;
+
+    if (!*body)
+        return;
+
+    if (chat_send(conversation_id, body))
+        ui_message("Queued.", "It goes at the next sync.");
+    else
+        ui_message("Could not queue that.", "The outbox may be full.");
+}
+
+/* One conversation: its messages, and a way to add to them. */
+static void chat_thread(uint8_t index) {
+    chat_conversation_t conversation;
+    chat_get_conversation(index, &conversation);
+
+    static chat_line_t lines[CHAT_MAX_LINES];
+    uint8_t count = build_lines(index, lines, CHAT_MAX_LINES);
+
+    uint8_t first = count > CHAT_ROWS ? count - CHAT_ROWS : 0;
+    bool dirty = true;
+    bool drew = false;
+
+    input_reset();
+    for (;;) {
+        if (dirty) {
+            gfx_FillScreen(UI_BG);
+            ui_header(conversation.name);
+
+            if (!count) {
+                gfx_SetTextFGColor(UI_DIM);
+                gfx_SetTextBGColor(UI_BG);
+                gfx_PrintStringXY("Nothing here yet.", 10, 100);
+                gfx_PrintStringXY("2nd writes a message.", 10, 118);
+            }
+
+            for (uint8_t row = 0; row < CHAT_ROWS && first + row < count; row++) {
+                const chat_line_t *line = &lines[first + row];
+                int y = CHAT_TOP + row * CHAT_LINE_H;
+
+                gfx_SetTextBGColor(UI_BG);
+                gfx_SetTextFGColor(line->heading ? UI_ACCENT
+                                                 : (line->mine ? UI_FG : UI_FG));
+                gfx_PrintStringXY(line->text, line->mine ? 20 : 8, y);
+            }
+
+            ui_footer("2nd write   up/down scroll   clear back");
+            dirty = false;
+            drew = true;
+        }
+
+        ui_present(drew);
+        drew = false;
+        input_scan();
+
+        if (input_repeat(kb_KeyUp) && first) {
+            first--;
+            dirty = true;
+        } else if (input_repeat(kb_KeyDown) && first + CHAT_ROWS < count) {
+            first++;
+            dirty = true;
+        }
+
+        if (input_pressed(kb_Key2nd)) {
+            compose(conversation.id, conversation.name);
+            count = build_lines(index, lines, CHAT_MAX_LINES);
+            first = count > CHAT_ROWS ? count - CHAT_ROWS : 0;
+            input_reset();
+            dirty = true;
+        }
+
+        if (input_pressed(kb_KeyClear))
+            return;
+    }
+}
+
+void ui_chat_screen(void) {
+    chat_open();
+
+    menu_list_t list = { chat_conversation_count(), 0, 0 };
+    bool dirty = true;
+    bool drew = false;
+
+    input_reset();
+    for (;;) {
+        if (dirty) {
+            gfx_FillScreen(UI_BG);
+            ui_header("Messages");
+
+            if (!list.count) {
+                gfx_SetTextFGColor(UI_DIM);
+                gfx_SetTextBGColor(UI_BG);
+                gfx_PrintStringXY("No conversations yet.", 10, 90);
+                gfx_PrintStringXY("Sync with a computer that is", 10, 112);
+                gfx_PrintStringXY("signed in to the relay.", 10, 130);
+            }
+
+            for (uint16_t row = 0; row < UI_LIST_ROWS && list.first + row < list.count;
+                 row++) {
+                uint16_t index = list.first + row;
+                draw_row_background(&list, row);
+
+                chat_conversation_t conversation;
+                chat_get_conversation((uint8_t)index, &conversation);
+
+                gfx_SetTextFGColor(UI_FG);
+                gfx_SetTextBGColor(index == list.selected ? UI_SELECT_BG : UI_BG);
+                gfx_PrintStringXY(conversation.name, 12,
+                                  UI_LIST_TOP + row * UI_ROW_HEIGHT + 6);
+            }
+
+            draw_scrollbar(&list);
+            ui_footer("enter  open              clear  back");
+            dirty = false;
+            drew = true;
+        }
+
+        ui_present(drew);
+        drew = false;
+        input_scan();
+
+        if (list_navigate(&list))
+            dirty = true;
+
+        if (list.count && input_pressed(kb_KeyEnter)) {
+            chat_thread((uint8_t)list.selected);
+            chat_open();
+            list.count = chat_conversation_count();
+            input_reset();
+            dirty = true;
+        }
+
+        if (input_pressed(kb_KeyClear))
+            return;
+    }
+}
+
+/* ---------------------------------------------------------------- password */
+
+/*
+ * The lock screen.
+ *
+ * Deliberately says nothing about whose calculator this is or what is on it: a
+ * prompt that advertises a library is an invitation. It reports failed attempts
+ * on the way in, though, because that is the part that is actually worth
+ * knowing and the part nothing else would ever tell you.
+ */
+bool ui_password_gate(void) {
+    if (!lib_password_set())
+        return true;
+
+    for (uint8_t tries = UI_PASSWORD_TRIES; tries; tries--) {
+        char hint[40];
+        if (tries == UI_PASSWORD_TRIES)
+            hint[0] = '\0';
+        else
+            sprintf(hint, "%u attempt(s) left.", tries);
+
+        char entered[LIB_PASSWORD_MAX + 1];
+        if (!keyin_text("Locked", hint[0] ? hint : NULL, entered,
+                        LIB_PASSWORD_MAX, KEYIN_MASKED, NULL))
+            return false;
+
+        if (lib_password_check(entered)) {
+            uint8_t failures = lib_password_failures();
+            lib_password_clear_failures();
+
+            if (failures) {
+                char line[40];
+                sprintf(line, "%u failed attempt(s) since", failures);
+                ui_message(line, "you last unlocked this.");
+            }
+            return true;
+        }
+
+        lib_password_note_failure();
+        ui_message("Wrong password.", tries > 1 ? "Try again." : "Closing.");
+    }
+
+    return false;
 }
 
 /* ------------------------------------------------------------- sync screen */
@@ -556,7 +954,7 @@ static void sync_line(uint8_t row, const char *text) {
 static void sync_draw(void) {
     char line[40];
 
-    sync_line(0, sync_echo_mode ? "eBookSync - ECHO TEST" : "eBookSync");
+    sync_line(0, sync_echo_mode ? "eOS - ECHO TEST" : "eOS");
     sync_line(2, sync_state);
 
     sprintf(line, "%u done, %uK moved", sync_chunks_received,
@@ -638,10 +1036,6 @@ static bool sync_progress(const char *state, uint8_t slot, uint8_t chunk,
     }
 
     return !input_pressed(kb_KeyClear);
-}
-
-void ui_sync_screen(void) {
-    ui_sync_run(false);
 }
 
 /*

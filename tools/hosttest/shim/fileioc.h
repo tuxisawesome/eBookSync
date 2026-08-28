@@ -3,7 +3,25 @@
 
 #include "shim.h"
 
+/*
+ * Variable types. The reader only ever touches two: appvars for everything it
+ * stores, and programs for the two halves of the self-update.
+ */
+#define OS_TYPE_APPVAR  0x15
+#define OS_TYPE_PRGM    0x06
+
 uint8_t ti_Open(const char *name, const char *mode);
+
+/*
+ * The same, for a variable that is not an appvar.
+ *
+ * Type is part of a variable's identity on the calculator, so the shim keys on
+ * it too -- otherwise prgmEOS and an appvar called EOS would be the same thing
+ * here and different things on hardware, which is the sort of difference that
+ * only shows up once it has done damage.
+ */
+uint8_t ti_OpenVar(const char *name, const char *mode, uint8_t type);
+int ti_DeleteVar(const char *name, uint8_t type);
 int ti_Close(uint8_t handle);
 void *ti_GetDataPtr(uint8_t handle);
 int ti_Delete(const char *name);

@@ -34,21 +34,42 @@ void ui_draw_title(uint16_t title_offset, int x, int y, bool selected);
 /* Centred one-line message on a blank screen, shown until a key is pressed. */
 void ui_message(const char *line1, const char *line2);
 
+/*
+ * The same, but drawn and returned from at once.
+ *
+ * For saying what is happening before something slow starts -- a screen that
+ * waits for a key cannot do that, and a calculator that looks dead for several
+ * seconds gets its battery pulled.
+ */
+void ui_notice(const char *line1, const char *line2);
+
 /* What a menu loop returned. */
 typedef enum {
     UI_CHOSE,     /* the user picked the highlighted row */
     UI_BACK,      /* the user backed out */
     UI_SYNC,      /* the user asked for the sync screen */
-    UI_ECHO,      /* the user asked for the link echo test */
     UI_SETUP,     /* the user asked for the settings screen */
+    UI_CHAT,      /* the user asked for the chat screen */
 } ui_result_t;
-
-/* Take over USB and serve the sync protocol until the computer disconnects or
- * the user presses clear. */
-void ui_sync_screen(void);
 
 /* Settings: what is stored, resetting the library, and about. */
 void ui_setup_screen(void);
+
+/*
+ * Ask for the password on the way in. True to let the user through.
+ *
+ * Three wrong answers and the reader quits. That is a speed bump rather than a
+ * lock -- relaunching gives three more -- so the count of failed attempts is
+ * kept in the index and shown to whoever does get in. See lib_password_check().
+ */
+#define UI_PASSWORD_TRIES 3
+bool ui_password_gate(void);
+
+/*
+ * Messages. Nothing here touches the link -- what is read arrived at the last
+ * sync, and what is typed leaves at the next one.
+ */
+void ui_chat_screen(void);
 
 /* The text of about.txt, baked in at build time and scrollable. */
 void ui_about_screen(void);

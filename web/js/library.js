@@ -1,5 +1,5 @@
 /*
- * Building the CSLIB index: what is on the calculator, and what it is called.
+ * Building the EOSLIB index: what is on the calculator, and what it is called.
  *
  * Only content actually resident on the calculator goes in here -- the computer
  * stays the source of truth for the whole library. Mirrors tools/csx/library.py
@@ -9,11 +9,19 @@
 import { compress, decompress } from './zx0.js';
 import { BOOK_WIDTH, STRIP_WIDTH, renderTitle } from './titles.js';
 
-const MAGIC = 'CSLIB';
-export const VERSION = 2;
-export const NAME = 'CSLIB';
+const MAGIC = 'EOSLB';
+export const VERSION = 3;
+export const NAME = 'EOSLIB';
 
-const HEADER_SIZE = 28;
+/*
+ * The last 64 bytes of the header are the calculator's, not ours: its password
+ * and its own settings. We write zeros there and it splices its own block back
+ * in on INDEX_PUT, and zeros the block again on INDEX_GET -- which is what lets
+ * indexIsStale() compare the two byte for byte.
+ */
+export const HEADER_SIZE = 92;
+export const DEVICE_OFFSET = 28;
+export const DEVICE_SIZE = 64;
 export const LIBRARY_ID_SIZE = 16;
 const BOOK_SIZE = 6;
 const STRIP_SIZE = 16;
@@ -121,10 +129,10 @@ export function parseIndex(data) {
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   for (let i = 0; i < MAGIC.length; i++) {
-    if (view.getUint8(i) !== MAGIC.charCodeAt(i)) throw new Error('not a CSLIB index');
+    if (view.getUint8(i) !== MAGIC.charCodeAt(i)) throw new Error('not an EOSLIB index');
   }
   const version = view.getUint8(5);
-  if (version !== VERSION) throw new Error(`unsupported CSLIB version ${version}`);
+  if (version !== VERSION) throw new Error(`unsupported EOSLIB version ${version}`);
 
   const bookCount = view.getUint16(6, true);
   const stripCount = view.getUint16(8, true);

@@ -1,7 +1,7 @@
 /*
  * The .csx container as the calculator sees it.
  *
- * Strips are stored as a run of 16 KB appvars named CS<slot><chunk> (hex).
+ * Strips are stored as a run of 16 KB appvars named EO<slot><chunk> (hex).
  * Concatenated they form one container: a header, palette, layer table and band
  * table, followed by ZX0-compressed bands. Bands never straddle a chunk, so
  * every band can be handed to zx0_Decompress as a pointer straight into flash.

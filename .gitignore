@@ -1,6 +1,11 @@
 # Intermediates from the CE toolchain. The finished program in calc/bin is
 # committed on purpose, so it can be installed without building anything.
 calc/obj/
+calc/updater/obj/
+calc/bin/*.map
+calc/bin/*.obj
+calc/updater/bin/*.map
+calc/updater/bin/*.obj
 *.o
 *.bc
 
@@ -14,9 +19,13 @@ tools/hosttest/render_probe
 tools/hosttest/lib_probe
 tools/hosttest/ui_probe
 tools/hosttest/usb_probe
+tools/hosttest/update_probe
+tools/hosttest/chat_probe
 
-# Generated from about.txt on every build by tools/make_about.sh.
+# Generated on every build: about.txt by tools/make_about.sh, and the build
+# number from calc/BUILD by tools/make_build.sh.
 calc/src/about.h
+calc/src/build.h
 
 __pycache__/
 *.pyc
@@ -25,4 +34,8 @@ __pycache__/
 out/
 *.8xv
 
-about.txt
+# The relay's database and its Python caches. The database is per-deployment
+# state, not source, and on a real host it lives outside the tree entirely.
+server/*.db
+server/*.db-wal
+server/*.db-shm

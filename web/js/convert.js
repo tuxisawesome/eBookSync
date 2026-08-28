@@ -20,6 +20,25 @@ const HEADER_SIZE = 16;
 const LAYER_SIZE = 12;
 const BAND_SIZE = 5;
 
+/**
+ * The appvar one chunk of a strip lives in: `EO<slot><chunk>`, both hex.
+ *
+ * The page never creates these -- the calculator does, from the slot and index
+ * in the PUT_CHUNK header -- but the name is part of the format, and it has
+ * three implementations that have to agree: calc/src/csx.c, tools/csx/format.py
+ * and this one. The host tests compare them.
+ */
+export function chunkName(slot, chunk) {
+  if (!Number.isInteger(slot) || slot < 0 || slot > 0xff) {
+    throw new Error(`strip slot ${slot} out of range 0-255`);
+  }
+  if (!Number.isInteger(chunk) || chunk < 0 || chunk > 0xff) {
+    throw new Error(`chunk index ${chunk} out of range 0-255`);
+  }
+  const hex = (value) => value.toString(16).toUpperCase().padStart(2, '0');
+  return `EO${hex(slot)}${hex(chunk)}`;
+}
+
 /* Named zoom ladders. The first entry is always the fit-width reading view. */
 export const LAYER_PRESETS = {
   fit: [320],

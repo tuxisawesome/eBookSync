@@ -54,6 +54,20 @@ static const struct { const char *name; kb_lkey_t key; } KEYS[] = {
     { "right", kb_KeyRight }, { "enter", kb_KeyEnter }, { "clear", kb_KeyClear },
     { "2nd", kb_Key2nd }, { "mode", kb_KeyMode }, { "del", kb_KeyDel },
     { "add", kb_KeyAdd }, { "sub", kb_KeySub }, { "idle", 0 },
+
+    /* Enough of the keypad to type. keyin.c reads the letters printed on the
+     * keys, so "math" types A, "1" types Y, and so on. */
+    { "alpha", kb_KeyAlpha }, { "yequ", kb_KeyYequ },
+    { "0", kb_Key0 }, { "1", kb_Key1 }, { "2", kb_Key2 }, { "3", kb_Key3 },
+    { "4", kb_Key4 }, { "5", kb_Key5 }, { "6", kb_Key6 }, { "7", kb_Key7 },
+    { "8", kb_Key8 }, { "9", kb_Key9 },
+    { "math", kb_KeyMath }, { "apps", kb_KeyApps }, { "prgm", kb_KeyPrgm },
+    { "sin", kb_KeySin }, { "cos", kb_KeyCos }, { "tan", kb_KeyTan },
+    { "ln", kb_KeyLn }, { "log", kb_KeyLog }, { "sto", kb_KeySto },
+    { "square", kb_KeySquare }, { "recip", kb_KeyRecip },
+    { "comma", kb_KeyComma }, { "decpnt", kb_KeyDecPnt }, { "chs", kb_KeyChs },
+    { "lparen", kb_KeyLParen }, { "rparen", kb_KeyRParen },
+    { "mul", kb_KeyMul }, { "div", kb_KeyDiv }, { "power", kb_KeyPower },
 };
 
 static kb_lkey_t lookup(const char *name) {
@@ -70,7 +84,7 @@ int main(int argc, char **argv) {
     int arg = 1;
     if (arg + 1 < argc && strcmp(argv[arg], "--lib") == 0) {
         char path[4096];
-        snprintf(path, sizeof path, "%s/CSLIB.8xv", argv[arg + 1]);
+        snprintf(path, sizeof path, "%s/" LIB_NAME ".8xv", argv[arg + 1]);
 
         char name[9];
         size_t size;

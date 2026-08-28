@@ -1,12 +1,12 @@
 /*
  * Drives the real library index parser on the host.
  *
- * Loads CSLIB.8xv, parses it through calc/src/library.c, and prints every book
+ * Loads EOSLIB.8xv, parses it through calc/src/library.c, and prints every book
  * and strip record plus a checksum of each expanded title bitmap.
  * tools/hosttest/check_library.py compares that with what tools/csx/library.py
  * put in.
  *
- *   lib_probe <dir-with-CSLIB.8xv> [save <strip> <flags> <pos> <layer>]
+ *   lib_probe <dir-with-EOSLIB.8xv> [save <strip> <flags> <pos> <layer>]
  */
 
 #include "library.h"
@@ -60,12 +60,13 @@ static void dump(void) {
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        fprintf(stderr, "usage: lib_probe <dir> [save <strip> <flags> <pos> <layer>]\n");
+        fprintf(stderr, "usage: lib_probe <dir> [save <strip> <flags> <pos> <layer>]\n"
+                        "       lib_probe <dir> password <text>...\n");
         return 2;
     }
 
     char path[4096];
-    snprintf(path, sizeof path, "%s/CSLIB.8xv", argv[1]);
+    snprintf(path, sizeof path, "%s/" LIB_NAME ".8xv", argv[1]);
 
     char name[9];
     size_t size;
@@ -80,6 +81,37 @@ int main(int argc, char **argv) {
     if (!lib_open()) {
         fprintf(stderr, "lib_open failed\n");
         return 1;
+    }
+
+    /*
+     * password <text> ...: try each in turn and say whether the reader accepts
+     * it, then write the index back so the failure counter can be inspected.
+     *
+     * The password never leaves the calculator in real life, so there is no
+     * browser implementation to check this against -- tools/csx/library.py is
+     * the independent one, and it built the index this is reading.
+     */
+    if (argc >= 3 && strcmp(argv[2], "password") == 0) {
+        printf("set %d\n", lib_password_set() ? 1 : 0);
+        for (int i = 3; i < argc; i++) {
+            bool ok = lib_password_check(argv[i]);
+            /* Verdict first: the text may be empty, and a trailing empty field
+             * is not something a whitespace split can see. */
+            printf("check %d %s\n", ok ? 1 : 0, argv[i]);
+            if (ok)
+                lib_password_clear_failures();
+            else
+                lib_password_note_failure();
+        }
+        printf("failures %u\n", lib_password_failures());
+
+        const uint8_t *saved = shim_var_data(LIB_NAME, &size);
+        char out[4096];
+        snprintf(out, sizeof out, "%s/" LIB_NAME ".saved", argv[1]);
+        FILE *file = fopen(out, "wb");
+        fwrite(saved, 1, size, file);
+        fclose(file);
+        return 0;
     }
 
     if (argc >= 7 && strcmp(argv[2], "save") == 0) {
@@ -97,7 +129,7 @@ int main(int argc, char **argv) {
         /* Write the modified index back out so the checker can re-read it. */
         const uint8_t *saved = shim_var_data(LIB_NAME, &size);
         char out[4096];
-        snprintf(out, sizeof out, "%s/CSLIB.saved", argv[1]);
+        snprintf(out, sizeof out, "%s/" LIB_NAME ".saved", argv[1]);
         FILE *file = fopen(out, "wb");
         fwrite(saved, 1, size, file);
         fclose(file);
