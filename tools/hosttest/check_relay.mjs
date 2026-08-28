@@ -166,6 +166,59 @@ try {
   check('the roster now says sam reads on a calculator', samEntry.hasCalculator, true);
   check('and when it last synced', typeof samEntry.lastCalcSync, 'number');
 
+
+  /* --- fetch has to be called the way a browser demands ------------------- */
+  /*
+   * This shipped broken and the suite was green, because node's fetch does not
+   * check its receiver and a browser's does: calling it as `this.fetcher(...)`
+   * makes the receiver the Relay object, and Chrome answers "Failed to execute
+   * 'fetch' on 'Window': Illegal invocation".
+   *
+   * So the check is not "does a request work" -- it did, here -- but "is fetch
+   * ever called as a method of something that is not the window". A stand-in
+   * that enforces what the browser enforces is the only way to see it from
+   * node.
+   */
+  {
+    const seen = [];
+
+    function browserLikeFetch(url, init) {
+      /* `this` is undefined for a plain call in a module, and the window for a
+       * bound one. Anything else is what Chrome rejects. */
+      if (this !== undefined && this !== globalThis) {
+        throw new TypeError(
+          "Failed to execute 'fetch' on 'Window': Illegal invocation");
+      }
+      seen.push(url);
+      return fetch(url, init);
+    }
+
+    const strict = new Relay(ORIGIN, relay.token, { fetcher: browserLikeFetch });
+    let called = null;
+    try {
+      await strict.me();
+    } catch (error) {
+      called = error.message;
+    }
+
+    check('an injected fetch is never called as a method', called, null);
+    check('and it really was used', seen.length > 0, true);
+
+    /* The default path too: the real fetch, taken off the global and stored on
+     * the instance, is the exact shape that broke. */
+    const plain = new Relay(ORIGIN, relay.token);
+    check('the default fetcher is bound, not bare',
+          plain.fetcher !== globalThis.fetch, true);
+
+    let defaulted = null;
+    try {
+      await plain.me();
+    } catch (error) {
+      defaulted = error.message;
+    }
+    check('and the default path works', defaulted, null);
+  }
+
   /* --- what the client must refuse to paper over --- */
   let unauthorised = false;
   try {
@@ -191,6 +244,38 @@ try {
   }
   check('an unreachable relay explains the likely causes',
         /https/.test(unreachable) && /EOS_ALLOWED_ORIGINS/.test(unreachable), true);
+
+  /*
+   * ...but only a real network failure gets that advice. A bug in this file
+   * also arrives as a TypeError, and telling someone to check their address and
+   * their CORS settings sends them to look at the server for a fault that is
+   * here. That is exactly what happened with the receiver bug above.
+   */
+  {
+    const throwing = (message) => new Relay(ORIGIN, null, {
+      fetcher: () => { throw new TypeError(message); },
+    });
+
+    let misblamed = null;
+    try {
+      await throwing("Failed to execute 'fetch' on 'Window': Illegal invocation").me();
+    } catch (error) {
+      misblamed = error;
+    }
+    check('a client bug is not reported as an address problem',
+          /EOS_ALLOWED_ORIGINS/.test(misblamed.message), false);
+    check('and reaches the caller unchanged',
+          misblamed.message, "Failed to execute 'fetch' on 'Window': Illegal invocation");
+
+    let genuine = null;
+    try {
+      await throwing('Failed to fetch').me();
+    } catch (error) {
+      genuine = error;
+    }
+    check('while a real network failure still gets the advice',
+          /EOS_ALLOWED_ORIGINS/.test(genuine.message), true);
+  }
 
 } catch (error) {
   failures++;

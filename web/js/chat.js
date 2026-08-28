@@ -11,6 +11,19 @@
 export class RelayError extends Error {}
 export class Unauthorised extends RelayError {}
 
+/*
+ * What a browser or node says when a request could not be made at all.
+ *
+ * Chrome and node both use TypeError for this, and so do several things that
+ * are programming mistakes rather than network conditions, so the message is
+ * the only thing that separates them.
+ */
+const NETWORK_FAILURE = /failed to fetch|networkerror|load failed|fetch failed|network request failed/i;
+
+function isNetworkFailure(error) {
+  return error instanceof TypeError && NETWORK_FAILURE.test(error.message || '');
+}
+
 /** Trim a pasted address into an origin this can build URLs on. */
 export function normaliseUrl(raw) {
   const text = String(raw || '').trim();
@@ -26,12 +39,22 @@ export function normaliseUrl(raw) {
 }
 
 export class Relay {
-  constructor(baseUrl, token = null, { fetcher = globalThis.fetch } = {}) {
+  constructor(baseUrl, token = null, { fetcher = null } = {}) {
     this.baseUrl = normaliseUrl(baseUrl);
     this.token = token;
-    /* Injectable so the tests can run without a network, and so a future
-     * caller can add a timeout without this file knowing about it. */
-    this.fetcher = fetcher;
+
+    /*
+     * Injectable so the tests can run without a network, and so a future caller
+     * can add a timeout without this file knowing about it.
+     *
+     * Bound to the global on the way in, and called below through a local
+     * rather than as `this.fetcher(...)`. A browser's fetch checks its receiver
+     * and throws "Illegal invocation" if it is anything but the window -- and
+     * calling it as a method of this object makes the receiver this object.
+     * Node's fetch does not check, so this fails only in the place that matters
+     * and nowhere the tests would notice unless they look for it.
+     */
+    this.fetcher = fetcher || globalThis.fetch.bind(globalThis);
   }
 
   async #call(path, { method = 'GET', body = null } = {}) {
@@ -39,17 +62,30 @@ export class Relay {
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     if (body) headers['Content-Type'] = 'application/json';
 
+    /* Through a local, so nothing is ever called as a method of this object. */
+    const send = this.fetcher;
+
     let response;
     try {
-      response = await this.fetcher(`${this.baseUrl}${path}`, {
+      response = await send(`${this.baseUrl}${path}`, {
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
       });
     } catch (error) {
-      /* fetch rejects for DNS, TLS, a blocked mixed-content request and a
-       * missing CORS header alike, and does not say which. Saying so is more
-       * use than repeating the browser's one-word message. */
+      /*
+       * Only a genuine network failure gets the advice.
+       *
+       * fetch rejects for DNS, TLS, a blocked mixed-content request and a
+       * missing CORS header alike, and does not say which -- so listing the
+       * likely causes is more use than repeating "Failed to fetch". But it also
+       * throws TypeError for things that are bugs in this file, and dressing
+       * one of those up as "check the address" sends people to look at their
+       * server for a fault that is here. Anything unrecognised goes through
+       * untouched.
+       */
+      if (!isNetworkFailure(error)) throw error;
+
       throw new RelayError(`could not reach ${this.baseUrl}: ${error.message}. `
         + 'Check the address, that it is https, and that this page\'s origin is in '
         + 'the relay\'s EOS_ALLOWED_ORIGINS.');
