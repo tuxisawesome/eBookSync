@@ -17,7 +17,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  addBookKey, bookNames, defaultMeta, flatten, mergeFromCalculator, moveStripKey,
+  VERSION, addBookKey, adoptLibraryId, bookNames, defaultMeta, flatten,
+  libraryIdHex, mergeFromCalculator, moveStripKey, serialisable,
   reconcile, removeStripKey, renameBookKey, renameStripKey, reorderBook, reorderStrip,
   stripNames,
 } from '../../web/js/meta.js';
@@ -285,6 +286,78 @@ function readBack(meta, books) {
   check('merge marks it read', [strip.read, strip.onCalc, strip.pos, strip.layer],
         [true, true, 512, 1]);
   check('merge dates it', typeof strip.readAt, 'string');
+}
+
+
+/* --- a library keeps its identity across page loads ------------------------ */
+/*
+ * The identity is what tells a calculator holding your comics apart from one
+ * holding somebody else's. It was read on load and dropped on save, so every
+ * page load minted a fresh one and every reconnect reported "a different
+ * library" -- on the user's own calculator, with their own comics on it.
+ *
+ * The check that matters is the round trip: whatever load() understands, save()
+ * has to write.
+ */
+{
+  const meta = defaultMeta();
+  const original = meta.libraryId;
+
+  check('a new library is given an identity', typeof original, 'string');
+  check('of the right length', original.length, 32);
+
+  const onDisk = serialisable(meta);
+  check('and saving keeps it', onDisk.libraryId, original);
+
+  /* Everything load() reads has to survive a save, or it is lost on reload. */
+  meta.lastSync = '2026-08-28T00:00:00Z';
+  meta.settings.keepRead = 5;
+  const round = serialisable(meta);
+  check('as does the rest of what load() reads',
+        [round.version, round.lastSync, round.settings.keepRead],
+        [VERSION, '2026-08-28T00:00:00Z', 5]);
+}
+
+/* --- a library whose identity was already lost recovers -------------------- */
+/*
+ * Nobody should have to erase a calculator because of this. A folder with no
+ * identity has never claimed anything, so it takes the identity of the
+ * calculator it is plugged into -- what the first sync would have done.
+ */
+{
+  const held = 'ab'.repeat(16);
+
+  const orphaned = { ...defaultMeta(), libraryId: null };
+  check('an identity-less library adopts the calculator\'s',
+        adoptLibraryId(orphaned, held), held);
+  check('and keeps it thereafter', orphaned.libraryId, held);
+  check('so it now saves it', serialisable(orphaned).libraryId, held);
+
+  /* A second call must not move it again. */
+  check('adopting is once only', adoptLibraryId(orphaned, 'cd'.repeat(16)), held);
+
+  /* With an empty calculator there is nothing to adopt, so mint. */
+  const fresh = { ...defaultMeta(), libraryId: null };
+  const minted = adoptLibraryId(fresh, null);
+  check('an empty calculator means a fresh identity', minted.length, 32);
+  check('and it is not the one we would have adopted', minted === held, false);
+
+  /* A library that already has one is never disturbed. */
+  const settled = defaultMeta();
+  const before = settled.libraryId;
+  check('an existing identity is left alone', adoptLibraryId(settled, held), before);
+}
+
+/* --- the id survives a trip through an index ------------------------------- */
+{
+  const meta = defaultMeta();
+  const index = buildIndexFor(meta, [], { render: fakeRender });
+  const parsed = lib.parseIndex(index);
+
+  check('the pushed index carries the library id',
+        libraryIdHex(parsed.libraryId), meta.libraryId);
+  check('and an index with none reads as none',
+        libraryIdHex(new Uint8Array(16)), null);
 }
 
 console.log(`${checks - failures}/${checks} library editing checks pass`);

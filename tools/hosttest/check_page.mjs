@@ -102,6 +102,24 @@ function displayRulesFor(css, names) {
   check('every element the page script reaches for exists', missing, []);
 }
 
+/* --- the page does not invent a library identity ------------------------- */
+/*
+ * The field list for eos.json belongs in meta.js, next to the code that reads
+ * it back. When main.js kept its own copy it left `libraryId` out, so the id
+ * was read on every load and saved on none -- and every reconnect reported the
+ * user's own calculator as holding a different library.
+ */
+{
+  const main = read('web', 'js', 'main.js');
+
+  check('main.js does not keep its own field list',
+        /version: metaStore\.VERSION,\s*\n\s*lastSync:/.test(main), false);
+  check('it asks meta.js what to save',
+        /metaStore\.serialisable\(state\.meta\)/.test(main), true);
+  check('and adopts the calculator\'s identity rather than minting one',
+        /metaStore\.adoptLibraryId\(state\.meta, held\)/.test(main), true);
+}
+
 /* --- the sync plan accounts for chat ------------------------------------- */
 /*
  * describePlan disables the dialog's button when there is nothing to do, and

@@ -64,6 +64,28 @@ export function libraryIdBytes(meta) {
   return out;
 }
 
+/** The hex form of an id read back out of an index. */
+export function libraryIdHex(bytes) {
+  if (!bytes || bytes.length < 16) return null;
+  const hex = Array.from(bytes.subarray(0, 16), (b) => b.toString(16).padStart(2, '0')).join('');
+  return /^0{32}$/.test(hex) ? null : hex;
+}
+
+/**
+ * Give a library an identity it does not yet have.
+ *
+ * Adopting the calculator's is right rather than merely convenient: a folder
+ * with no identity has never successfully claimed a calculator, so taking the
+ * identity of the one it is plugged into is exactly what the first sync would
+ * have done. Minting a fresh one instead would declare a calculator full of
+ * this library's own comics to be somebody else's.
+ */
+export function adoptLibraryId(meta, fromCalculator) {
+  if (meta.libraryId) return meta.libraryId;
+  meta.libraryId = fromCalculator || newLibraryId();
+  return meta.libraryId;
+}
+
 export function defaultMeta() {
   return {
     version: VERSION,
@@ -80,10 +102,17 @@ export async function load(root) {
   if (!raw || typeof raw !== 'object') return defaultMeta();
 
   const meta = defaultMeta();
-  /* Keep the identity a library already has; only mint one for a new library. */
-  if (typeof raw.libraryId === 'string' && raw.libraryId.length === 32) {
-    meta.libraryId = raw.libraryId;
-  }
+
+  /*
+   * Keep the identity a library already has. A file without one is left with
+   * none rather than given a fresh one: that is the state left behind by the
+   * versions that dropped it on save, and inventing an identity there is what
+   * makes a calculator holding this library's own comics look like somebody
+   * else's. connect() adopts the calculator's instead. See adoptLibraryId().
+   */
+  meta.libraryId = (typeof raw.libraryId === 'string' && raw.libraryId.length === 32)
+    ? raw.libraryId
+    : null;
   meta.lastSync = typeof raw.lastSync === 'string' ? raw.lastSync : null;
   meta.settings = { ...DEFAULT_SETTINGS, ...(raw.settings || {}) };
   if (!(meta.settings.detail in LAYER_PRESETS)) meta.settings.detail = DEFAULT_PRESET;
@@ -101,8 +130,30 @@ export async function load(root) {
   return meta;
 }
 
+/**
+ * What actually goes into eos.json.
+ *
+ * Defined here, beside load(), and not at the call site -- the two have to
+ * agree on the field list, and when they did not the effect was quietly
+ * terrible: `libraryId` was read on load and dropped on save, so every page
+ * load minted a fresh identity and every reconnect reported the calculator as
+ * holding somebody else's library.
+ *
+ * The JSON round trip is what removes any live file handle that found its way
+ * in; those cannot be stored and must not be.
+ */
+export function serialisable(meta) {
+  return JSON.parse(JSON.stringify({
+    version: VERSION,
+    libraryId: meta.libraryId,
+    lastSync: meta.lastSync,
+    settings: meta.settings,
+    books: meta.books,
+  }));
+}
+
 export async function save(root, meta) {
-  await writeJson(root, META_FILENAME, meta);
+  await writeJson(root, META_FILENAME, serialisable(meta));
 }
 
 /* ------------------------------------------------------------------ ordering */

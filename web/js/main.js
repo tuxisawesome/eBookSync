@@ -13,6 +13,7 @@
 
 import * as cacheStore from './cache.js';
 import * as fs from './fs.js';
+import * as libraryStore from './library.js';
 import * as metaStore from './meta.js';
 import * as syncEngine from './sync.js';
 import * as updater from './update.js';
@@ -518,13 +519,10 @@ async function saveMetaNow() {
 }
 
 /* The in-memory metadata carries live file handles; strip them before writing. */
+/* meta.js owns the field list, beside the code that reads it back. Keeping the
+ * two apart is how `libraryId` came to be loaded and never saved. */
 function serialisableMeta() {
-  return JSON.parse(JSON.stringify({
-    version: metaStore.VERSION,
-    lastSync: state.meta.lastSync,
-    settings: state.meta.settings,
-    books: state.meta.books,
-  }));
+  return metaStore.serialisable(state.meta);
 }
 
 /* --------------------------------------------------------- library editing */
@@ -783,6 +781,25 @@ async function connect() {
 
     state.resident = await calculator.list();
     state.deviceIndex = await calculator.getIndex();
+
+    /*
+     * A library folder with no identity takes the calculator's.
+     *
+     * That is the state left behind by every version that read `libraryId` and
+     * dropped it again on save: the folder has no claim on anything, so the
+     * calculator it is plugged into is the one it belongs to. Minting a fresh
+     * identity here would declare a calculator full of this folder's own comics
+     * to be somebody else's -- which is exactly what it used to do, on every
+     * single reconnect.
+     */
+    if (!state.meta.libraryId) {
+      const held = state.deviceIndex && state.deviceIndex.length
+        ? metaStore.libraryIdHex(libraryStore.parseIndex(state.deviceIndex).libraryId)
+        : null;
+      metaStore.adoptLibraryId(state.meta, held);
+      state.library = held ? LIBRARY.SAME : state.library;
+      await saveMetaNow();
+    }
 
     metaStore.mergeFromCalculator(state.meta, state.resident);
 
