@@ -19,6 +19,7 @@ import * as updater from './update.js';
 import * as chatUi from './chatui.js';
 import * as chatSync from './chatsync.js';
 import * as chatStore from './chatstore.js';
+import { PAGE_BUILD } from './version.js';
 import {
   Calculator, LIBRARY, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
   isSupported as linkSupported,
@@ -48,6 +49,7 @@ const ui = {
   deviceCount: el('device-count'),
   deviceLibrary: el('device-library'),
   deviceBuild: el('device-build'),
+  pageBuild: el('page-build'),
   update: el('update'),
   updateNotice: el('update-notice'),
   lastSync: el('last-sync'),
@@ -1255,6 +1257,16 @@ async function start() {
     ui.chooseFolder.disabled = true;
     return;
   }
+
+  /*
+   * Say which build this is, in the page and in the console.
+   *
+   * Pages caches JavaScript and an ES module graph caches each file on its own,
+   * so a fix that has not reached the browser yet looks exactly like a fix that
+   * did not work. This is how to tell those apart without guessing.
+   */
+  ui.pageBuild.textContent = `build ${PAGE_BUILD}`;
+  console.info(`eOS sync page, build ${PAGE_BUILD}`);
 
   bindSettings();
   bindTreeDrop();

@@ -185,7 +185,14 @@ replied" and "has not plugged in since Tuesday".
 
 **Setting it up.** Deploy the relay (`server/README.md`), open its admin panel,
 add people and open conversations. Then in the sync page's **Chat** tab, put in
-the relay's address and sign in. The sign-in is kept in your browser and
+the relay's address and sign in.
+
+**If something looks wrong after a deploy, check the build number** beside the
+title in the page header. GitHub Pages caches JavaScript, and an ES module graph
+caches each file on its own — so a fix that has not reached your browser yet
+looks exactly like a fix that did not work. If the number is behind what
+`tools/stage_update.sh` last stamped, hard-refresh (Ctrl-Shift-R, or Cmd-Shift-R)
+rather than looking for a bug. The console prints the same number on load. The sign-in is kept in your browser and
 deliberately *not* in `eos.json` — that file sits beside your comics and travels
 with the folder.
 

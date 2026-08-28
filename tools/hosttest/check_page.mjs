@@ -102,6 +102,22 @@ function displayRulesFor(css, names) {
   check('every element the page script reaches for exists', missing, []);
 }
 
+/* --- the page says which build it is ------------------------------------- */
+/*
+ * Without this, a stale cached module is indistinguishable from a fix that did
+ * not work: both look like the same bug still happening. The header carries the
+ * build so the two can be told apart by looking.
+ */
+{
+  const html = read('web', 'index.html');
+  const main = read('web', 'js', 'main.js');
+  const version = read('web', 'js', 'version.js');
+
+  check('the page has somewhere to show its build', /id="page-build"/.test(html), true);
+  check('and version.js declares one', /export const PAGE_BUILD = \d+/.test(version), true);
+  check('and the page fills it in', /pageBuild\.textContent/.test(main), true);
+}
+
 /* --- the relay's chat client ---------------------------------------------- */
 {
   const html = read('server', 'templates', 'app.html');
