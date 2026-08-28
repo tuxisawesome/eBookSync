@@ -101,10 +101,30 @@ would be difficult to notice and impossible to undo.
 start, which signs administrators out on every reload. Nothing else uses it;
 chat tokens do not depend on it.
 
-**`EOS_ALLOWED_ORIGINS`** is the exact origin of your sync page, scheme and all,
-comma-separated if there is more than one. The `Authorization` header makes
-every cross-origin request preflighted, so a missing entry here shows up as the
-sync page being unable to reach the relay at all.
+**`EOS_ALLOWED_ORIGINS`** is the origin of your sync page, comma-separated if
+there is more than one. An *origin* is scheme and host and nothing else — the
+part of the address before the first single slash. The page at
+
+    https://you.github.io/eBookSync/web/index.html
+
+has the origin `https://you.github.io`.
+
+A trailing slash, a whole page URL, a bare hostname or the wrong case are all
+accepted and reduced to the origin, because those are what people paste and the
+alternative fails silently: the browser reports a CORS error while the relay's
+log shows a clean 200. A refused origin is now logged with both the origin that
+was sent and the list it was compared against, so the mismatch is visible.
+
+To see what the setting actually became:
+
+```sh
+cd ~/eBookSync
+EOS_ALLOWED_ORIGINS="https://you.github.io/" python3 -m server.manage check
+```
+
+The `Authorization` header makes every cross-origin request preflighted, so a
+missing or wrong entry here shows up as the sync page being unable to reach the
+relay at all.
 
 Free accounts need renewing every three months, and the site goes quiet if you
 forget.

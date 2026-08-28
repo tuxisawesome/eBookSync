@@ -17,6 +17,16 @@ import * as store from './chatstore.js';
 const POLL_VISIBLE = 8000;
 const POLL_HIDDEN = 60000;
 
+/*
+ * How often to re-read the conversation list and the roster.
+ *
+ * Messages change constantly; who exists and who has a calculator does not.
+ * Fetching the whole directory on every poll made a background tab a steady
+ * load on the relay for information that had not changed, so it now happens on
+ * sign-in and every couple of minutes after that.
+ */
+const DIRECTORY_EVERY = 120000;
+
 const el = (id) => document.getElementById(id);
 
 const ui = {
@@ -49,6 +59,7 @@ const state = {
   current: null,
   timer: null,
   failures: 0,
+  directoryAt: 0,
 };
 
 /* What main.js needs: the relay to upload through, and who we are. */
@@ -223,12 +234,17 @@ async function poll() {
   if (!state.relay) return;
 
   try {
-    await refresh();
+    const arrived = await refresh();
 
-    /* The roster is what says who has a calculator and when it last synced, and
-     * it changes far more slowly than messages do. */
-    const directory = await state.relay.me();
-    await absorbDirectory(directory);
+    /* The roster says who has a calculator and when it last synced. It changes
+     * far more slowly than messages, so it is re-read on a timer rather than on
+     * every poll -- and straight away while we still have no conversations,
+     * since without them there is nothing to show at all. */
+    const stale = Date.now() - state.directoryAt > DIRECTORY_EVERY;
+    if (stale || !state.conversations.length || arrived) {
+      await absorbDirectory(await state.relay.me());
+      state.directoryAt = Date.now();
+    }
 
     state.failures = 0;
     setLink(`signed in as ${state.settings.username}`, 'ok');
@@ -283,10 +299,23 @@ async function send(text) {
   renderThread();
 
   try {
-    await state.relay.send(item.conversationId, item.body, item.clientId);
+    const stored = await state.relay.send(item.conversationId, item.body, item.clientId);
     await store.clearPending([item.clientId]);
+
+    /*
+     * The reply carries the stored message, so the optimistic copy is replaced
+     * here rather than by waiting for a follow-up read to bring it back.
+     *
+     * That read was where "sending…" got stuck: the message was on the relay,
+     * but if the read after it failed or was slow there was nothing to resolve
+     * the pending copy, and it sat there saying "sending" forever.
+     *
+     * The cursor is deliberately not advanced. Another person's message may
+     * have taken an id below this one, and skipping past it would lose it.
+     * The next poll re-reads from where it was and simply overwrites this.
+     */
     state.messages = state.messages.filter((m) => m.clientId !== item.clientId);
-    await refresh();
+    if (stored.message) state.messages = state.messages.concat([stored.message]);
     renderThread();
   } catch (error) {
     if (error instanceof Unauthorised) await signOut('Signed out. Sign in again.');

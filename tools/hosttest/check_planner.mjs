@@ -238,5 +238,75 @@ const slotOf = (meta, book, file) => meta.books[book].strips[file].id;
   check('auto mode does not remove unticked strips', result.deletes.length, 0);
 }
 
+
+/* --- a sync is worth running for messages alone ---------------------------- */
+/*
+ * The plan describes the library. Chat moves on the same sync, and it is the
+ * whole reason a sync can be worth running when no comic has changed -- so
+ * "empty" must be the two halves together, not the library's half.
+ *
+ * Getting this wrong disabled the button in the plan dialog and told people
+ * "nothing to do" while their messages sat waiting.
+ */
+{
+  const emptyLibrary = {
+    pushes: [], deletes: [], orphans: [], skipped: [], indexStale: false, empty: true,
+  };
+
+  /* The rule main.js applies, kept here so it is checked rather than asserted
+   * about in prose. */
+  const nothingToDo = (plan, chat) =>
+    plan.empty && !(chat && (chat.toSend || chat.toCollect));
+
+  check('an untouched library with nothing to say really is nothing to do',
+        nothingToDo(emptyLibrary, { toSend: 0, toCollect: 0 }), true);
+  check('and with no chat set up at all', nothingToDo(emptyLibrary, null), true);
+
+  check('but messages to send make it worth running',
+        nothingToDo(emptyLibrary, { toSend: 3, toCollect: 0 }), false);
+  check('and messages to collect do too',
+        nothingToDo(emptyLibrary, { toSend: 0, toCollect: 2 }), false);
+
+  const busyLibrary = { ...emptyLibrary, pushes: [{}], empty: false };
+  check('a library with work is never nothing to do',
+        nothingToDo(busyLibrary, { toSend: 0, toCollect: 0 }), false);
+}
+
+/* --- what the chat half says it will move --------------------------------- */
+{
+  const chatsync = await import('../../web/js/chatsync.js');
+
+  const conversations = [{ id: 3, name: 'Study' }, { id: 9, name: 'sam' }];
+  const messages = [
+    { id: 10, conversationId: 3, body: 'old', sentAt: 1, userId: 2, username: 'sam' },
+    { id: 11, conversationId: 3, body: 'new', sentAt: 2, userId: 2, username: 'sam' },
+    { id: 12, conversationId: 9, body: 'also new', sentAt: 3, userId: 1, username: 'me' },
+    { id: 13, conversationId: 55, body: 'not ours', sentAt: 4, userId: 2, username: 'sam' },
+  ];
+
+  const total = (map) => [...map.values()].reduce((n, list) => n + list.length, 0);
+
+  /* A calculator that has read up to 10 in one conversation and knows nothing
+   * of the other. */
+  const partly = chatsync.outstanding(
+    messages, { conversations: [{ id: 3, lastServerId: 10 }] }, conversations, 1);
+  check('only what the calculator has not got is counted', total(partly), 2);
+  check('and nothing from a conversation it is not in',
+        [...partly.keys()].includes(55), false);
+
+  /* Caught up. */
+  const none = chatsync.outstanding(
+    messages,
+    { conversations: [{ id: 3, lastServerId: 11 }, { id: 9, lastServerId: 12 }] },
+    conversations, 1);
+  check('a caught-up calculator is offered nothing', total(none), 0);
+
+  /* A calculator that has never synced counts everything it will be given. */
+  const fresh = chatsync.outstanding(messages, { conversations: [] }, conversations, 1);
+  check('a fresh calculator is offered the lot', total(fresh), 3);
+  check('with our own messages marked as ours',
+        fresh.get(9).every((m) => m.mine), true);
+}
+
 console.log(`${checks - failures}/${checks} planner checks pass`);
 process.exit(failures ? 1 : 0);

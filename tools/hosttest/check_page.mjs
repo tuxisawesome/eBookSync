@@ -102,6 +102,25 @@ function displayRulesFor(css, names) {
   check('every element the page script reaches for exists', missing, []);
 }
 
+/* --- the sync plan accounts for chat ------------------------------------- */
+/*
+ * describePlan disables the dialog's button when there is nothing to do, and
+ * "nothing" used to mean the library alone -- so a sync with messages waiting
+ * said "nothing to do" and refused to run.
+ */
+{
+  const main = read('web', 'js', 'main.js');
+
+  check('the plan is given what the chat would move',
+        /describePlan\(plan, await chatWork\(\)\)/.test(main), true);
+  check('and the button is disabled on both halves together, not one',
+        /const nothingToDo = plan\.empty && !\(chat/.test(main), true);
+  check('the relay is read before the plan is described',
+        /await pullChat\(\);\s*\n\s*describePlan/.test(main), true);
+  check('and again before the calculator exchange',
+        /await pullChat\(log\);/.test(main), true);
+}
+
 /* --- the page says which build it is ------------------------------------- */
 /*
  * Without this, a stale cached module is indistinguishable from a fix that did

@@ -5,7 +5,7 @@ there is nothing to run here. This exists for the case that is not normal: a
 `unable to open database file` on startup, where the useful thing is to try the
 same path from a shell and be told exactly what is wrong.
 
-    python3 -m server.manage check        # where is it, can it be written, what is in it
+    python3 -m server.manage check        # the database, and the settings around it
     python3 -m server.manage init         # create it, or leave an existing one alone
 
 Both take the path from EOS_DB_PATH, or --path, so they test the same setting
@@ -23,6 +23,34 @@ from . import db
 
 def resolve(path):
     return path or os.environ.get("EOS_DB_PATH") or db.DEFAULT_PATH
+
+
+def report_origins():
+    """What EOS_ALLOWED_ORIGINS actually became.
+
+    A browser sends scheme and host and nothing else, so a trailing slash or a
+    pasted page URL in the setting used to match nothing -- and the failure is
+    invisible from the server: the browser reports a CORS error while the log
+    shows a clean 200. They are normalised now, and this prints the result so a
+    mismatch can be seen rather than guessed at.
+    """
+    from .app import DEFAULT_ORIGINS, parse_origins
+
+    raw = os.environ.get("EOS_ALLOWED_ORIGINS")
+    origins = parse_origins(raw if raw is not None else DEFAULT_ORIGINS)
+
+    print()
+    print(f"origins set   {raw!r}" if raw is not None
+          else f"origins set   (unset -- using the default {DEFAULT_ORIGINS!r})")
+    if origins:
+        for origin in origins:
+            print(f"  allows      {origin}")
+    else:
+        print("  allows      nothing -- no page will be able to reach the API")
+    print("\nA browser sends scheme and host only, so that is what these are compared")
+    print("against. The sync page's origin is the part of its address before the")
+    print("first single slash: https://you.github.io/eOS/web/index.html is")
+    print("https://you.github.io")
 
 
 def check(path):
@@ -72,6 +100,7 @@ def check(path):
     finally:
         connection.close()
 
+    report_origins()
     return 0
 
 

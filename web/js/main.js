@@ -19,6 +19,7 @@ import * as updater from './update.js';
 import * as chatUi from './chatui.js';
 import * as chatSync from './chatsync.js';
 import * as chatStore from './chatstore.js';
+import * as chatWire from './chatwire.js';
 import { PAGE_BUILD } from './version.js';
 import {
   Calculator, LIBRARY, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
@@ -84,6 +85,10 @@ const state = {
    * disk, where fetch cannot reach a relative path. */
   catalogue: null,
   updatePlan: null,
+  /* The calculator's chat state as of connecting, so the sync plan can say what
+   * the chat half is going to do. Without it the plan describes the library
+   * only, and a sync with messages waiting reads as "nothing to do". */
+  chatState: null,
   expanded: new Set(),
   filter: '',
   pool: null,
@@ -769,6 +774,13 @@ async function connect() {
       await calculator.setClock(Math.floor(Date.now() / 1000));
     } catch { /* not fatal */ }
 
+    /* Not fatal: a calculator that cannot answer this still syncs comics. */
+    try {
+      state.chatState = await calculator.chatState();
+    } catch {
+      state.chatState = null;
+    }
+
     state.resident = await calculator.list();
     state.deviceIndex = await calculator.getIndex();
 
@@ -798,6 +810,7 @@ async function connect() {
     state.calculator = null;
     state.hello = null;
     state.updatePlan = null;
+    state.chatState = null;
     refreshDevice();
     setStatus(describeConnectError(error), 'error');
   }
@@ -870,7 +883,43 @@ function indexIsStale() {
   }
 }
 
-function describePlan(plan) {
+/** Bring the local store up to date with the relay. Never fatal. */
+async function pullChat(log = () => {}) {
+  try {
+    const arrived = await chatUi.refresh();
+    if (arrived) log(`Chat: ${arrived} new message(s) from the relay.`);
+    return arrived;
+  } catch (error) {
+    log(`Chat: could not read the relay (${error.message}). Using what is stored here.`);
+    return 0;
+  }
+}
+
+/**
+ * What the chat half of a sync would move, or null if there is no chat set up.
+ *
+ * An estimate, made before the conversation list has been pushed: a
+ * conversation the calculator has not heard of yet counts as entirely
+ * outstanding, which is exactly what will happen to it.
+ */
+async function chatWork() {
+  const account = chatUi.account();
+  if (!account || !state.chatState) return null;
+
+  const conversations = await chatStore.conversations();
+  if (!conversations.length) return null;
+
+  const missing = chatSync.outstanding(
+    await chatStore.messages(), state.chatState,
+    conversations.slice(0, chatWire.MAX_CONVERSATIONS), account.id);
+
+  let toSend = 0;
+  for (const list of missing.values()) toSend += list.length;
+
+  return { toSend, toCollect: state.chatState.outboxCount };
+}
+
+function describePlan(plan, chat = null) {
   const parts = [];
 
   const list = (title, items, render) => {
@@ -913,14 +962,31 @@ function describePlan(plan) {
     parts.push(warning);
   }
 
-  if (plan.empty) {
+  /* The chat moves on the same sync, and it is the whole reason a sync can be
+   * worth running when the library has not changed at all. */
+  if (chat && (chat.toSend || chat.toCollect)) {
+    const line = document.createElement('p');
+    const said = [];
+    if (chat.toSend) said.push(`send ${chat.toSend} message(s) to the calculator`);
+    if (chat.toCollect) said.push(`collect ${chat.toCollect} typed on it`);
+    line.textContent = `Chat: ${said.join(', ')}.`;
+    parts.push(line);
+  }
+
+  const nothingToDo = plan.empty && !(chat && (chat.toSend || chat.toCollect));
+  if (nothingToDo) {
     const nothing = document.createElement('p');
-    nothing.textContent = 'Nothing to do — the calculator already matches your library.';
+    nothing.textContent = 'Nothing to do — the calculator already matches your library, '
+      + 'and there are no messages to move.';
     parts.push(nothing);
+  } else if (plan.empty) {
+    const note = document.createElement('p');
+    note.textContent = 'No comics need moving; this sync is for the messages.';
+    parts.push(note);
   }
 
   ui.planBody.replaceChildren(...parts);
-  ui.planGo.disabled = plan.empty;
+  ui.planGo.disabled = nothingToDo;
 }
 
 async function runSync() {
@@ -945,7 +1011,8 @@ async function runSync() {
     freeArchive: state.freeArchive,
     indexStale: indexIsStale(),
   });
-  describePlan(plan);
+  await pullChat();
+  describePlan(plan, await chatWork());
 
   ui.planDialog.returnValue = '';
   ui.planDialog.showModal();
@@ -1120,6 +1187,20 @@ async function exchangeChat(log = () => {}) {
     log('Chat: not signed in to a relay, skipping.');
     return null;
   }
+
+  /*
+   * Read from the relay first, so what goes to the calculator is current.
+   *
+   * The exchange sends whatever this computer is holding, and this computer
+   * only learns of new messages when the chat panel polls -- which it does on
+   * its own schedule and not necessarily just before a sync. Without this, a
+   * sync run shortly after a message arrived would send the calculator the
+   * state from the previous poll and report that as everything.
+   *
+   * Best effort: an unreachable relay must not stop the calculator being given
+   * what is already here.
+   */
+  await pullChat(log);
 
   let summary = null;
   try {

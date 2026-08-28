@@ -25,6 +25,17 @@ SCRYPT = {"n": 16384, "r": 8, "p": 1}
 SALT_SIZE = 16
 TOKEN_BYTES = 32
 
+# How stale `last_used` may get before it is worth a write.
+#
+# This is the difference between a relay that works and one that stalls. Every
+# authenticated request used to update it, so every poll -- one every three
+# seconds from each open client -- took SQLite's single write lock. Two workers
+# landing together meant one waited on the other, up to busy_timeout, and the
+# whole site appeared to hang. `last_used` is only ever read by a person
+# wondering when an account was last active; five minutes of precision is far
+# more than that needs, and it turns thousands of writes into a handful.
+TOUCH_AFTER = 300
+
 
 def hash_password(password, salt=None):
     salt = salt or secrets.token_bytes(SALT_SIZE)
@@ -62,16 +73,23 @@ def bearer():
 
 
 def user_for_token(token):
+    digest = token_hash(token)
     row = db.query(
-        """SELECT users.* FROM tokens
+        """SELECT users.*, tokens.last_used AS token_last_used FROM tokens
            JOIN users ON users.id = tokens.user_id
            WHERE tokens.hash = ? AND users.disabled = 0""",
-        (token_hash(token),),
+        (digest,),
         one=True,
     )
-    if row is not None:
-        db.execute("UPDATE tokens SET last_used = ? WHERE hash = ?",
-                   (db.now(), token_hash(token)))
+    if row is None:
+        return None
+
+    # Only when it has actually gone stale. See TOUCH_AFTER: doing this on every
+    # request made every read a writer, and every writer a chance to block.
+    last = row["token_last_used"]
+    if not last or db.now() - last >= TOUCH_AFTER:
+        db.execute("UPDATE tokens SET last_used = ? WHERE hash = ?", (db.now(), digest))
+
     return row
 
 

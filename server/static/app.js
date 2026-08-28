@@ -317,7 +317,7 @@ async function send(text) {
   renderThread();
 
   try {
-    await call('/api/messages', {
+    const stored = await call('/api/messages', {
       method: 'POST',
       body: {
         conversationId: conversation.id,
@@ -325,7 +325,22 @@ async function send(text) {
         clientId: pending.clientId,
       },
     });
-    await refresh();
+
+    /*
+     * The reply carries the stored message, so the optimistic copy is replaced
+     * here rather than by waiting for a follow-up read to bring it back.
+     *
+     * That read was where "sending…" got stuck: the message was on the relay,
+     * but if the read after it failed or was slow there was nothing to resolve
+     * the pending copy, and it sat there saying "sending" forever.
+     *
+     * The cursor is deliberately not advanced. Another person's message may
+     * have taken an id below this one, and skipping past it would lose it.
+     * The next poll re-reads from where it was and simply overwrites this.
+     */
+    state.messages.delete(pending.id);
+    if (stored.message) state.messages.set(stored.message.id, stored.message);
+    renderThread();
   } catch (error) {
     if (error instanceof Unauthorised) throw error;
     state.messages.delete(pending.id);

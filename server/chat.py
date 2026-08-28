@@ -50,21 +50,37 @@ def conversations_for(user_id):
         (user_id,),
     )
 
+    # Everyone in all of them, in one go. This used to be a query per
+    # conversation, run on every poll of /api/me -- the classic shape that is
+    # fine with two conversations and is not with twenty.
+    everyone = db.query(
+        """SELECT members.conversation_id, users.id, users.username,
+                  users.display_name
+           FROM members
+           JOIN users ON users.id = members.user_id
+           WHERE members.conversation_id IN (
+               SELECT conversation_id FROM members WHERE user_id = ?)
+           ORDER BY users.username""",
+        (user_id,),
+    )
+
+    by_conversation = {}
+    for member in everyone:
+        by_conversation.setdefault(member["conversation_id"], []).append({
+            "id": member["id"],
+            "username": member["username"],
+            "display_name": member["display_name"],
+        })
+
     out = []
     for row in rows:
-        members = db.query(
-            """SELECT users.id, users.username, users.display_name
-               FROM members JOIN users ON users.id = members.user_id
-               WHERE members.conversation_id = ?
-               ORDER BY users.username""",
-            (row["id"],),
-        )
+        members = by_conversation.get(row["id"], [])
         out.append({
             "id": row["id"],
             "kind": row["kind"],
             "name": display_name(row, members, user_id),
             "lastId": row["last_id"] or 0,
-            "members": [dict(m) for m in members],
+            "members": members,
         })
     return out
 

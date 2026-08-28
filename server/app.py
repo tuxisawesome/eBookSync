@@ -13,6 +13,7 @@ network, only a cable.
 """
 
 import os
+from urllib.parse import urlsplit
 
 from flask import Flask, jsonify, request
 
@@ -24,16 +25,50 @@ from . import admin, api, db, pwa
 DEFAULT_ORIGINS = "https://tuxisawesome.github.io"
 
 
+def normalise_origin(value):
+    """Reduce anything URL-shaped to the origin a browser would send.
+
+    An `Origin` header is scheme, host and port and nothing else: no path, no
+    trailing slash, host lowercased. What ends up in EOS_ALLOWED_ORIGINS is
+    whatever someone had in the address bar -- very often with a trailing slash,
+    sometimes the whole page URL.
+
+    Those do not match, and the failure is silent and looks like a server fault:
+    the browser refuses the response and reports a CORS error with nothing in
+    the log. Being liberal here costs nothing and removes a whole class of
+    "it works locally" afternoon.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+
+    if "//" not in text:
+        text = f"https://{text}"
+
+    parts = urlsplit(text)
+    if not parts.scheme or not parts.netloc or any(c.isspace() for c in parts.netloc):
+        return None
+
+    return f"{parts.scheme.lower()}://{parts.netloc.lower()}"
+
+
+def parse_origins(setting):
+    """A comma-separated EOS_ALLOWED_ORIGINS, normalised, duplicates dropped."""
+    seen = []
+    for piece in str(setting or "").split(","):
+        origin = normalise_origin(piece)
+        if origin and origin not in seen:
+            seen.append(origin)
+    return seen
+
+
 def create_app(config=None):
     app = Flask(__name__)
     app.config.update(
         DB_PATH=os.environ.get("EOS_DB_PATH", db.DEFAULT_PATH),
         SECRET_KEY=os.environ.get("EOS_SECRET_KEY", ""),
-        ALLOWED_ORIGINS=[
-            origin.strip()
-            for origin in os.environ.get("EOS_ALLOWED_ORIGINS", DEFAULT_ORIGINS).split(",")
-            if origin.strip()
-        ],
+        ALLOWED_ORIGINS=parse_origins(
+            os.environ.get("EOS_ALLOWED_ORIGINS", DEFAULT_ORIGINS)),
     )
     if config:
         app.config.update(config)
@@ -71,8 +106,25 @@ def install_cors(app):
     """
 
     def allowed():
-        origin = request.headers.get("Origin")
-        return origin if origin and origin in app.config["ALLOWED_ORIGINS"] else None
+        """The Origin to echo back, or None.
+
+        Compared after normalising both ends, but echoed back exactly as it
+        arrived -- a browser matches the header against what it sent, byte for
+        byte.
+        """
+        sent = request.headers.get("Origin")
+        if not sent:
+            return None
+
+        if normalise_origin(sent) in app.config["ALLOWED_ORIGINS"]:
+            return sent
+
+        # Say so. A refused origin is otherwise invisible from the server side:
+        # the browser reports a CORS error and the log shows a successful 200.
+        app.logger.warning(
+            "refused cross-origin request from %r; EOS_ALLOWED_ORIGINS holds %r",
+            sent, app.config["ALLOWED_ORIGINS"])
+        return None
 
     @app.before_request
     def _preflight():

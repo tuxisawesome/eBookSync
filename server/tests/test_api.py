@@ -18,7 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from server import admin, auth, chat, db          # noqa: E402
-from server.app import create_app                 # noqa: E402
+from server.app import create_app, normalise_origin, parse_origins  # noqa: E402
 
 auth.SCRYPT = {"n": 2, "r": 8, "p": 1}
 
@@ -315,6 +315,100 @@ class TestCors(RelayTest):
         self.assertIsNone(response.headers.get("Access-Control-Allow-Origin"))
 
 
+class TestOriginParsing(unittest.TestCase):
+    """What people actually put in EOS_ALLOWED_ORIGINS.
+
+    A browser's Origin header is scheme and host and nothing else. What goes
+    into the setting is whatever was in the address bar -- usually with a
+    trailing slash, sometimes the whole page URL. Comparing those as strings
+    matched nothing, and the failure is invisible from the server side: the
+    browser reports a CORS error while the log records a clean 200.
+    """
+
+    def test_a_trailing_slash_is_the_same_origin(self):
+        # This is the one that cost an afternoon.
+        self.assertEqual(normalise_origin("https://tuxisawesome.github.io/"),
+                         "https://tuxisawesome.github.io")
+
+    def test_a_whole_page_url_reduces_to_its_origin(self):
+        self.assertEqual(
+            normalise_origin("https://tuxisawesome.github.io/eBookSync/web/index.html"),
+            "https://tuxisawesome.github.io")
+
+    def test_a_bare_host_is_assumed_to_be_https(self):
+        self.assertEqual(normalise_origin("tuxisawesome.github.io"),
+                         "https://tuxisawesome.github.io")
+
+    def test_case_does_not_matter(self):
+        self.assertEqual(normalise_origin("HTTPS://TuxIsAwesome.GitHub.IO"),
+                         "https://tuxisawesome.github.io")
+
+    def test_a_port_is_kept(self):
+        self.assertEqual(normalise_origin("http://localhost:8000/"),
+                         "http://localhost:8000")
+
+    def test_nonsense_is_dropped_rather_than_stored(self):
+        for value in ("", "   ", None, "not a url", "https://"):
+            self.assertIsNone(normalise_origin(value), value)
+
+    def test_a_list_is_split_normalised_and_deduplicated(self):
+        parsed = parse_origins(
+            " https://a.github.io/ , https://a.github.io, http://localhost:8000/ ,, ")
+        self.assertEqual(parsed, ["https://a.github.io", "http://localhost:8000"])
+
+
+class TestCorsMatching(RelayTest):
+    """The same, through an actual request."""
+
+    def with_origins(self, setting):
+        app = create_app({
+            "DB_PATH": self.app.config["DB_PATH"],
+            "TESTING": True,
+            "SECRET_KEY": "test",
+            "ALLOWED_ORIGINS": parse_origins(setting),
+        })
+        return app.test_client()
+
+    def preflight(self, client, origin):
+        return client.options("/api/messages", headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "Authorization",
+        })
+
+    def test_a_configured_trailing_slash_still_allows_the_page(self):
+        client = self.with_origins("https://tuxisawesome.github.io/")
+        response = self.preflight(client, "https://tuxisawesome.github.io")
+        self.assertEqual(response.headers.get("Access-Control-Allow-Origin"),
+                         "https://tuxisawesome.github.io")
+
+    def test_a_configured_page_url_still_allows_the_page(self):
+        client = self.with_origins("https://tuxisawesome.github.io/eBookSync/web/index.html")
+        response = self.preflight(client, "https://tuxisawesome.github.io")
+        self.assertEqual(response.headers.get("Access-Control-Allow-Origin"),
+                         "https://tuxisawesome.github.io")
+
+    def test_the_origin_is_echoed_exactly_as_it_arrived(self):
+        """A browser matches the header against what it sent, byte for byte."""
+        client = self.with_origins("tuxisawesome.github.io")
+        response = self.preflight(client, "https://tuxisawesome.github.io")
+        self.assertEqual(response.headers.get("Access-Control-Allow-Origin"),
+                         "https://tuxisawesome.github.io")
+
+    def test_a_different_host_is_still_refused(self):
+        client = self.with_origins("https://tuxisawesome.github.io/")
+        for origin in ("https://evil.example",
+                       "http://tuxisawesome.github.io",
+                       "https://tuxisawesome.github.io.evil.example"):
+            response = self.preflight(client, origin)
+            self.assertIsNone(response.headers.get("Access-Control-Allow-Origin"), origin)
+
+    def test_an_empty_setting_allows_nobody(self):
+        client = self.with_origins("")
+        response = self.preflight(client, "https://tuxisawesome.github.io")
+        self.assertIsNone(response.headers.get("Access-Control-Allow-Origin"))
+
+
 class TestAdmin(RelayTest):
     def sign_in(self):
         return self.client.post("/admin/login",
@@ -491,6 +585,133 @@ class TestDatabasePath(unittest.TestCase):
             kept = connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]
             connection.close()
             self.assertEqual(kept, 1)
+
+
+class TestPollingIsCheap(RelayTest):
+    """Polling must not take the write lock, or the site stalls.
+
+    SQLite allows one writer at a time. `last_used` used to be stamped on every
+    authenticated request, which made every poll a writer -- so two clients
+    landing together meant one waited on the other for up to busy_timeout, and
+    the whole relay appeared to hang. With clients polling every few seconds
+    that is not a rare collision, it is the steady state.
+    """
+
+    def count_writes(self, action):
+        writes = []
+        real = db.execute
+
+        def counting(sql, args=()):
+            writes.append(sql.strip().split()[0].upper())
+            return real(sql, args)
+
+        db.execute = counting
+        auth.db.execute = counting
+        try:
+            action()
+        finally:
+            db.execute = real
+            auth.db.execute = real
+        return writes
+
+    def test_a_poll_writes_nothing(self):
+        token = self.login("alice", "alpha-pass")
+        # The first request stamps last_used; every one after it must not.
+        self.get("/api/messages?since=0", token)
+
+        writes = self.count_writes(
+            lambda: [self.get("/api/messages?since=0", token) for _ in range(20)])
+        self.assertEqual(writes, [], "polling took the write lock")
+
+    def test_reading_the_directory_writes_nothing_either(self):
+        token = self.login("alice", "alpha-pass")
+        self.get("/api/me", token)
+
+        writes = self.count_writes(
+            lambda: [self.get("/api/me", token) for _ in range(10)])
+        self.assertEqual(writes, [])
+
+    def test_last_used_is_still_recorded_eventually(self):
+        """Cheap, not abandoned -- it is what tells you an account is in use."""
+        token = self.login("alice", "alpha-pass")
+        self.get("/api/me", token)
+
+        with self.app.app_context():
+            first = db.query("SELECT last_used FROM tokens", one=True)["last_used"]
+        self.assertIsNotNone(first)
+
+        original = auth.TOUCH_AFTER
+        auth.TOUCH_AFTER = 0
+        try:
+            writes = self.count_writes(lambda: self.get("/api/me", token))
+        finally:
+            auth.TOUCH_AFTER = original
+        self.assertEqual(writes, ["UPDATE"])
+
+    def test_the_directory_does_not_cost_a_query_per_conversation(self):
+        """The N+1 that /api/me polling would have multiplied."""
+        counted = []
+        real = db.query
+
+        def counting(sql, args=(), one=False):
+            counted.append(sql)
+            return real(sql, args, one)
+
+        token = self.login("alice", "alpha-pass")
+
+        def queries_for(extra_conversations):
+            with self.app.app_context():
+                for i in range(extra_conversations):
+                    self.make_group(f"Group {i}", [self.alice, self.bob])
+            counted.clear()
+            db.query = counting
+            chat.db.query = counting
+            try:
+                self.get("/api/me", token)
+            finally:
+                db.query = real
+                chat.db.query = real
+            return len(counted)
+
+        few = queries_for(0)
+        many = queries_for(20)
+        self.assertEqual(few, many,
+                         f"query count grew with conversations: {few} -> {many}")
+
+
+class TestSendIsSelfContained(RelayTest):
+    """The reply has to carry the stored message.
+
+    Otherwise a client has to read it back to find out what it just sent, and if
+    that read fails the message sits on screen saying "sending" forever while
+    being perfectly safe on the relay.
+    """
+
+    def test_the_reply_carries_the_stored_message(self):
+        alice = self.login("alice", "alpha-pass")
+        reply = self.post("/api/messages", alice, {
+            "conversationId": self.direct, "body": "hello", "clientId": "c1"}).get_json()
+
+        message = reply["message"]
+        self.assertGreater(message["id"], 0)
+        self.assertEqual(message["body"], "hello")
+        self.assertEqual(message["clientId"], "c1")
+        self.assertEqual(message["conversationId"], self.direct)
+        self.assertEqual(message["userId"], self.alice)
+        self.assertTrue(message["sentAt"])
+        self.assertTrue(message["displayName"])
+
+    def test_a_repeat_still_carries_it(self):
+        """A retry has to resolve the pending copy too, not just say 'already had it'."""
+        alice = self.login("alice", "alpha-pass")
+        payload = {"conversationId": self.direct, "body": "hello", "clientId": "c1"}
+
+        first = self.post("/api/messages", alice, payload).get_json()
+        again = self.post("/api/messages", alice, payload).get_json()
+
+        self.assertFalse(again["created"])
+        self.assertEqual(again["message"]["id"], first["message"]["id"])
+        self.assertEqual(again["message"]["body"], "hello")
 
 
 class TestBootstrap(unittest.TestCase):
