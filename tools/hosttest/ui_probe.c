@@ -16,6 +16,7 @@
 #include "library.h"
 #include "shim.h"
 
+#include <dirent.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -83,18 +84,31 @@ int main(int argc, char **argv) {
 
     int arg = 1;
     if (arg + 1 < argc && strcmp(argv[arg], "--lib") == 0) {
-        char path[4096];
-        snprintf(path, sizeof path, "%s/" LIB_NAME ".8xv", argv[arg + 1]);
-
-        char name[9];
-        size_t size;
-        uint8_t *data = read_appvar(path, name, &size);
-        if (!data) {
-            fprintf(stderr, "cannot read %s\n", path);
+        /* Every .8xv in the directory, not just the index: the reader's screens
+         * read the chat appvars too, and a screen tested without them is a
+         * screen tested in a state that cannot occur. */
+        DIR *dir = opendir(argv[arg + 1]);
+        if (!dir) {
+            fprintf(stderr, "cannot read %s\n", argv[arg + 1]);
             return 2;
         }
-        shim_add_var(name, data, size);
-        free(data);
+        for (struct dirent *entry; (entry = readdir(dir)); ) {
+            const char *dot = strrchr(entry->d_name, '.');
+            if (!dot || strcmp(dot, ".8xv") != 0)
+                continue;
+
+            char path[4096];
+            snprintf(path, sizeof path, "%s/%s", argv[arg + 1], entry->d_name);
+
+            char name[9];
+            size_t size;
+            uint8_t *data = read_appvar(path, name, &size);
+            if (data) {
+                shim_add_var(name, data, size);
+                free(data);
+            }
+        }
+        closedir(dir);
         arg += 2;
     }
 

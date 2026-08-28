@@ -350,6 +350,10 @@ EOSOUT      typed here, not yet handed over
   11  ..   body
 ```
 
+`EOSOUT` is drawn as part of the conversation, at the end and dimmed, until a
+sync takes it: a message that is written and then invisible for two syncs is
+indistinguishable from one that was lost.
+
 `lastServerId`, `bytes` and `nextSeq` are the calculator's; the computer sends
 zeros and the calculator carries its own across. See the note on
 `CHAT_ROSTER_PUT` in `docs/PROTOCOL.md`.

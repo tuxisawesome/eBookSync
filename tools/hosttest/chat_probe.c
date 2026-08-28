@@ -15,6 +15,7 @@
  *     list                  print the conversations
  *     messages <index>      print one conversation's messages
  *     outbox                print the queue
+ *     waiting <id>          what is queued for one conversation, decoded
  *     save                  write every variable to <dir> as <NAME>.bin
  */
 
@@ -171,6 +172,19 @@ int main(int argc, char **argv) {
                        (unsigned long)message.server_id,
                        (unsigned long)message.sent_at,
                        message.flags, message.sender, message.body);
+            }
+
+        } else if (strcmp(argv[i], "waiting") == 0 && i + 1 < argc) {
+            uint16_t id = (uint16_t)atoi(argv[++i]);
+            printf("waiting %u %u\n", id, chat_outbox_count_for(id));
+            for (uint16_t o = 0; o < chat_outbox_count(); o++) {
+                chat_queued_t queued;
+                if (!chat_outbox_message(o, &queued))
+                    break;
+                if (queued.conversation_id != id)
+                    continue;
+                printf("waits %u %lu %s\n", queued.conversation_id,
+                       (unsigned long)queued.seq, queued.body);
             }
 
         } else if (strcmp(argv[i], "outbox") == 0) {

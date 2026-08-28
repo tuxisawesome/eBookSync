@@ -675,11 +675,70 @@ typedef struct {
     char text[CHAT_COLS + 1];
     bool mine;
     bool heading;
+    bool waiting;      /* typed here, not yet carried away by a sync */
 } chat_line_t;
 
+/* How many display lines one message body needs, plus its heading. */
+static uint8_t lines_for(const char *body) {
+    char wrapped[8][CHAT_COLS + 1];
+    return (uint8_t)(wrap(body, wrapped, 8) + 1);
+}
+
+/* Append one message's heading and wrapped body. Returns lines added. */
+static uint8_t emit_message(chat_line_t *out, uint8_t used, uint8_t max,
+                            const char *who, const char *body,
+                            bool mine, bool waiting) {
+    if (used >= max)
+        return 0;
+
+    uint8_t start = used;
+
+    snprintf(out[used].text, sizeof out[used].text, "%s", who);
+    out[used].mine = mine;
+    out[used].heading = true;
+    out[used].waiting = waiting;
+    used++;
+
+    char wrapped[8][CHAT_COLS + 1];
+    uint8_t lines = wrap(body, wrapped, 8);
+    for (uint8_t l = 0; l < lines && used < max; l++) {
+        memcpy(out[used].text, wrapped[l], sizeof wrapped[l]);
+        out[used].mine = mine;
+        out[used].heading = false;
+        out[used].waiting = waiting;
+        used++;
+    }
+
+    return (uint8_t)(used - start);
+}
+
 static uint8_t build_lines(uint8_t conversation, chat_line_t *out, uint8_t max) {
+    chat_conversation_t about;
+    chat_get_conversation(conversation, &about);
+
     uint16_t count = chat_message_count(conversation);
     uint8_t used = 0;
+
+    /*
+     * Room for what is still waiting is reserved before anything else.
+     *
+     * Queued messages are the newest thing in the conversation and the ones
+     * most likely to be looked for -- somebody has just typed them. Letting the
+     * history push them off the end would show everything except the part that
+     * prompted the question.
+     */
+    uint16_t queued_count = chat_outbox_count();
+    uint8_t reserved = 0;
+    for (uint16_t i = 0; i < queued_count && reserved < max; i++) {
+        chat_queued_t queued;
+        if (!chat_outbox_message(i, &queued))
+            break;
+        if (queued.conversation_id == about.id)
+            reserved = (uint8_t)(reserved + lines_for(queued.body));
+    }
+    if (reserved > max)
+        reserved = max;
+    uint8_t room = (uint8_t)(max - reserved);
 
     /*
      * Walked from the newest backwards and then reversed, because the end of a
@@ -693,36 +752,35 @@ static uint8_t build_lines(uint8_t conversation, chat_line_t *out, uint8_t max) 
         if (!chat_get_message(conversation, i, &message))
             break;
 
-        char wrapped[8][CHAT_COLS + 1];
-        uint8_t lines = wrap(message.body, wrapped, 8);
-        if (needed + lines + 1 > max)
+        uint8_t lines = lines_for(message.body);
+        if (needed + lines > room)
             break;
 
-        needed += lines + 1;
+        needed = (uint8_t)(needed + lines);
         first = i;
     }
 
-    for (uint16_t i = first; i < count && used < max; i++) {
+    for (uint16_t i = first; i < count && used < room; i++) {
         chat_message_t message;
         if (!chat_get_message(conversation, i, &message))
             break;
 
         bool mine = (message.flags & CHAT_FLAG_MINE) != 0;
+        used = (uint8_t)(used + emit_message(out, used, room,
+                                             mine ? "you" : message.sender,
+                                             message.body, mine, false));
+    }
 
-        snprintf(out[used].text, sizeof out[used].text, "%s",
-                 mine ? "you" : message.sender);
-        out[used].mine = mine;
-        out[used].heading = true;
-        used++;
+    /* Then whatever is still waiting, at the end, where it was written. */
+    for (uint16_t i = 0; i < queued_count && used < max; i++) {
+        chat_queued_t queued;
+        if (!chat_outbox_message(i, &queued))
+            break;
+        if (queued.conversation_id != about.id)
+            continue;
 
-        char wrapped[8][CHAT_COLS + 1];
-        uint8_t lines = wrap(message.body, wrapped, 8);
-        for (uint8_t l = 0; l < lines && used < max; l++) {
-            memcpy(out[used].text, wrapped[l], sizeof wrapped[l]);
-            out[used].mine = mine;
-            out[used].heading = false;
-            used++;
-        }
+        used = (uint8_t)(used + emit_message(out, used, max, "you - waiting to send",
+                                             queued.body, true, true));
     }
 
     return used;
@@ -776,12 +834,14 @@ static void chat_thread(uint8_t index) {
                 int y = CHAT_TOP + row * CHAT_LINE_H;
 
                 gfx_SetTextBGColor(UI_BG);
-                gfx_SetTextFGColor(line->heading ? UI_ACCENT
-                                                 : (line->mine ? UI_FG : UI_FG));
+                gfx_SetTextFGColor(line->waiting ? UI_DIM
+                                                 : (line->heading ? UI_ACCENT : UI_FG));
                 gfx_PrintStringXY(line->text, line->mine ? 20 : 8, y);
             }
 
-            ui_footer("2nd write   up/down scroll   clear back");
+            ui_footer(chat_outbox_count_for(conversation.id)
+                          ? "dim = waiting for a sync      clear back"
+                          : "2nd write   up/down scroll   clear back");
             dirty = false;
             drew = true;
         }
@@ -840,10 +900,20 @@ void ui_chat_screen(void) {
                 chat_conversation_t conversation;
                 chat_get_conversation((uint8_t)index, &conversation);
 
+                int text_y = UI_LIST_TOP + row * UI_ROW_HEIGHT + 6;
                 gfx_SetTextFGColor(UI_FG);
                 gfx_SetTextBGColor(index == list.selected ? UI_SELECT_BG : UI_BG);
-                gfx_PrintStringXY(conversation.name, 12,
-                                  UI_LIST_TOP + row * UI_ROW_HEIGHT + 6);
+                gfx_PrintStringXY(conversation.name, 12, text_y);
+
+                /* Anything typed here and not yet carried away, so the list
+                 * answers "did that send?" without opening each one. */
+                uint16_t waiting = chat_outbox_count_for(conversation.id);
+                if (waiting) {
+                    char note[16];
+                    sprintf(note, "%u waiting", waiting);
+                    gfx_SetTextFGColor(UI_ACCENT);
+                    gfx_PrintStringXY(note, GFX_LCD_WIDTH - 100, text_y);
+                }
             }
 
             draw_scrollbar(&list);

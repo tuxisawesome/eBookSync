@@ -141,6 +141,57 @@ check("empty library, y= opens chat without closing the app",
 check("empty library, y= then clear returns to the book list",
       LEAD + press("yequ") + press("clear") + press("clear"), CLOSED)
 
+# --- the chat screens, with something queued -------------------------------
+# A message typed on the calculator sits in the outbox until a sync carries it
+# away. The reader has to draw it in the meantime, so it is worth checking that
+# the screens survive that state rather than only the empty one.
+def seed_chat(directory, queued=()):
+    """Drive chat_probe to lay out the appvars, then wrap them as .8xv."""
+    table = directory / "table.bin"
+    table.write_bytes(pack_table([(3, "Study group"), (9, "sam")]))
+
+    command = [str(HERE / "chat_probe"), str(directory), "table", str(table)]
+    for conversation, body in queued:
+        command += ["send", str(conversation), body]
+    command += ["save"]
+    subprocess.run(command, capture_output=True, check=True)
+
+    for name in ("EOSCHT", "EOSOUT"):
+        raw = directory / f"{name}.bin"
+        if raw.exists():
+            (directory / f"{name}.8xv").write_bytes(tifile.write(name, raw.read_bytes()))
+
+
+def pack_table(conversations):
+    """The conversation table, as web/js/chatwire.js writes it."""
+    import struct
+    out = bytearray(b"ECH1" + bytes([1, len(conversations)]) + bytes(6))
+    for identifier, name in conversations:
+        out += struct.pack("<HIH", identifier, 0, 0)
+        out += name.encode()[:16].ljust(16, b"\0")
+    return bytes(out)
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    directory = Path(tmp)
+    library_with_content(directory)
+    seed_chat(directory, queued=[(3, "typed on the calculator")])
+
+    check("chat opens with a message waiting",
+          LEAD + press("yequ"), RUNNING, directory=directory)
+
+    check("and the conversation can be opened and left",
+          LEAD + press("yequ") + press("enter") + press("clear") + press("clear"),
+          RUNNING, directory=directory)
+
+    check("scrolling a thread with a queued message does not close the app",
+          LEAD + press("yequ") + press("enter") + press("up") + press("down"),
+          RUNNING, directory=directory)
+
+    check("and clear all the way out still quits",
+          LEAD + press("yequ") + press("enter") + press("clear") + press("clear")
+          + press("clear"), CLOSED, directory=directory)
+
 # --- the lock screen -------------------------------------------------------
 # The password is in the library index (see docs/FORMAT.md), so a locked
 # calculator is one whose index has a device block filled in. Three wrong

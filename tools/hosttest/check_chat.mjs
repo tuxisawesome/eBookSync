@@ -309,5 +309,44 @@ function messagesFile(directory, name, messages) {
         wire.toCalculatorText('x'.repeat(400), wire.BODY_MAX).length, wire.BODY_MAX);
 }
 
+
+/* --- what is queued is visible before it has been anywhere ---------------- */
+/*
+ * A message typed on the calculator goes into the outbox, which nothing used to
+ * draw, and does not reach the conversation log until it has been to the relay
+ * and come back on a later sync. Two syncs of silence looks exactly like having
+ * lost it, so the reader shows the queue as part of the conversation.
+ */
+{
+  const { directory } = seeded([{ id: 3, name: 'Study' }, { id: 9, name: 'sam' }]);
+
+  const lines = run(directory, [
+    'send', '3', 'first to study',
+    'send', '9', 'one to sam',
+    'send', '3', 'second to study',
+    'waiting', '3', 'save',
+  ]);
+
+  check('the count is per conversation', parse(lines, 'waiting'), ['3 2']);
+  check('and it decodes the bodies in order',
+        parse(lines, 'waits').map((l) => l.split(' ').slice(2).join(' ')),
+        ['first to study', 'second to study']);
+
+  const other = run(directory, ['waiting', '9']);
+  check('the other conversation has its own', parse(other, 'waiting'), ['9 1']);
+  check('with only its own message',
+        parse(other, 'waits').map((l) => l.split(' ').slice(2).join(' ')),
+        ['one to sam']);
+
+  const none = run(directory, ['waiting', '77']);
+  check('a conversation with nothing queued says so', parse(none, 'waiting'), ['77 0']);
+
+  /* Once a sync has taken them, the conversation stops claiming they are
+   * waiting -- otherwise it would show every message twice for ever. */
+  const after = run(directory, ['drop', '3', 'waiting', '3', 'save']);
+  check('an acknowledged queue is empty again', parse(after, 'waiting'), ['3 0']);
+  check('and nothing is left waiting', parse(after, 'waits'), []);
+}
+
 console.log(`${checks - failures}/${checks} chat checks pass`);
 process.exit(failures ? 1 : 0);

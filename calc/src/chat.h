@@ -67,6 +67,14 @@ typedef struct {
     char body[CHAT_BODY_MAX + 1];
 } chat_message_t;
 
+/* One message typed here and still waiting for a sync to carry it away. */
+typedef struct {
+    uint16_t conversation_id;
+    uint32_t seq;
+    uint32_t composed_at;
+    char body[CHAT_BODY_MAX + 1];
+} chat_queued_t;
+
 /* Map the conversation table. False when there has never been a sync. */
 bool chat_open(void);
 
@@ -105,6 +113,19 @@ uint16_t chat_outbox_bytes(void);
 
 /* One queued message, packed as the wire format. False past the end. */
 bool chat_outbox_get(uint16_t index, uint8_t *out, uint16_t *length);
+
+/*
+ * The same, decoded, so the reader can show what is still waiting.
+ *
+ * Without this a message vanishes the moment it is written: it is in the
+ * outbox, which nothing draws, and it does not reach the conversation log until
+ * it has been to the relay and come back on a later sync. Two syncs of silence
+ * looks exactly like having lost it.
+ */
+bool chat_outbox_message(uint16_t index, chat_queued_t *out);
+
+/* How many are waiting for one conversation. */
+uint16_t chat_outbox_count_for(uint16_t conversation_id);
 
 /* Queue something typed here. False if the outbox is full. */
 bool chat_send(uint16_t conversation_id, const char *body);

@@ -201,8 +201,13 @@ second terminal for yours. Anything typed on either is from you, and the history
 syncs both ways.
 
 **On the calculator**, `y=` opens the conversation list, `enter` opens one,
-`2nd` writes a message, and `clear` goes back. What you write is queued and
-leaves at the next sync — the screen says so.
+`2nd` writes a message, and `clear` goes back.
+
+What you write is queued until a sync carries it away, and you can see it in the
+meantime: it appears at the end of the conversation, dimmed, under
+`you - waiting to send`, and the conversation list shows how many are waiting.
+Without that a message would vanish for two syncs — one to hand it over, another
+to bring it back from the relay — which looks exactly like having lost it.
 
 Two limits worth knowing:
 

@@ -432,6 +432,39 @@ bool chat_outbox_get(uint16_t index, uint8_t *out, uint16_t *length) {
     return false;
 }
 
+bool chat_outbox_message(uint16_t index, chat_queued_t *out) {
+    uint8_t record[OUTREC_HEADER + CHAT_BODY_MAX];
+    uint16_t length = 0;
+    if (!chat_outbox_get(index, record, &length) || length < OUTREC_HEADER)
+        return false;
+
+    memset(out, 0, sizeof *out);
+    out->conversation_id = read16(record + OUTREC_CONV);
+    out->seq = read32(record + OUTREC_SEQ);
+    out->composed_at = read32(record + OUTREC_AT);
+
+    uint8_t body_len = record[OUTREC_LEN];
+    if (body_len > CHAT_BODY_MAX)
+        body_len = CHAT_BODY_MAX;
+    memcpy(out->body, record + OUTREC_HEADER, body_len);
+    out->body[body_len] = '\0';
+    return true;
+}
+
+uint16_t chat_outbox_count_for(uint16_t conversation_id) {
+    uint16_t total = chat_outbox_count();
+    uint16_t mine = 0;
+
+    for (uint16_t i = 0; i < total; i++) {
+        chat_queued_t queued;
+        if (!chat_outbox_message(i, &queued))
+            break;
+        if (queued.conversation_id == conversation_id)
+            mine++;
+    }
+    return mine;
+}
+
 /*
  * The next sequence number, and it must never go backwards.
  *
