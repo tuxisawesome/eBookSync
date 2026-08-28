@@ -32,11 +32,14 @@ will not let an HTTPS page talk to a plain-HTTP server.
    import os
    import sys
 
-   sys.path.insert(0, "/home/YOU/eBookSync")
+   # Replace tuxisawesome with your own PythonAnywhere username in the two
+   # paths below, and your own GitHub username in the origin. A leftover
+   # placeholder here is the usual cause of a startup failure.
+   sys.path.insert(0, "/home/tuxisawesome/eBookSync")
 
-   os.environ["EOS_DB_PATH"] = "/home/YOU/eos.db"
+   os.environ["EOS_DB_PATH"] = "/home/tuxisawesome/eos.db"
    os.environ["EOS_SECRET_KEY"] = "paste-something-random-here"
-   os.environ["EOS_ALLOWED_ORIGINS"] = "https://YOU.github.io"
+   os.environ["EOS_ALLOWED_ORIGINS"] = "https://tuxisawesome.github.io"
 
    from server.wsgi import application       # noqa: E402
    ```
@@ -45,6 +48,50 @@ will not let an HTTPS page talk to a plain-HTTP server.
    create the first administrator. That offer disappears as soon as one exists.
 5. Add people in **People**, open conversations in **Conversations**, and put
    the relay's address into the sync page's chat settings.
+
+## The database
+
+**There is nothing to create.** The app builds it on every start — the schema is
+`CREATE TABLE IF NOT EXISTS` throughout, so an existing database is left exactly
+as it was and a missing one is made from scratch. The only thing it needs is a
+folder it can write to.
+
+If startup fails with `unable to open database file`, that is SQLite's single
+unhelpful message for every path problem there is. Ask from a Bash console:
+
+```sh
+cd ~/eBookSync
+EOS_DB_PATH=/home/YOURNAME/eos.db python3 -m server.manage check
+```
+
+It prints the path it would use, whether the folder exists and is writable, and
+what is already in the database. Nearly always the answer is that the folder in
+`EOS_DB_PATH` does not exist — most often because a `YOU` placeholder was left
+in the WSGI configuration file. Fix it there and reload the web app.
+
+To create the database ahead of time, or to confirm the path works before
+reloading:
+
+```sh
+EOS_DB_PATH=/home/YOURNAME/eos.db python3 -m server.manage init
+```
+
+`check` also reports who the administrators are, which is the quickest way to
+tell "the database is empty" from "I have forgotten the password".
+
+**Keep it out of the source tree**, as the WSGI snippet above does. A redeploy
+that overwrote the chat history would be hard to notice and impossible to undo.
+
+### Backing it up
+
+It is one file. In a Bash console:
+
+```sh
+sqlite3 /home/YOURNAME/eos.db ".backup /home/YOURNAME/eos-backup.db"
+```
+
+`.backup` rather than `cp`, because WAL mode means a plain copy taken while the
+site is serving can miss the most recent writes.
 
 **Keep the database outside the source tree.** `EOS_DB_PATH` above points at
 your home directory on purpose — a redeploy that overwrote the chat history

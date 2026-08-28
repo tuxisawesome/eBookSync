@@ -46,6 +46,10 @@ echo "== self-update: what prgmEOSUP does =="
 "$node" "$dir/check_update.mjs"
 
 echo
+echo "== the web pages: what is hidden stays hidden =="
+"$node" "$dir/check_page.mjs"
+
+echo
 echo "== chat records: browser packer -> calculator store =="
 "$node" "$dir/check_chat.mjs"
 

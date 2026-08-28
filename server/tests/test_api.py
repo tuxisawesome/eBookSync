@@ -440,6 +440,59 @@ class TestAdmin(RelayTest):
         self.assertEqual(count, 1)
 
 
+class TestDatabasePath(unittest.TestCase):
+    """The one failure everybody hits on a first deploy.
+
+    SQLite says "unable to open database file" whether the folder is missing,
+    the path is a typo or the disk is read-only. What matters is that the app
+    says which, because on PythonAnywhere it is almost always a placeholder left
+    in the WSGI file.
+    """
+
+    def test_a_missing_folder_is_explained(self):
+        reason = db.explain_path("/no/such/folder/eos.db")
+        self.assertIn("/no/such/folder", reason)
+        self.assertIn("does not exist", reason)
+
+    def test_the_readme_placeholder_is_called_out_by_name(self):
+        reason = db.explain_path("/home/YOU/eos.db")
+        self.assertIn("placeholder", reason)
+        self.assertIn("EOS_DB_PATH", reason)
+
+    def test_a_writable_folder_has_no_complaint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(db.explain_path(str(Path(tmp) / "eos.db")))
+
+    def test_connecting_to_a_bad_path_says_why(self):
+        import sqlite3
+        with self.assertRaises(sqlite3.OperationalError) as caught:
+            db.connect("/no/such/folder/eos.db")
+        self.assertIn("does not exist", str(caught.exception))
+
+    def test_the_database_creates_itself_and_is_idempotent(self):
+        """There is nothing to create by hand -- initialise() does it, twice safely."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = str(Path(tmp) / "eos.db")
+            self.assertFalse(Path(path).exists())
+
+            db.initialise(path)
+            self.assertTrue(Path(path).exists())
+
+            connection = db.connect(path)
+            connection.execute(
+                "INSERT INTO users (username, display_name, pw_hash, pw_salt, created_at)"
+                " VALUES ('keep', 'Keep', X'00', X'00', 1)")
+            connection.commit()
+            connection.close()
+
+            # Running it again must not wipe what is there.
+            db.initialise(path)
+            connection = db.connect(path)
+            kept = connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            connection.close()
+            self.assertEqual(kept, 1)
+
+
 class TestBootstrap(unittest.TestCase):
     """An empty relay has to be able to make its first administrator."""
 

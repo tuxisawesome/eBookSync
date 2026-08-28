@@ -31,6 +31,24 @@
 
 * { box-sizing: border-box; }
 
+/*
+ * `hidden` must actually hide.
+ *
+ * The browser's own rule for it is `display: none`, and it lives in the user
+ * agent stylesheet -- so any rule here that sets `display` on the same element
+ * beats it, and the element stays on screen with its hidden attribute set. That
+ * is not hypothetical: `main { display: grid }` below left the chat panel
+ * showing underneath the library, and `body.chat #app { display: flex }` in the
+ * relay's stylesheet left the sign-in form stacked above the messages.
+ *
+ * Anything toggled with `element.hidden` needs this, so it goes first and it is
+ * !important. Removing it breaks panels that look nothing like each other.
+ */
+[hidden] {
+  display: none !important;
+}
+
+
 body {
   margin: 0;
   font: 15px/1.5 system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;

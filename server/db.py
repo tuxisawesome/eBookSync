@@ -23,8 +23,49 @@ def now():
     return int(time.time())
 
 
+def explain_path(path):
+    """Why SQLite cannot open `path`, in words, or None if it looks fine.
+
+    "unable to open database file" is one of the least helpful messages in
+    computing: it is the same whether the directory does not exist, the path is
+    a typo, or the disk is read-only. Nearly always it is the first, and nearly
+    always on a fresh deploy it is a placeholder left in the WSGI file.
+    """
+    target = Path(path)
+    parent = target.parent
+
+    if not parent.exists():
+        hint = ""
+        if "YOU" in str(parent) or "yourusername" in str(parent).lower():
+            hint = (" That looks like the placeholder from server/README.md -- "
+                    "put your own PythonAnywhere username in EOS_DB_PATH.")
+        return (f"the folder {parent} does not exist, so the database cannot be "
+                f"created there.{hint}")
+
+    if not parent.is_dir():
+        return f"{parent} is a file, not a folder, so nothing can be created inside it."
+
+    if not os.access(parent, os.W_OK):
+        return f"the folder {parent} is not writable by this process."
+
+    if target.exists() and not os.access(target, os.W_OK):
+        return f"{target} exists but is not writable by this process."
+
+    return None
+
+
 def connect(path):
-    connection = sqlite3.connect(path, timeout=10)
+    try:
+        connection = sqlite3.connect(path, timeout=10)
+    except sqlite3.OperationalError as error:
+        # Re-raise with the reason attached. The database creates itself, so
+        # anything that fails here is about the path, not about the schema.
+        reason = explain_path(path)
+        raise sqlite3.OperationalError(
+            f"could not open the database at {path}: "
+            f"{reason or error}"
+        ) from error
+
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA journal_mode = WAL")
     connection.execute("PRAGMA foreign_keys = ON")
@@ -46,7 +87,12 @@ def close(_exception=None):
 
 
 def initialise(path):
-    """Create the schema if it is not there. Safe to run on every start."""
+    """Create the database and its schema if they are not there.
+
+    Run on every start, and safe to: `CREATE TABLE IF NOT EXISTS` throughout, so
+    an existing database is left exactly as it was. There is nothing to create
+    by hand -- see "The database" in server/README.md.
+    """
     connection = connect(path)
     try:
         with connection:
