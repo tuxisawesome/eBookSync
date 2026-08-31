@@ -18,7 +18,7 @@
 #define HDR_SIZE         LIB_HEADER_SIZE
 
 #define BOOK_SIZE        6
-#define STRIP_SIZE       16
+#define STRIP_SIZE       17
 
 static const uint8_t *index_data;
 static uint16_t book_count;
@@ -295,20 +295,20 @@ void lib_get_book(uint16_t index, lib_book_t *book) {
 
 void lib_get_strip(uint16_t index, lib_strip_t *strip) {
     const uint8_t *entry = strip_entry(index);
-    strip->slot = entry[0];
-    strip->chunk_count = entry[1];
-    strip->bytes = (uint24_t)read16(entry + 2) | ((uint24_t)entry[4] << 16);
-    strip->flags = entry[5];
-    strip->read_at = read32(entry + 6);
-    strip->pos = (uint24_t)read16(entry + 10) | ((uint24_t)entry[12] << 16);
-    strip->layer = entry[13];
-    strip->title = read16(entry + 14);
+    strip->slot = read16(entry);
+    strip->chunk_count = entry[2];
+    strip->bytes = (uint24_t)read16(entry + 3) | ((uint24_t)entry[5] << 16);
+    strip->flags = entry[6];
+    strip->read_at = read32(entry + 7);
+    strip->pos = (uint24_t)read16(entry + 11) | ((uint24_t)entry[13] << 16);
+    strip->layer = entry[14];
+    strip->title = read16(entry + 15);
 }
 
 uint16_t lib_book_read_count(const lib_book_t *book) {
     uint16_t read = 0;
     for (uint16_t i = 0; i < book->strip_count; i++) {
-        if (strip_entry(book->strip_first + i)[5] & LIB_FLAG_READ)
+        if (strip_entry(book->strip_first + i)[6] & LIB_FLAG_READ)
             read++;
     }
     return read;
@@ -322,7 +322,7 @@ bool lib_save_strip(uint16_t index, const lib_strip_t *strip) {
 
     uint24_t offset = HDR_SIZE + (uint24_t)book_count * BOOK_SIZE
                       + (uint24_t)index * STRIP_SIZE;
-    if (ti_Seek(offset + 5, SEEK_SET, handle) == EOF) {
+    if (ti_Seek(offset + 6, SEEK_SET, handle) == EOF) {
         ti_Close(handle);
         return false;
     }
@@ -366,7 +366,7 @@ bool lib_set_book_read(const lib_book_t *book, bool read) {
     for (uint16_t i = 0; i < book->strip_count && ok; i++) {
         uint24_t offset = HDR_SIZE + (uint24_t)book_count * BOOK_SIZE
                           + (uint24_t)(book->strip_first + i) * STRIP_SIZE;
-        if (ti_Seek(offset + 5, SEEK_SET, handle) == EOF) {
+        if (ti_Seek(offset + 6, SEEK_SET, handle) == EOF) {
             ok = false;
             break;
         }

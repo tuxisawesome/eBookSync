@@ -34,6 +34,9 @@ export const LEGACY_META_FILENAME = 'ebooksync.json';
 /* 3 MB of archive, minus room for the OS's own housekeeping and the index. */
 export const DEFAULT_DEVICE_BUDGET = 2_900_000;
 
+/* The largest slot a strip can be given. See nextSlot(). */
+export const MAX_SLOT = 0xffff;
+
 export const DEFAULT_SETTINGS = {
   detail: DEFAULT_PRESET,
   colors: 16,
@@ -213,14 +216,21 @@ export function reconcile(meta, books) {
     }
   }
 
+  /*
+   * A slot names the appvars a strip lives in, and it is kept for the life of
+   * the strip -- so this bounds the *library*, not what fits on a calculator.
+   * The ceiling is the appvar name: "CS" plus four hex digits of slot plus two
+   * of chunk is eight characters, which is all a name has.
+   */
   const nextSlot = () => {
-    for (let slot = 0; slot < 256; slot++) {
+    for (let slot = 0; slot <= MAX_SLOT; slot++) {
       if (!used.has(slot)) {
         used.add(slot);
         return slot;
       }
     }
-    throw new Error('all 256 strip slots are in use; remove some strips from the library');
+    throw new Error(`all ${MAX_SLOT + 1} strip slots are in use; `
+      + 'remove some strips from the library');
   };
 
   const merged = {};

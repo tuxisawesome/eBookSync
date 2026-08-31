@@ -40,12 +40,12 @@ CLOCK_OFFSET = 50
 PW_SET = 0x01
 SALT_SIZE = 16
 BOOK_FMT = "<HHH"           # 6 bytes
-STRIP_FMT = "<BBHBBIHBBH"   # 16 bytes
+STRIP_FMT = "<HBHBBIHBBH"   # 17 bytes; the slot is 16 bit
 
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
 BOOK_SIZE = struct.calcsize(BOOK_FMT)
 STRIP_SIZE = struct.calcsize(STRIP_FMT)
-assert (HEADER_SIZE, BOOK_SIZE, STRIP_SIZE) == (92, 6, 16)
+assert (HEADER_SIZE, BOOK_SIZE, STRIP_SIZE) == (92, 6, 17)
 
 FLAG_READ = 0x01
 

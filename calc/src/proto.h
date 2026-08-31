@@ -15,7 +15,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define PROTO_VERSION       2
+#define PROTO_VERSION       3
 
 /*
  * The calculator is a USB CDC serial port, so the computer finds it by the
@@ -25,6 +25,17 @@
 #define PROTO_USB_PRODUCT   0x05E1
 
 #define PROTO_HEADER_SIZE   8
+
+/*
+ * The largest payload the calculator will accept.
+ *
+ * One chunk, plus room for the arguments that ride in front of it. PUT_CHUNK
+ * puts the chunk index there, because a 16-bit slot leaves no room in the
+ * header for both -- so a full chunk arrives one byte longer than a chunk.
+ * Getting this wrong rejects every full chunk with "bad length" and nothing
+ * smaller, which is a memorable afternoon.
+ */
+#define PROTO_ARG_BYTES     4
 
 typedef enum {
     PROTO_HELLO      = 0x01,   /* -> version, free archive space */

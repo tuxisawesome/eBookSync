@@ -48,6 +48,8 @@ around 50 KB of free RAM. That drives everything:
 - A strip costs roughly 140 KB at fit-width only, 390 KB with a 1.5x zoom layer,
   or 550 KB with 2x — so between about 5 and 22 strips fit at once. That is why
   clearing read strips is part of the design rather than an afterthought.
+- Your *library* is not bounded by that. It can hold up to 65535 strips; the
+  calculator just carries a few dozen of them at a time.
 - Titles are usually Chinese and the calculator has no CJK font, so the browser
   renders them to small bitmaps and the calculator just blits pixels.
 

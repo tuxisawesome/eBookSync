@@ -51,10 +51,18 @@ A serial port is a byte stream, so the framing needs no care beyond reading the
 right number of bytes: a header, then exactly `length` payload bytes. Requests
 and replies both go out as a single write.
 
-Arguments still ride in the header's `arg` field rather than at the front of the
-payload -- `PUT_CHUNK` carries `slot | (index << 8)` there, `DEL` carries the
-slot. That was forced by the old packet-based transport and kept because it is
-simply tidier: the payload is the chunk and nothing else.
+Arguments ride in the header's `arg` field where they fit: `DEL` carries the
+slot there, and so does `PUT_CHUNK`. A slot is 16 bits, so `PUT_CHUNK` has
+nothing left over for the chunk index and puts it at the front of the payload
+instead.
+
+That would have been impossible on the old packet-based transport -- a few
+argument bytes at the front would have shared a packet with the data behind
+them, with no way to read them separately. A byte stream has no such problem:
+the whole payload is in one buffer before the command runs. It is why the
+calculator's payload buffer is one chunk *plus a few bytes*, and why getting
+that wrong rejects every full chunk with "bad length" while every short one
+works.
 
 Neither end ever blocks. `srl_Read` returns what it has, so the reader pumps the
 USB event loop and redraws between reads, and the user can always press `clear`.
@@ -122,8 +130,8 @@ dropped" is the entire diagnosis, and there is nowhere else to see it.
 | cmd | name | payload | reply |
 |-----|------|---------|-------|
 | 0x01 | `HELLO` | the 16-byte library id | `u8 protocol, u24 freeArchive, u8 maxChunks, u8 chunkSize/256, u8 library, u16 build, u8 flags, u16 armedBuild` |
-| 0x02 | `LIST` | - | `u16 count`, then `count` x 14-byte strip records |
-| 0x03 | `PUT_CHUNK` | the chunk; `arg` = `slot \| (index << 8)` | status only |
+| 0x02 | `LIST` | - | `u16 count`, then `count` x 15-byte strip records |
+| 0x03 | `PUT_CHUNK` | `u8 chunkIndex`, then the chunk; `arg` = slot | status only |
 | 0x04 | `DEL` | none; `arg` = slot | `u8 chunksRemoved` |
 | 0x05 | `INDEX_GET` | - | the CSLIB bytes, device block zeroed (empty if there is no index) |
 | 0x06 | `INDEX_PUT` | the CSLIB bytes | status only |
@@ -153,25 +161,27 @@ to push.
 A `LIST` strip record is the on-calculator state of one strip:
 
 ```
-0  1  slot
-1  1  chunkCount
-2  3  bytes
-5  1  flags        bit 0: read
-6  4  readAt       unix seconds, 0 if never
-10 3  pos          saved scroll position
-13 1  layer        saved zoom layer
+0  2  slot
+2  1  chunkCount
+3  3  bytes
+6  1  flags        bit 0: read
+7  4  readAt       unix seconds, 0 if never
+11 3  pos          saved scroll position
+14 1  layer        saved zoom layer
 ```
 
 ## Version skew
 
-`PROTO_VERSION` is 2. The page reports a mismatch rather than refusing to talk,
+`PROTO_VERSION` is 3. The page reports a mismatch rather than refusing to talk,
 and that is deliberate: the update travels over this same link, so a page that
 hung up on an out-of-date calculator would be unable to fix exactly the
 calculators that need fixing.
 
-Protocol 1 is eBookSync, which has no `UPDATE_*` commands at all, so there is
-nothing the page can push it -- eBookSync has to be installed once by hand. From 2 on,
-a calculator that is behind can always be brought forward over the link.
+Protocol 1 has no `UPDATE_*` commands at all, so there is nothing the page can
+push it and the reader has to be installed once by hand. From 2 on, a calculator
+that is behind can always be brought forward over the link -- the `UPDATE_*`
+commands and `HELLO`'s reply are unchanged between 2 and 3, which is what keeps
+that escape hatch open across a format change like the 16-bit slot.
 
 ## Updating the reader over the link
 

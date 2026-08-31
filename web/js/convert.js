@@ -21,7 +21,8 @@ const LAYER_SIZE = 12;
 const BAND_SIZE = 5;
 
 /**
- * The appvar one chunk of a strip lives in: `CS<slot><chunk>`, both hex.
+ * The appvar one chunk of a strip lives in: `CS<slot><chunk>`, the slot in four
+ * hex digits and the chunk in two.
  *
  * The page never creates these -- the calculator does, from the slot and index
  * in the PUT_CHUNK header -- but the name is part of the format, and it has
@@ -29,14 +30,14 @@ const BAND_SIZE = 5;
  * and this one. The host tests compare them.
  */
 export function chunkName(slot, chunk) {
-  if (!Number.isInteger(slot) || slot < 0 || slot > 0xff) {
-    throw new Error(`strip slot ${slot} out of range 0-255`);
+  if (!Number.isInteger(slot) || slot < 0 || slot > 0xffff) {
+    throw new Error(`strip slot ${slot} out of range 0-65535`);
   }
   if (!Number.isInteger(chunk) || chunk < 0 || chunk > 0xff) {
     throw new Error(`chunk index ${chunk} out of range 0-255`);
   }
-  const hex = (value) => value.toString(16).toUpperCase().padStart(2, '0');
-  return `CS${hex(slot)}${hex(chunk)}`;
+  const hex = (value, digits) => value.toString(16).toUpperCase().padStart(digits, '0');
+  return `CS${hex(slot, 4)}${hex(chunk, 2)}`;
 }
 
 /* Named zoom ladders. The first entry is always the fit-width reading view. */

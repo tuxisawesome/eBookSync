@@ -24,7 +24,7 @@ export const DEVICE_OFFSET = 28;
 export const DEVICE_SIZE = 64;
 export const LIBRARY_ID_SIZE = 16;
 const BOOK_SIZE = 6;
-const STRIP_SIZE = 16;
+const STRIP_SIZE = 17;
 
 export const FLAG_READ = 0x01;
 
@@ -89,16 +89,16 @@ export function buildIndex(books, { render = renderTitle, libraryId = null } = {
     const at = i * STRIP_SIZE;
     const size = strip.size >>> 0;
     const pos = (strip.pos || 0) >>> 0;
-    stripView.setUint8(at, strip.slot);
-    stripView.setUint8(at + 1, strip.chunkCount);
-    stripView.setUint16(at + 2, size & 0xffff, true);
-    stripView.setUint8(at + 4, (size >>> 16) & 0xff);
-    stripView.setUint8(at + 5, strip.read ? FLAG_READ : 0);
-    stripView.setUint32(at + 6, strip.readAt || 0, true);
-    stripView.setUint16(at + 10, pos & 0xffff, true);
-    stripView.setUint8(at + 12, (pos >>> 16) & 0xff);
-    stripView.setUint8(at + 13, strip.layer || 0);
-    stripView.setUint16(at + 14, addTitle(strip.title, STRIP_WIDTH), true);
+    stripView.setUint16(at, strip.slot, true);
+    stripView.setUint8(at + 2, strip.chunkCount);
+    stripView.setUint16(at + 3, size & 0xffff, true);
+    stripView.setUint8(at + 5, (size >>> 16) & 0xff);
+    stripView.setUint8(at + 6, strip.read ? FLAG_READ : 0);
+    stripView.setUint32(at + 7, strip.readAt || 0, true);
+    stripView.setUint16(at + 11, pos & 0xffff, true);
+    stripView.setUint8(at + 13, (pos >>> 16) & 0xff);
+    stripView.setUint8(at + 14, strip.layer || 0);
+    stripView.setUint16(at + 15, addTitle(strip.title, STRIP_WIDTH), true);
   });
 
   const out = new Uint8Array(titleBase + blobLength);
@@ -142,13 +142,13 @@ export function parseIndex(data) {
   for (let i = 0; i < stripCount; i++) {
     const at = stripBase + i * STRIP_SIZE;
     strips.push({
-      slot: view.getUint8(at),
-      chunkCount: view.getUint8(at + 1),
-      size: view.getUint16(at + 2, true) | (view.getUint8(at + 4) << 16),
-      read: (view.getUint8(at + 5) & FLAG_READ) !== 0,
-      readAt: view.getUint32(at + 6, true),
-      pos: view.getUint16(at + 10, true) | (view.getUint8(at + 12) << 16),
-      layer: view.getUint8(at + 13),
+      slot: view.getUint16(at, true),
+      chunkCount: view.getUint8(at + 2),
+      size: view.getUint16(at + 3, true) | (view.getUint8(at + 5) << 16),
+      read: (view.getUint8(at + 6) & FLAG_READ) !== 0,
+      readAt: view.getUint32(at + 7, true),
+      pos: view.getUint16(at + 11, true) | (view.getUint8(at + 13) << 16),
+      layer: view.getUint8(at + 14),
     });
   }
 

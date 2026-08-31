@@ -82,9 +82,15 @@ zlib -9 at 124.4K on the same data.)
 
 A TI variable's length field is 16 bit, and a variable is created in RAM before
 being archived, so a strip cannot live in one appvar. It is split into 16 KB
-chunks, each stored as its own appvar named `CS<slot><chunk>` with both fields in
-hex -- `CS0003` is chunk 3 of strip slot 0. 16 KB keeps the create-then-archive
-step comfortably inside free RAM.
+chunks, each stored as its own appvar named `CS<slot><chunk>` -- the slot in
+four hex digits and the chunk in two, which is the whole eight characters an
+appvar name has -- so `CS000003` is chunk 3 of strip slot 0.
+
+That name is what caps a slot at 65535. A slot is kept for the life of a strip,
+so it bounds the *library* rather than the calculator: at one byte it stopped a
+collection of comics at 256, however few of them were resident at a time.
+
+16 KB keeps the create-then-archive step comfortably inside free RAM.
 
 Bands are bin-packed into chunks with first-fit-decreasing and **never straddle a
 chunk boundary**. That is what lets the reader hand `zx0_Decompress` a pointer
@@ -157,15 +163,15 @@ Book table (bookCount x 6 bytes)
   2   2   stripFirst      index into the strip table
   4   2   stripCount
 
-Strip table (stripCount x 16 bytes)
-  0   1   slot            names the CS<slot><chunk> appvars
-  1   1   chunkCount
-  2   3   bytes
-  5   1   flags           bit 0: read
-  6   4   readAt          unix seconds, 0 if never
-  10  3   pos             saved scroll position, in the saved layer's rows
-  13  1   layer           saved zoom layer
-  14  2   titleOffset
+Strip table (stripCount x 17 bytes)
+  0   2   slot            names the CS<slot><chunk> appvars
+  2   1   chunkCount
+  3   3   bytes
+  6   1   flags           bit 0: read
+  7   4   readAt          unix seconds, 0 if never
+  11  3   pos             saved scroll position, in the saved layer's rows
+  14  1   layer           saved zoom layer
+  15  2   titleOffset
 
 Title records (variable, referenced by offset)
   0   2   width

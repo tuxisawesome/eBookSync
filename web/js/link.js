@@ -17,7 +17,7 @@
 export const USB_VENDOR_ID = 0x16c0;
 export const USB_PRODUCT_ID = 0x05e1;
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /*
  * The oldest calculator this page can still talk to at all.
@@ -364,22 +364,32 @@ export class Calculator {
 
     const strips = [];
     for (let i = 0; i < count; i++) {
-      const at = 2 + i * 14;
+      const at = 2 + i * 15;
       strips.push({
-        slot: view.getUint8(at),
-        chunkCount: view.getUint8(at + 1),
-        bytes: view.getUint8(at + 2) | (view.getUint8(at + 3) << 8) | (view.getUint8(at + 4) << 16),
-        read: (view.getUint8(at + 5) & 1) !== 0,
-        readAt: view.getUint32(at + 6, true),
-        pos: view.getUint8(at + 10) | (view.getUint8(at + 11) << 8) | (view.getUint8(at + 12) << 16),
-        layer: view.getUint8(at + 13),
+        slot: view.getUint16(at, true),
+        chunkCount: view.getUint8(at + 2),
+        bytes: view.getUint8(at + 3) | (view.getUint8(at + 4) << 8) | (view.getUint8(at + 5) << 16),
+        read: (view.getUint8(at + 6) & 1) !== 0,
+        readAt: view.getUint32(at + 7, true),
+        pos: view.getUint8(at + 11) | (view.getUint8(at + 12) << 8) | (view.getUint8(at + 13) << 16),
+        layer: view.getUint8(at + 14),
       });
     }
     return strips;
   }
 
+  /**
+   * One chunk of a strip.
+   *
+   * The slot takes the whole of `arg`, so the chunk index goes at the front of
+   * the payload. A library may hold more than 256 strips and a slot is 16 bits;
+   * there is no room left in the header for both. See docs/PROTOCOL.md.
+   */
   async putChunk(slot, index, chunk) {
-    await this.request(CMD.PUT_CHUNK, chunk, slot | (index << 8));
+    const payload = new Uint8Array(1 + chunk.length);
+    payload[0] = index;
+    payload.set(chunk, 1);
+    await this.request(CMD.PUT_CHUNK, payload, slot);
   }
 
   async deleteStrip(slot) {

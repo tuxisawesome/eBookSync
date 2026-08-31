@@ -1,7 +1,10 @@
 /*
  * The .csx container as the calculator sees it.
  *
- * Strips are stored as a run of 16 KB appvars named CS<slot><chunk> (hex).
+ * Strips are stored as a run of 16 KB appvars named CS<slot><chunk>, with the
+ * slot in four hex digits and the chunk in two. That is eight characters, which
+ * is every character an appvar name has -- and it is why a slot is 16 bits: the
+ * name is the constraint, and this spends all of it.
  * Concatenated they form one container: a header, palette, layer table and band
  * table, followed by ZX0-compressed bands. Bands never straddle a chunk, so
  * every band can be handed to zx0_Decompress as a pointer straight into flash.
@@ -36,7 +39,7 @@ typedef struct {
 } csx_layer_t;
 
 typedef struct {
-    uint8_t slot;
+    uint16_t slot;
     uint8_t chunk_count;
     uint8_t layer_count;
     uint16_t band_count;
@@ -47,14 +50,15 @@ typedef struct {
 } csx_strip_t;
 
 /* Fill in `name` with the appvar name for one chunk. Needs 9 bytes. */
-void csx_chunk_name(char *name, uint8_t slot, uint8_t chunk);
+/* `name` must have room for 9 bytes: eight characters and a terminator. */
+void csx_chunk_name(char *name, uint16_t slot, uint8_t chunk);
 
 /* Map every chunk of a strip. Returns false if a chunk is missing or the
  * container is malformed. */
-bool csx_open(csx_strip_t *strip, uint8_t slot);
+bool csx_open(csx_strip_t *strip, uint16_t slot);
 
 /* Delete every chunk of a strip. Returns the number of appvars removed. */
-uint8_t csx_delete(uint8_t slot);
+uint8_t csx_delete(uint16_t slot);
 
 /* Locate one band's compressed payload. */
 const uint8_t *csx_band(const csx_strip_t *strip, uint16_t index, uint16_t *length);

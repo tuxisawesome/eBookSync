@@ -17,7 +17,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  VERSION, addBookKey, adoptLibraryId, bookNames, defaultMeta, flatten,
+  MAX_SLOT, VERSION, addBookKey, adoptLibraryId, bookNames, defaultMeta, flatten,
   libraryIdHex, mergeFromCalculator, moveStripKey, serialisable,
   reconcile, removeStripKey, renameBookKey, renameStripKey, reorderBook, reorderStrip,
   stripNames,
@@ -358,6 +358,53 @@ function readBack(meta, books) {
         libraryIdHex(parsed.libraryId), meta.libraryId);
   check('and an index with none reads as none',
         libraryIdHex(new Uint8Array(16)), null);
+}
+
+
+/* --- a library may hold more than 256 strips ------------------------------ */
+/*
+ * A slot is assigned once and kept for the life of a strip, so it bounds the
+ * library and not the calculator: a collection of 300 comics used to run out of
+ * slots at 256, even though only about twenty are ever resident at once.
+ */
+{
+  const meta = defaultMeta();
+  const books = [{
+    name: 'Big',
+    strips: Array.from({ length: 300 }, (_, i) => ({ name: `${i}.jpg`, size: 1000 })),
+  }];
+
+  let failed = null;
+  try {
+    reconcile(meta, books);
+  } catch (error) {
+    failed = error.message;
+  }
+
+  check('300 strips is no longer a failure', failed, null);
+
+  const slots = Object.values(meta.books.Big.strips).map((strip) => strip.id);
+  check('every strip got a slot', slots.length, 300);
+  check('and they are all distinct', new Set(slots).size, 300);
+  check('reaching past the old ceiling', Math.max(...slots) > 255, true);
+  check('while staying inside the appvar name', Math.max(...slots) <= MAX_SLOT, true);
+
+  /* Slots are kept across a rescan, which is what makes them safe to name
+   * appvars with. */
+  const before = { ...Object.fromEntries(
+    Object.entries(meta.books.Big.strips).map(([k, v]) => [k, v.id])) };
+  reconcile(meta, books);
+  const after = Object.fromEntries(
+    Object.entries(meta.books.Big.strips).map(([k, v]) => [k, v.id]));
+  check('and are stable across a rescan', after, before);
+
+  /* An index of them round-trips, which is the part the calculator reads. */
+  for (const strip of Object.values(meta.books.Big.strips)) strip.onCalc = true;
+  const index = buildIndexFor(meta, books, { render: fakeRender });
+  const parsed = lib.parseIndex(index);
+  check('and survive a trip through the index',
+        parsed.strips.map((s) => s.slot).sort((a, b) => a - b),
+        slots.slice().sort((a, b) => a - b));
 }
 
 console.log(`${checks - failures}/${checks} library editing checks pass`);

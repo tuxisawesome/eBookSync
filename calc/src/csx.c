@@ -28,14 +28,16 @@ static char hex_digit(uint8_t value) {
     return value < 10 ? (char)('0' + value) : (char)('A' + value - 10);
 }
 
-void csx_chunk_name(char *name, uint8_t slot, uint8_t chunk) {
+void csx_chunk_name(char *name, uint16_t slot, uint8_t chunk) {
     name[0] = 'C';
     name[1] = 'S';
-    name[2] = hex_digit(slot >> 4);
-    name[3] = hex_digit(slot & 0x0F);
-    name[4] = hex_digit(chunk >> 4);
-    name[5] = hex_digit(chunk & 0x0F);
-    name[6] = '\0';
+    name[2] = hex_digit((slot >> 12) & 0x0F);
+    name[3] = hex_digit((slot >> 8) & 0x0F);
+    name[4] = hex_digit((slot >> 4) & 0x0F);
+    name[5] = hex_digit(slot & 0x0F);
+    name[6] = hex_digit(chunk >> 4);
+    name[7] = hex_digit(chunk & 0x0F);
+    name[8] = '\0';
 }
 
 /*
@@ -60,7 +62,7 @@ static const uint8_t *map_chunk(uint8_t slot, uint8_t chunk) {
     return data;
 }
 
-bool csx_open(csx_strip_t *strip, uint8_t slot) {
+bool csx_open(csx_strip_t *strip, uint16_t slot) {
     memset(strip, 0, sizeof *strip);
     strip->slot = slot;
 
@@ -110,7 +112,7 @@ bool csx_open(csx_strip_t *strip, uint8_t slot) {
     return true;
 }
 
-uint8_t csx_delete(uint8_t slot) {
+uint8_t csx_delete(uint16_t slot) {
     char name[9];
     uint8_t removed = 0;
 

@@ -284,7 +284,7 @@ static void do_space(void) {
     answer(PROTO_OK, reply_small, 3);
 }
 
-#define LIST_RECORD 14
+#define LIST_RECORD 15
 
 static void do_list(void) {
     uint16_t count = lib_strip_count();
@@ -303,16 +303,16 @@ static void do_list(void) {
         lib_get_strip(i, &strip);
 
         uint8_t *record = payload + 2 + (uint24_t)i * LIST_RECORD;
-        record[0] = strip.slot;
-        record[1] = strip.chunk_count;
-        put24(record + 2, strip.bytes);
-        record[5] = strip.flags;
-        record[6] = (uint8_t)strip.read_at;
-        record[7] = (uint8_t)(strip.read_at >> 8);
-        record[8] = (uint8_t)(strip.read_at >> 16);
-        record[9] = (uint8_t)(strip.read_at >> 24);
-        put24(record + 10, strip.pos);
-        record[13] = strip.layer;
+        put16(record, strip.slot);
+        record[2] = strip.chunk_count;
+        put24(record + 3, strip.bytes);
+        record[6] = strip.flags;
+        record[7] = (uint8_t)strip.read_at;
+        record[8] = (uint8_t)(strip.read_at >> 8);
+        record[9] = (uint8_t)(strip.read_at >> 16);
+        record[10] = (uint8_t)(strip.read_at >> 24);
+        put24(record + 11, strip.pos);
+        record[14] = strip.layer;
     }
 
     answer(PROTO_OK, payload, needed);
@@ -339,15 +339,15 @@ static void do_index_get(void) {
                     cached_index_size - LIB_HEADER_SIZE);
 }
 
-/* Create one appvar from what is already in `payload`, and archive it. */
-static bool store(const char *name, uint32_t length) {
+/* Create one appvar from `data`, and archive it. */
+static bool store_from(const char *name, const uint8_t *data, uint32_t length) {
     ti_Delete(name);
 
     uint8_t handle = ti_Open(name, "w");
     if (!handle)
         return false;
 
-    bool ok = ti_Write(payload, (size_t)length, 1, handle) == 1;
+    bool ok = ti_Write(data, (size_t)length, 1, handle) == 1;
 
     /*
      * Archive rather than checking for room first: the OS collects deleted
@@ -361,10 +361,31 @@ static bool store(const char *name, uint32_t length) {
     return archived;
 }
 
+/* The same, from the start of the payload buffer. */
+static bool store(const char *name, uint32_t length) {
+    return store_from(name, payload, length);
+}
+
+/*
+ * One chunk of a strip.
+ *
+ * `arg` is the slot, which needs all sixteen bits of it now that a library may
+ * hold more than 256 strips -- so the chunk index moves to the front of the
+ * payload. That used to be impossible: the old packet-based transport would
+ * have put those bytes in the same packet as the data behind them, with no way
+ * to read them separately. A byte stream has no such problem, and the whole
+ * payload is already in one buffer before this runs.
+ */
 static void do_put_chunk(void) {
+    if (!payload_want) {
+        answer(PROTO_BAD_LENGTH, NULL, 0);
+        return;
+    }
+
     char name[9];
-    csx_chunk_name(name, (uint8_t)argument, (uint8_t)(argument >> 8));
-    answer(store(name, payload_want) ? PROTO_OK : PROTO_NO_ROOM, NULL, 0);
+    csx_chunk_name(name, argument, payload[0]);
+    answer(store_from(name, payload + 1, payload_want - 1) ? PROTO_OK : PROTO_NO_ROOM,
+           NULL, 0);
 }
 
 static void do_index_put(void) {
@@ -505,7 +526,7 @@ static void do_clock_set(void) {
 /* ---------------------------------------------------------------- the rest */
 
 static void do_delete(void) {
-    uint8_t removed = csx_delete((uint8_t)argument);
+    uint8_t removed = csx_delete(argument);
     reply_small[0] = removed;
     answer(removed ? PROTO_OK : PROTO_NOT_FOUND, reply_small, 1);
 }
@@ -570,7 +591,7 @@ static void pump(void) {
 
             if (!payload_want) {
                 execute();
-            } else if (payload_want > CSX_CHUNK_SIZE || !payload) {
+            } else if (payload_want > CSX_CHUNK_SIZE + PROTO_ARG_BYTES || !payload) {
                 /* Nothing here can hold it; swallow it and say so. */
                 link_state = LINK_DISCARD;
             } else {
@@ -830,7 +851,7 @@ bool proto_run(proto_progress_t progress, bool echo_only) {
     ti_SetGCBehavior(gc_before, gc_after);
 
     /* The band cache has been handed back by now, so there is room. */
-    payload = malloc(CSX_CHUNK_SIZE);
+    payload = malloc(CSX_CHUNK_SIZE + PROTO_ARG_BYTES);
 
     if (usb_Init(handle_event, NULL, srl_GetCDCStandardDescriptors(),
                  USB_DEFAULT_INIT_FLAGS) != USB_SUCCESS) {

@@ -590,6 +590,92 @@ function describe(image, build) {
 
 
 
+
+/* --- slots above 255 ------------------------------------------------------- */
+/*
+ * A slot names the appvars a strip lives in and is kept for the life of the
+ * strip, so it bounds the *library* rather than what fits on a calculator: a
+ * collection of 300 comics ran out at 256 even though only about 20 are
+ * resident at once.
+ *
+ * It is 16 bits now, which is everything the appvar name has room for -- "CS"
+ * plus four hex digits of slot plus two of chunk is the whole eight characters.
+ * These are the values that used to be unreachable.
+ */
+{
+  const directory = mkdtempSync(join(tmpdir(), 'ebooksync-slots-'));
+  const wide = [256, 1000, 4095, 65535];
+
+  const index = lib.buildIndex([{
+    title: 'wide', strips: wide.map((slot, i) => ({
+      title: `s${i}`, slot, chunkCount: 1, size: 1000 + i,
+      read: i % 2 === 0, readAt: 1_700_000_000 + i, pos: 7 * i, layer: i % 2,
+    })),
+  }], { render: fakeRender });
+  writeFileSync(join(directory, `${lib.NAME}.8xv`), writeAppvar(lib.NAME, index));
+
+  const body = new Uint8Array(64).fill(0xa5);
+  const { result, status } = await session(directory, async (calculator) => {
+    const listed = await calculator.list();
+
+    /* Push and delete at the top of the range, which is where an 8-bit
+     * truncation would land on slot 0 and silently overwrite it. */
+    await calculator.putChunk(65535, 0, body);
+    await calculator.putChunk(4095, 0, body);
+    await calculator.putChunk(256, 3, body);
+    const removed = await calculator.deleteStrip(65535);
+
+    return { listed, removed };
+  }, ['--save', directory]);
+
+  check('every slot survives the round trip',
+        result.listed.map((s) => s.slot), wide);
+  check('and the fields beside it are not shifted',
+        result.listed.map((s) => [s.chunkCount, s.bytes, s.read, s.readAt, s.pos, s.layer]),
+        wide.map((_, i) => [1, 1000 + i, i % 2 === 0, 1_700_000_000 + i, 7 * i, i % 2]));
+
+  check('a chunk lands under a four-digit slot name',
+        existsSync(join(directory, 'CS0FFF00.bin')), true);
+  check('and the chunk index is still its own two digits',
+        existsSync(join(directory, 'CS010003.bin')), true);
+
+  /* Deleting by a wide slot has to find that slot and only that slot -- an
+   * 8-bit truncation would have taken slot 0 instead. */
+  check('deleting by a wide slot finds it', result.removed, 1);
+  check('and removes its chunk', existsSync(join(directory, 'CSFFFF00.bin')), false);
+  check('leaving the others alone', existsSync(join(directory, 'CS0FFF00.bin')), true);
+  check('and does not touch slot 0', existsSync(join(directory, 'CS000000.bin')), false);
+  check('wide-slot session: link used correctly', status, 0);
+
+  /* The chunk itself must arrive whole, with the index byte stripped. */
+  const stored = readFileSync(join(directory, 'CS010003.bin'));
+  check('the chunk is stored without its index byte', stored.length, body.length);
+  check('byte for byte', Array.from(stored.subarray(0, 4)), [0xa5, 0xa5, 0xa5, 0xa5]);
+}
+
+/* --- a full chunk still fits, now that it carries an index byte ------------ */
+/*
+ * The payload buffer is one chunk. Prefixing the chunk index made a full chunk
+ * one byte longer than that, and every full chunk came back "bad length" while
+ * every short one worked -- so a small library synced and a real one did not.
+ */
+{
+  const directory = mkdtempSync(join(tmpdir(), 'ebooksync-full-'));
+  const full = new Uint8Array(16384);
+  for (let i = 0; i < full.length; i++) full[i] = i & 0xff;
+
+  const { result } = await session(directory, async (calculator) => {
+    await calculator.putChunk(300, 1, full);
+    return { ok: true };
+  }, ['--save', directory]);
+
+  check('a full 16 KB chunk is accepted', result.ok, true);
+  const stored = readFileSync(join(directory, 'CS012C01.bin'));
+  check('and stored at its full length', stored.length, 16384);
+  check('with the right bytes at both ends',
+        [stored[0], stored[16383]], [0, 16383 & 0xff]);
+}
+
 /* --- a calculator connected without a library folder ---------------------- */
 /*
  * Connecting to install an update alone is ordinary: that is not about

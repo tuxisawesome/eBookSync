@@ -26,11 +26,22 @@
 #define LIB_ID_SIZE     16
 #define LIB_FLAG_READ   0x01
 
+/*
+ * The largest slot a strip can be given.
+ *
+ * A slot names the appvars a strip lives in, and an appvar name is eight
+ * characters: "CS" plus four hex digits of slot plus two of chunk. So the
+ * naming is what caps this, and this spends all of it. It used to be one byte,
+ * which capped a *library* -- not a calculator -- at 256 strips, because a slot
+ * is assigned once and kept even for strips that are not resident.
+ */
+#define LIB_MAX_SLOT    0xFFFF
+
 /* Largest 2bpp title bitmap the reader has to expand, in bytes. */
 #define LIB_TITLE_MAX   1200
 
 typedef struct {
-    uint8_t slot;
+    uint16_t slot;
     uint8_t chunk_count;
     uint24_t bytes;
     uint8_t flags;
