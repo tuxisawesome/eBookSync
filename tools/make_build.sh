@@ -25,7 +25,7 @@ build=$(tr -cd '0-9' < "$source_file")
     echo "#ifndef BUILD_H"
     echo "#define BUILD_H"
     echo
-    echo "#define EOS_BUILD $build"
+    echo "#define COMICS_BUILD $build"
     echo
     echo "#endif /* BUILD_H */"
 } > "$target"

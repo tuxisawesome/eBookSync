@@ -82,7 +82,7 @@ zlib -9 at 124.4K on the same data.)
 
 A TI variable's length field is 16 bit, and a variable is created in RAM before
 being archived, so a strip cannot live in one appvar. It is split into 16 KB
-chunks, each stored as its own appvar named `EO<slot><chunk>` with both fields in
+chunks, each stored as its own appvar named `CS<slot><chunk>` with both fields in
 hex -- `CS0003` is chunk 3 of strip slot 0. 16 KB keeps the create-then-archive
 step comfortably inside free RAM.
 
@@ -135,7 +135,7 @@ Bands are indexed `base[layer] + col * bands_per_col[layer] + band`, where
 A decompressed band is `stride * rows` bytes, where `stride = (col_width + 1) / 2`
 and `rows` is 32 except in the final band of a column.
 
-## `EOSLIB`: the library index
+## `CSLIB`: the library index
 
 One appvar describing only what is actually resident on the calculator -- the
 computer stays the source of truth for the whole library. It carries the
@@ -144,7 +144,7 @@ pre-rendered title bitmaps.
 
 ```
 Header (92 bytes)
-  0   5   magic       "EOSLB"
+  0   5   magic       "CSLIB"
   5   1   version     3
   6   2   bookCount
   8   2   stripCount
@@ -158,7 +158,7 @@ Book table (bookCount x 6 bytes)
   4   2   stripCount
 
 Strip table (stripCount x 16 bytes)
-  0   1   slot            names the EO<slot><chunk> appvars
+  0   1   slot            names the CS<slot><chunk> appvars
   1   1   chunkCount
   2   3   bytes
   5   1   flags           bit 0: read
@@ -206,7 +206,7 @@ would cost the owner the library, so it is tamper evidence instead.
 It lives in here, rather than in an appvar of its own, so that deleting it to
 get past the password also destroys the table of contents: book grouping, the
 title bitmaps, the slot-to-strip mapping, read state and chunk counts. What is
-left is megabytes of `EO**` appvars with no way to tell what any of them is.
+left is megabytes of `CS**` appvars with no way to tell what any of them is.
 That is the whole of the deterrent -- not secrecy, but a bypass that costs the
 library until you are back at the computer that can rebuild it. `lib_reset()`
 empties the index rather than deleting it for the same reason: erasing the
@@ -230,14 +230,14 @@ The bitmaps are ZX0-compressed. Uncompressed, a worst-case title is
 appvar; compressed they come to a couple of kilobytes, and the reader expands
 only the row it is currently drawing, into a single scratch buffer.
 
-## The library on disk, and `eos.json`
+## The library on disk, and `ebooksync.json`
 
 Books are folders, strips are the JPEGs inside them, and a strip's title is its
 filename without the extension:
 
 ```
 comics/
-  eos.json
+  ebooksync.json
   第一本书/
     001 - 标题.jpg
     002 - 标题.jpg
@@ -245,9 +245,9 @@ comics/
     01.jpg
 ```
 
-**Display order is metadata, not filenames.** `eos.json` carries an
+**Display order is metadata, not filenames.** `ebooksync.json` carries an
 explicit `order` on every book and every strip, and that is what the sync page
-shows and what is written into EOSLIB. Nothing infers an order from names at sync
+shows and what is written into CSLIB. Nothing infers an order from names at sync
 time.
 
 A file discovered on disk for the first time is appended to the end of its book
@@ -281,7 +281,7 @@ have had anyway.
 ```
 
 `id` is a stable 0-255 slot, assigned once and never reassigned; it is what
-names the `EO<slot><chunk>` appvars. It survives renames and moves between
+names the `CS<slot><chunk>` appvars. It survives renames and moves between
 books, so renaming or reordering costs a fresh index on the next sync rather
 than re-sending half a megabyte of chunks.
 
@@ -294,10 +294,10 @@ Version 1 of this file had no `order` fields. Anything missing one picks its
 order up from the natural sort on the next scan, which is exactly the order a
 version 1 library was displayed in.
 
-Version 4 is the eBookSync-to-eOS rename. The file was called `ebooksync.json`;
-if the new name is not there, the old one is read and the `libraryId` carried
-across, so a library that has already been synced is still recognised as the
-same one. The old file is left on disk rather than deleted.
+Version 4 exists because this file has been renamed and renamed back. If
+`ebooksync.json` is not there, `eos.json` is read instead and the `libraryId`
+carried across, so a library that has already been synced is still recognised as
+the same one. The old file is left on disk rather than deleted.
 
 ## Tools
 
@@ -311,64 +311,3 @@ tools/convert.py assets/strip1.jpg --preview /tmp/p.png   # see what the calcula
 `--verify` decodes the container back through the pure-Python ZX0 decoder and
 checks every layer reconstructs, which is the fastest way to catch a codec
 regression without a calculator.
-
-## The chat appvars
-
-Three, all archived, all read in place from flash the way `.csx` chunks are.
-
-```
-EOSCHT      the conversations
-  0   4   magic       "ECH1"
-  4   1   version     1
-  5   1   count       at most 16
-  6   4   nextSeq     the outbox counter; never goes backwards
-  10  2   reserved
-  then count x 24 bytes:
-  0   2   id              the relay's conversation id
-  2   4   lastServerId    the newest message stored here
-  6   2   bytes           how much of the cap is used
-  8   16  name            ASCII, NUL padded
-
-EOSC<nn>    one conversation's messages, append-only, <nn> its index in the table
-  0   4   serverId
-  4   4   sentAt          unix seconds
-  8   1   flags           bit 0: sent from this account
-  9   1   senderLen       at most 12
-  10  1   bodyLen         at most 200
-  11  ..  sender, then body
-
-EOSOUT      typed here, not yet handed over
-  0   4   magic       "EOU1"
-  4   1   version     1
-  5   1   count
-  6   2   reserved
-  then, packed:
-  0   2   conversationId
-  2   4   seq             from EOSCHT's nextSeq
-  6   4   composedAt
-  10  1   bodyLen
-  11  ..   body
-```
-
-`EOSOUT` is drawn as part of the conversation, at the end and dimmed, until a
-sync takes it: a message that is written and then invisible for two syncs is
-indistinguishable from one that was lost.
-
-`lastServerId`, `bytes` and `nextSeq` are the calculator's; the computer sends
-zeros and the calculator carries its own across. See the note on
-`CHAT_ROSTER_PUT` in `docs/PROTOCOL.md`.
-
-**A conversation is capped at 8 KB and the oldest whole messages are dropped to
-stay under it.** Flash is the comics' budget and a chat that grew without limit
-would quietly cost strips. The cap is small for a second reason: appending
-unarchives the whole variable into RAM, and a sync is already holding 16 KB of
-payload buffer and another 16 KB of variable being built, out of about fifty.
-Dropping has to be by whole messages -- a partial record at the front stops the
-log parsing at its first byte.
-
-**Everything is ASCII.** The calculator has no CJK font, which is why comic
-titles are pre-rendered bitmaps on the computer. A message cannot be
-pre-rendered, so `web/js/chatwire.js` folds it down before it goes over the
-wire: accents are flattened (`café` becomes `cafe`), anything else becomes `?`,
-and runs of them collapse. Better a legible approximation than a screen of
-blanks.

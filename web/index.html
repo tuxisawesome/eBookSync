@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>eOS</title>
+<title>eBookSync</title>
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
 
 <header class="bar">
-  <h1>eOS <span id="page-build" class="chip" title="The build this page was served from"></span></h1>
+  <h1>eBookSync <span id="page-build" class="chip" title="The build this page was served from"></span></h1>
   <div class="bar-actions">
     <button id="choose-folder" type="button">Choose library folder…</button>
     <button id="connect" type="button">Connect calculator</button>
@@ -25,12 +25,8 @@
 
 <p id="status" class="notice" role="status">Choose the folder holding your comics to begin.</p>
 
-<nav class="tabs" role="tablist">
-  <button id="tab-library" type="button" role="tab" aria-selected="true">Library</button>
-  <button id="tab-chat" type="button" role="tab" aria-selected="false">Chat</button>
-</nav>
 
-<main id="library-view">
+<main>
   <section class="panel" id="library-panel">
     <div class="panel-head">
       <h2>Library</h2>
@@ -96,7 +92,7 @@
     <details class="help">
       <summary>How to connect</summary>
       <ol>
-        <li>Run <strong>EOS</strong> on the calculator.</li>
+        <li>Run <strong>COMICS</strong> on the calculator.</li>
         <li>Press <strong>2nd</strong> on the book list to open the Sync screen.</li>
         <li>Plug the calculator in and press <strong>Connect calculator</strong>.</li>
         <li>Pick the calculator's serial port from the browser's list.</li>
@@ -113,53 +109,6 @@
   <div id="selection-summary">Nothing selected</div>
   <div class="meter"><div id="meter-fill" class="meter-fill"></div></div>
 </footer>
-
-<main id="chat-view" hidden>
-  <section class="panel" id="chat-panel">
-    <div class="panel-head">
-      <h2 id="chat-title">Chat</h2>
-      <span id="chat-link" class="chip">not signed in</span>
-    </div>
-
-    <form id="relay-form" class="row-form">
-      <label class="field">
-        <span>Relay address</span>
-        <input id="relay-url" type="text" placeholder="you.pythonanywhere.com"
-               autocomplete="off">
-      </label>
-      <label class="field">
-        <span>Username</span>
-        <input id="relay-user" autocomplete="username">
-      </label>
-      <label class="field">
-        <span>Password</span>
-        <input id="relay-pass" type="password" autocomplete="current-password">
-      </label>
-      <button id="relay-signin" class="primary" type="submit">Sign in</button>
-      <button id="relay-signout" type="button" hidden>Sign out</button>
-    </form>
-
-    <p class="hint">
-      The relay must be reachable over <strong>https</strong> and must list this
-      page's address in its <code>EOS_ALLOWED_ORIGINS</code>. Your sign-in is
-      kept in this browser, never in <code>eos.json</code> — that file travels
-      with your comics folder.
-    </p>
-
-    <p id="chat-error" class="notice error" hidden></p>
-  </section>
-
-  <div class="chat-split" id="chat-body" hidden>
-    <aside class="panel" id="chat-conversations" aria-label="Conversations"></aside>
-    <section class="panel" id="chat-thread">
-      <div id="chat-messages" role="log" aria-live="polite"></div>
-      <form id="chat-composer">
-        <input id="chat-draft" placeholder="Message…" autocomplete="off" maxlength="2000" disabled>
-        <button class="primary" type="submit" disabled>Send</button>
-      </form>
-    </section>
-  </div>
-</main>
 
 <dialog id="plan-dialog">
   <form method="dialog">

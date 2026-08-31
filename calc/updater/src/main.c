@@ -1,7 +1,7 @@
 /*
- * eOS updater.
+ * eBookSync updater.
  *
- * The one job: replace prgmEOS with the build the sync page pushed. It exists
+ * The one job: replace prgmCOMICS with the build the sync page pushed. It exists
  * because a CE program runs in place inside its own variable and so cannot
  * overwrite itself -- see calc/src/update.h for the two-program arrangement
  * this is one half of.
@@ -35,7 +35,7 @@ static void wait_for_key(void) {
 
 int main(void) {
     os_ClrHome();
-    say(0, "eOS updater");
+    say(0, "eBookSync updater");
 
     update_manifest_t manifest;
     if (!update_pending(&manifest) || manifest.target != UPDATE_TARGET_READER) {
@@ -53,7 +53,7 @@ int main(void) {
      * Checked again here, and not only when it arrived. The chunks have been
      * sitting in the archive since the sync -- through however many garbage
      * collects and however many other programs -- and this is the last moment
-     * at which finding them damaged costs nothing. A moment later prgmEOS is
+     * at which finding them damaged costs nothing. A moment later prgmCOMICS is
      * already gone.
      */
     if (!update_verify(&manifest)) {
@@ -78,7 +78,7 @@ int main(void) {
 
     sprintf(line, "Updated to build %u.", manifest.build);
     say(4, line);
-    say(6, "Run prgmEOS.");
+    say(6, "Run prgmCOMICS.");
     wait_for_key();
     return 0;
 }

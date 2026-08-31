@@ -16,7 +16,7 @@ uint8_t ti_Open(const char *name, const char *mode);
  * The same, for a variable that is not an appvar.
  *
  * Type is part of a variable's identity on the calculator, so the shim keys on
- * it too -- otherwise prgmEOS and an appvar called EOS would be the same thing
+ * it too -- otherwise prgmCOMICS and an appvar called COMICS would be the same thing
  * here and different things on hardware, which is the sort of difference that
  * only shows up once it has done damage.
  */

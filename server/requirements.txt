@@ -1,4 +1,0 @@
-# Flask and nothing else: scrypt, sqlite3, secrets and json are standard
-# library. PythonAnywhere already has Flask, so in practice there is nothing to
-# install at all.
-Flask>=3.0

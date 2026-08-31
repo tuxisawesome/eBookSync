@@ -2,7 +2,7 @@
  * Check the library editor's bookkeeping, and that the order you arrange in the
  * browser is the order the calculator ends up showing.
  *
- * The second half is the one that matters: it builds an EOSLIB from reordered
+ * The second half is the one that matters: it builds an CSLIB from reordered
  * metadata and runs it through calc/src/library.c, the real parser, so a claim
  * like "reordering is preserved onto the calculator" is checked end to end
  * rather than asserted.

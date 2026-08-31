@@ -1,5 +1,5 @@
 /*
- * EOSLIB: the index of what is actually on the calculator.
+ * CSLIB: the index of what is actually on the calculator.
  *
  * Parsed in place from flash rather than copied into RAM -- the band cache
  * needs every byte it can get. Only the 16-byte strip record is ever written
@@ -15,12 +15,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define LIB_NAME        "EOSLIB"
-#define LIB_MAGIC       "EOSLB"
+#define LIB_NAME        "CSLIB"
+#define LIB_MAGIC       "CSLIB"
 #define LIB_VERSION     3
 
-/* What eBookSync called the same two things, swept once on first run. */
-#define LIB_LEGACY_NAME "CSLIB"
+/* What the eBookSync naming called the same two things, swept once on first run. */
+#define LIB_LEGACY_NAME "EOSLIB"
 
 /* Identifies which library on the computer these comics came from. */
 #define LIB_ID_SIZE     16
@@ -137,13 +137,13 @@ bool lib_ensure(void);
 /*
  * Delete anything eBookSync left behind, returning how many appvars went.
  *
- * eOS renamed every variable it owns, so an upgraded calculator is holding a
- * library it can no longer read and will never write to again -- typically
- * megabytes of it. Nothing else ever cleans that up.
+ * The eOS naming renamed every variable this owns, so a calculator that ran it
+ * is holding a library this can no longer read and will never write to again --
+ * typically megabytes of it. Nothing else ever cleans that up.
  */
 uint16_t lib_sweep_legacy(void);
 
-/* Is there an eBookSync library here that eOS cannot read? */
+/* Is there a library here under the eOS names, which this cannot read? */
 bool lib_has_legacy(void);
 
 /*

@@ -1,4 +1,4 @@
-"""Reference implementation of the eOS .csx pipeline.
+"""Reference implementation of the eBookSync .csx pipeline.
 
 This package is the desktop counterpart to web/js/*.js: it converts comic JPEGs
 into the layered, banded, ZX0-compressed container the calculator reads, and can

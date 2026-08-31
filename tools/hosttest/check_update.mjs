@@ -2,12 +2,12 @@
  * The self-update, both halves.
  *
  * The wire half is in check_usb.mjs -- chunks arriving, checksums verified,
- * nothing armed when they fail. This is the other half: what prgmEOSUP does
+ * nothing armed when they fail. This is the other half: what prgmCSUP does
  * when the user runs it, driven through tools/hosttest/update_probe against the
  * real calc/src/update.c.
  *
  * It matters more than the line count suggests. The wire half failing costs a
- * retry; this half failing replaces prgmEOS with something that does not run,
+ * retry; this half failing replaces prgmCOMICS with something that does not run,
  * on a calculator whose only way back is a cable and TI Connect.
  *
  *   node tools/hosttest/check_update.mjs
@@ -54,7 +54,7 @@ function manifestBytes({ target, build, bytes, chunks, crc }) {
 }
 
 function chunkName(index) {
-  return `EOSU${index.toString(16).toUpperCase().padStart(2, '0')}`;
+  return `CSU${index.toString(16).toUpperCase().padStart(2, '0')}`;
 }
 
 /**
@@ -64,14 +64,14 @@ function chunkName(index) {
  * is what a flash fault or an interrupted sync looks like from here.
  */
 function runUpdater(body, { build = 7, target = 0, damage = false, omitChunk = -1 } = {}) {
-  const directory = mkdtempSync(join(tmpdir(), 'eos-updater-in-'));
-  const out = mkdtempSync(join(tmpdir(), 'eos-updater-out-'));
+  const directory = mkdtempSync(join(tmpdir(), 'ebooksync-updater-in-'));
+  const out = mkdtempSync(join(tmpdir(), 'ebooksync-updater-out-'));
 
   const chunks = update.chunksOf(body);
   const manifest = manifestBytes({
     target, build, bytes: body.length, chunks: chunks.length, crc: update.crc32(body),
   });
-  writeFileSync(join(directory, 'EOSUPD.8xv'), writeAppvar('EOSUPD', manifest));
+  writeFileSync(join(directory, 'CSUPD.8xv'), writeAppvar('CSUPD', manifest));
 
   chunks.forEach((chunk, i) => {
     if (i === omitChunk) return;
@@ -92,8 +92,8 @@ function runUpdater(body, { build = 7, target = 0, damage = false, omitChunk = -
   return {
     status,
     said: stdout.trim().split('\n').pop(),
-    installed: existsSync(join(out, 'EOS.bin')) ? readFileSync(join(out, 'EOS.bin')) : null,
-    manifestLeft: existsSync(join(out, 'EOSUPD.bin')),
+    installed: existsSync(join(out, 'COMICS.bin')) ? readFileSync(join(out, 'COMICS.bin')) : null,
+    manifestLeft: existsSync(join(out, 'CSUPD.bin')),
     chunksLeft: chunks.some((_, i) => existsSync(join(out, `${chunkName(i)}.bin`))),
   };
 }
@@ -117,7 +117,7 @@ function sample(bytes) {
   check('it reports success', result.status, 0);
 }
 
-/* --- a single flipped bit must not reach prgmEOS --------------------------- */
+/* --- a single flipped bit must not reach prgmCOMICS --------------------------- */
 {
   const result = runUpdater(sample(20000), { damage: true });
 
@@ -147,7 +147,7 @@ function sample(bytes) {
 
 /* --- the real staged build ------------------------------------------------- */
 {
-  const staged = join(HERE, '..', '..', 'web', 'eos', 'EOS.8xp');
+  const staged = join(HERE, '..', '..', 'web', 'comics', 'COMICS.8xp');
   if (!existsSync(staged)) {
     console.log('  SKIP real build: run tools/stage_update.sh first');
   } else {

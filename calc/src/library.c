@@ -230,7 +230,7 @@ bool lib_password_store(const char *password) {
 
     /*
      * A fresh salt every time, seeded from the clock. Its job is only to stop
-     * one precomputed table covering every eOS calculator; it is not a secret
+     * one precomputed table covering every eBookSync calculator; it is not a secret
      * and does not need to be unguessable.
      */
     srand((unsigned)time(NULL) ^ (unsigned)(uintptr_t)block);
@@ -415,11 +415,11 @@ uint16_t lib_reset(void) {
 
 /* ------------------------------------------------------------------ legacy */
 
-/* eBookSync's chunk names: the same layout, a different prefix. */
+/* The eBookSync naming's chunk names: the same layout, a different prefix. */
 static void legacy_chunk_name(char *name, uint8_t slot, uint8_t chunk) {
     static const char hex[] = "0123456789ABCDEF";
-    name[0] = 'C';
-    name[1] = 'S';
+    name[0] = 'E';
+    name[1] = 'O';
     name[2] = hex[slot >> 4];
     name[3] = hex[slot & 0x0F];
     name[4] = hex[chunk >> 4];
@@ -428,6 +428,11 @@ static void legacy_chunk_name(char *name, uint8_t slot, uint8_t chunk) {
 }
 
 bool lib_has_legacy(void) {
+    /* If these ever coincide, the sweep would offer to delete the live library.
+     * Cheap to assert, and it has happened. */
+    if (strcmp(LIB_LEGACY_NAME, LIB_NAME) == 0)
+        return false;
+
     char name[7];
     legacy_chunk_name(name, 0, 0);
 

@@ -22,7 +22,7 @@ export function isSupported() {
   return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 }
 
-const withStore = makeStore('eos', 'handles', { legacy: 'ebooksync' });
+const withStore = makeStore('ebooksync', 'handles', { legacy: 'eos' });
 
 export async function rememberDirectory(handle) {
   await withStore('readwrite', (store) => store.put(handle, HANDLE_KEY));
@@ -55,7 +55,7 @@ export async function restoreDirectory({ prompt = false } = {}) {
 }
 
 export async function pickDirectory() {
-  const handle = await window.showDirectoryPicker({ id: 'eos', mode: 'readwrite' });
+  const handle = await window.showDirectoryPicker({ id: 'ebooksync', mode: 'readwrite' });
   await rememberDirectory(handle);
   return handle;
 }

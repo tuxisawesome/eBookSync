@@ -49,7 +49,6 @@ typedef enum {
     UI_BACK,      /* the user backed out */
     UI_SYNC,      /* the user asked for the sync screen */
     UI_SETUP,     /* the user asked for the settings screen */
-    UI_CHAT,      /* the user asked for the chat screen */
 } ui_result_t;
 
 /* Settings: what is stored, resetting the library, and about. */
@@ -64,12 +63,6 @@ void ui_setup_screen(void);
  */
 #define UI_PASSWORD_TRIES 3
 bool ui_password_gate(void);
-
-/*
- * Messages. Nothing here touches the link -- what is read arrived at the last
- * sync, and what is typed leaves at the next one.
- */
-void ui_chat_screen(void);
 
 /* The text of about.txt, baked in at build time and scrollable. */
 void ui_about_screen(void);

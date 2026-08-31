@@ -37,7 +37,6 @@
 #include "proto.h"
 
 #include "build.h"
-#include "chat.h"
 #include "csx.h"
 #include "library.h"
 #include "update.h"
@@ -126,6 +125,16 @@ static uint32_t reply_body_sent;
  */
 static uint24_t cached_archive_free;
 static uint8_t cached_flags;
+
+/*
+ * Which build is armed and waiting for prgmCSUP, or 0.
+ *
+ * The flag alone is not enough for the page to reason with. A reader update is
+ * armed, not installed, so HELLO keeps reporting the build that is *running* --
+ * and a page that only knows "something is armed" cannot tell an update it has
+ * just sent from one that is now out of date itself.
+ */
+static uint16_t cached_armed_build;
 static const uint8_t *cached_index;
 static uint16_t cached_index_size;
 
@@ -159,13 +168,6 @@ static uint32_t read32(const uint8_t *p) {
 static void put16(uint8_t *p, uint16_t value) {
     p[0] = (uint8_t)value;
     p[1] = (uint8_t)(value >> 8);
-}
-
-static void put32(uint8_t *p, uint32_t value) {
-    p[0] = (uint8_t)value;
-    p[1] = (uint8_t)(value >> 8);
-    p[2] = (uint8_t)(value >> 16);
-    p[3] = (uint8_t)(value >> 24);
 }
 
 static void put24(uint8_t *p, uint24_t value) {
@@ -245,9 +247,10 @@ static void do_hello(void) {
     reply_small[4] = CSX_MAX_CHUNKS;
     reply_small[5] = CSX_CHUNK_SIZE / 256;
     reply_small[6] = (uint8_t)which;
-    put16(reply_small + 7, EOS_BUILD);
+    put16(reply_small + 7, COMICS_BUILD);
     reply_small[9] = cached_flags;
-    answer(PROTO_OK, reply_small, 10);
+    put16(reply_small + 10, cached_armed_build);
+    answer(PROTO_OK, reply_small, 12);
 }
 
 /* Re-map the index after anything that moved or replaced it. */
@@ -462,10 +465,10 @@ static void do_update_end(void) {
     }
 
     /*
-     * An updater update is applied here and now. EOSUP is not running, so this
+     * An updater update is applied here and now. CSUP is not running, so this
      * program can replace it, and doing it immediately means the user never
      * sees it. A reader update cannot be applied by the reader, so it is armed
-     * and EOSUP installs it later.
+     * and CSUP installs it later.
      */
     if (incoming.target == UPDATE_TARGET_UPDATER) {
         bool ok = update_install(UPDATE_UPDATER_NAME, &incoming);
@@ -477,68 +480,11 @@ static void do_update_end(void) {
     }
 
     bool ok = update_arm(&incoming);
-    if (ok)
+    if (ok) {
         cached_flags |= PROTO_FLAG_ARMED;
+        cached_armed_build = incoming.build;
+    }
     answer(ok ? PROTO_OK : PROTO_WRITE_FAIL, NULL, 0);
-}
-
-/* ------------------------------------------------------------------- chat */
-
-/*
- * None of these care which library the calculator is holding.
- *
- * Only the comics can be mixed up by plugging into the wrong computer -- the
- * chat belongs to whoever's credentials the computer is using, and the
- * calculator is just a terminal for it. See "How a sync goes".
- */
-static void do_chat_state(void) {
-    if (!payload) {
-        answer(PROTO_WRITE_FAIL, NULL, 0);
-        return;
-    }
-
-    /* Built in the payload buffer, which is idle while a reply goes out and is
-     * far larger than sixteen conversations can ever need. */
-    uint8_t count = chat_conversation_count();
-    payload[0] = CHAT_VERSION;
-    payload[1] = count;
-
-    uint24_t at = 2;
-    for (uint8_t i = 0; i < count; i++) {
-        chat_conversation_t conversation;
-        chat_get_conversation(i, &conversation);
-
-        put16(payload + at, conversation.id);
-        put32(payload + at + 2, conversation.last_server_id);
-        at += 6;
-    }
-
-    put16(payload + at, chat_outbox_count());
-    put16(payload + at + 2, chat_outbox_bytes());
-
-    answer(PROTO_OK, payload, at + 4);
-}
-
-static void do_chat_out_get(void) {
-    uint16_t length = 0;
-    if (!chat_outbox_get(argument, payload, &length)) {
-        answer(PROTO_NOT_FOUND, NULL, 0);
-        return;
-    }
-    answer(PROTO_OK, payload, length);
-}
-
-static void do_chat_out_ack(void) {
-    answer(chat_outbox_drop(argument) ? PROTO_OK : PROTO_WRITE_FAIL, NULL, 0);
-}
-
-static void do_chat_roster_put(void) {
-    answer(chat_put_table(payload, payload_want) ? PROTO_OK : PROTO_BAD_LENGTH, NULL, 0);
-}
-
-static void do_chat_in_put(void) {
-    answer(chat_append(argument, payload, payload_want) ? PROTO_OK : PROTO_BAD_LENGTH,
-           NULL, 0);
 }
 
 /*
@@ -587,12 +533,6 @@ static void execute(void) {
         case PROTO_UPDATE_END:   do_update_end(); break;
 
         case PROTO_CLOCK_SET:    do_clock_set(); break;
-
-        case PROTO_CHAT_STATE:      do_chat_state(); break;
-        case PROTO_CHAT_OUT_GET:    do_chat_out_get(); break;
-        case PROTO_CHAT_OUT_ACK:    do_chat_out_ack(); break;
-        case PROTO_CHAT_ROSTER_PUT: do_chat_roster_put(); break;
-        case PROTO_CHAT_IN_PUT:     do_chat_in_put(); break;
         case PROTO_BYE:       closing = true; answer(PROTO_OK, NULL, 0); break;
         default:              answer(PROTO_BAD_CMD, NULL, 0); break;
     }
@@ -772,7 +712,6 @@ static void gc_after(void) {
      * the variables it was pointing into. Fetch them again.
      */
     lib_open();
-    chat_open();
 
     refresh_index_cache();
 
@@ -831,9 +770,10 @@ static usb_error_t handle_event(usb_event_t event, void *event_data,
  *
  * os_ArcChk() is a single call and leaves its answer in os_TempFreeArc.
  */
-/* Is prgmEOSUP installed, and is a reader update waiting for it? */
+/* Is prgmCSUP installed, and is a reader update waiting for it? */
 static uint8_t gather_update_flags(void) {
     uint8_t flags = 0;
+    cached_armed_build = 0;
 
     uint8_t handle = ti_OpenVar(UPDATE_UPDATER_NAME, "r", OS_TYPE_PRGM);
     if (handle) {
@@ -842,8 +782,10 @@ static uint8_t gather_update_flags(void) {
     }
 
     update_manifest_t armed;
-    if (update_pending(&armed) && armed.target == UPDATE_TARGET_READER)
+    if (update_pending(&armed) && armed.target == UPDATE_TARGET_READER) {
         flags |= PROTO_FLAG_ARMED;
+        cached_armed_build = armed.build;
+    }
 
     return flags;
 }
@@ -883,7 +825,6 @@ bool proto_run(proto_progress_t progress, bool echo_only) {
     library_state = PROTO_LIBRARY_EMPTY;
     receiving_update = false;
 
-    chat_open();
     gather_state();
     gc_count = 0;
     ti_SetGCBehavior(gc_before, gc_after);

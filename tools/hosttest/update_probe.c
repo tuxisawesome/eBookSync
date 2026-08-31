@@ -1,11 +1,11 @@
 /*
- * What prgmEOSUP does, without prgmEOSUP.
+ * What prgmCSUP does, without prgmCSUP.
  *
  * calc/updater/src/main.c is a handful of prints around three calls into
  * calc/src/update.c: read the manifest, checksum the chunks, write the program.
  * This runs those three against a seeded appvar directory so the half of the
  * update that never touches the wire is testable too -- and it is the half that
- * replaces prgmEOS, so getting it wrong means a calculator that will not start.
+ * replaces prgmCOMICS, so getting it wrong means a calculator that will not start.
  *
  *   update_probe <dir-with-8xv-files> <out-dir>
  */

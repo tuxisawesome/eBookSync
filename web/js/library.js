@@ -1,5 +1,5 @@
 /*
- * Building the EOSLIB index: what is on the calculator, and what it is called.
+ * Building the CSLIB index: what is on the calculator, and what it is called.
  *
  * Only content actually resident on the calculator goes in here -- the computer
  * stays the source of truth for the whole library. Mirrors tools/csx/library.py
@@ -9,9 +9,9 @@
 import { compress, decompress } from './zx0.js';
 import { BOOK_WIDTH, STRIP_WIDTH, renderTitle } from './titles.js';
 
-const MAGIC = 'EOSLB';
+const MAGIC = 'CSLIB';
 export const VERSION = 3;
-export const NAME = 'EOSLIB';
+export const NAME = 'CSLIB';
 
 /*
  * The last 64 bytes of the header are the calculator's, not ours: its password
@@ -129,10 +129,10 @@ export function parseIndex(data) {
 
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   for (let i = 0; i < MAGIC.length; i++) {
-    if (view.getUint8(i) !== MAGIC.charCodeAt(i)) throw new Error('not an EOSLIB index');
+    if (view.getUint8(i) !== MAGIC.charCodeAt(i)) throw new Error('not a CSLIB index');
   }
   const version = view.getUint8(5);
-  if (version !== VERSION) throw new Error(`unsupported EOSLIB version ${version}`);
+  if (version !== VERSION) throw new Error(`unsupported CSLIB version ${version}`);
 
   const bookCount = view.getUint16(6, true);
   const stripCount = view.getUint16(8, true);

@@ -10,7 +10,6 @@
 
 #include "input.h"
 #include "about.h"
-#include "chat.h"
 #include "keyin.h"
 #include "library.h"
 #include "proto.h"
@@ -267,7 +266,7 @@ ui_result_t ui_book_menu(uint16_t *selection) {
             }
 
             draw_scrollbar(&list);
-            ui_footer("enter open 2nd sync y= chat mode setup");
+            ui_footer("enter open  2nd sync  del read  mode setup");
             dirty = false;
             drew = true;
         }
@@ -283,10 +282,6 @@ ui_result_t ui_book_menu(uint16_t *selection) {
         }
         if (input_pressed(kb_Key2nd))
             return UI_SYNC;
-        if (input_pressed(kb_KeyYequ)) {
-            *selection = list.selected;
-            return UI_CHAT;
-        }
         if (input_pressed(kb_KeyMode)) {
             *selection = list.selected;
             return UI_SETUP;
@@ -551,7 +546,7 @@ void ui_setup_screen(void) {
             switch (selected) {
                 case 0:
                     gfx_PrintStringXY(lib_password_set()
-                        ? "Asked for when eOS starts."
+                        ? "Asked for when eBookSync starts."
                         : "No password set.", 10, 140);
                     gfx_PrintStringXY("It keeps people out of your", 10, 158);
                     gfx_PrintStringXY("comics, not a determined one.", 10, 176);
@@ -610,329 +605,6 @@ void ui_setup_screen(void) {
                     ui_about_screen();
                     break;
             }
-            input_reset();
-            dirty = true;
-        }
-
-        if (input_pressed(kb_KeyClear))
-            return;
-    }
-}
-
-/* -------------------------------------------------------------------- chat */
-
-/*
- * Messages, drawn with the built-in 8x8 font.
- *
- * ASCII only, and not by oversight: the calculator has no CJK font, which is
- * the same reason comic titles are pre-rendered bitmaps on the computer. A
- * message cannot be pre-rendered -- it is text, and it has to be composable
- * here -- so anything outside ASCII is folded down by the sync page before it
- * ever reaches this screen.
- */
-
-#define CHAT_COLS      38
-#define CHAT_LINE_H    10
-#define CHAT_TOP       26
-#define CHAT_ROWS      ((GFX_LCD_HEIGHT - CHAT_TOP - 22) / CHAT_LINE_H)
-
-/* Wrap `text` at word boundaries, calling `emit` for each line. */
-static uint8_t wrap(const char *text, char lines[][CHAT_COLS + 1], uint8_t max) {
-    uint8_t used = 0;
-    uint16_t at = 0;
-
-    while (text[at] && used < max) {
-        uint16_t take = 0;
-        uint16_t last_space = 0;
-
-        while (take < CHAT_COLS && text[at + take]) {
-            if (text[at + take] == ' ')
-                last_space = take;
-            take++;
-        }
-
-        /* Break at the last space if the line actually overflowed, so a word is
-         * not cut in half for the sake of two characters. */
-        if (text[at + take] && last_space)
-            take = last_space;
-
-        memcpy(lines[used], text + at, take);
-        lines[used][take] = '\0';
-        used++;
-
-        at += take;
-        while (text[at] == ' ')
-            at++;
-    }
-
-    return used;
-}
-
-/* Every wrapped line of a conversation, newest last, as far back as fits. */
-#define CHAT_MAX_LINES 64
-
-typedef struct {
-    char text[CHAT_COLS + 1];
-    bool mine;
-    bool heading;
-    bool waiting;      /* typed here, not yet carried away by a sync */
-} chat_line_t;
-
-/* How many display lines one message body needs, plus its heading. */
-static uint8_t lines_for(const char *body) {
-    char wrapped[8][CHAT_COLS + 1];
-    return (uint8_t)(wrap(body, wrapped, 8) + 1);
-}
-
-/* Append one message's heading and wrapped body. Returns lines added. */
-static uint8_t emit_message(chat_line_t *out, uint8_t used, uint8_t max,
-                            const char *who, const char *body,
-                            bool mine, bool waiting) {
-    if (used >= max)
-        return 0;
-
-    uint8_t start = used;
-
-    snprintf(out[used].text, sizeof out[used].text, "%s", who);
-    out[used].mine = mine;
-    out[used].heading = true;
-    out[used].waiting = waiting;
-    used++;
-
-    char wrapped[8][CHAT_COLS + 1];
-    uint8_t lines = wrap(body, wrapped, 8);
-    for (uint8_t l = 0; l < lines && used < max; l++) {
-        memcpy(out[used].text, wrapped[l], sizeof wrapped[l]);
-        out[used].mine = mine;
-        out[used].heading = false;
-        out[used].waiting = waiting;
-        used++;
-    }
-
-    return (uint8_t)(used - start);
-}
-
-static uint8_t build_lines(uint8_t conversation, chat_line_t *out, uint8_t max) {
-    chat_conversation_t about;
-    chat_get_conversation(conversation, &about);
-
-    uint16_t count = chat_message_count(conversation);
-    uint8_t used = 0;
-
-    /*
-     * Room for what is still waiting is reserved before anything else.
-     *
-     * Queued messages are the newest thing in the conversation and the ones
-     * most likely to be looked for -- somebody has just typed them. Letting the
-     * history push them off the end would show everything except the part that
-     * prompted the question.
-     */
-    uint16_t queued_count = chat_outbox_count();
-    uint8_t reserved = 0;
-    for (uint16_t i = 0; i < queued_count && reserved < max; i++) {
-        chat_queued_t queued;
-        if (!chat_outbox_message(i, &queued))
-            break;
-        if (queued.conversation_id == about.id)
-            reserved = (uint8_t)(reserved + lines_for(queued.body));
-    }
-    if (reserved > max)
-        reserved = max;
-    uint8_t room = (uint8_t)(max - reserved);
-
-    /*
-     * Walked from the newest backwards and then reversed, because the end of a
-     * conversation is the part anyone wants and the start is what should be cut
-     * when it does not fit.
-     */
-    uint16_t first = 0;
-    uint8_t needed = 0;
-    for (uint16_t i = count; i-- > 0; ) {
-        chat_message_t message;
-        if (!chat_get_message(conversation, i, &message))
-            break;
-
-        uint8_t lines = lines_for(message.body);
-        if (needed + lines > room)
-            break;
-
-        needed = (uint8_t)(needed + lines);
-        first = i;
-    }
-
-    for (uint16_t i = first; i < count && used < room; i++) {
-        chat_message_t message;
-        if (!chat_get_message(conversation, i, &message))
-            break;
-
-        bool mine = (message.flags & CHAT_FLAG_MINE) != 0;
-        used = (uint8_t)(used + emit_message(out, used, room,
-                                             mine ? "you" : message.sender,
-                                             message.body, mine, false));
-    }
-
-    /* Then whatever is still waiting, at the end, where it was written. */
-    for (uint16_t i = 0; i < queued_count && used < max; i++) {
-        chat_queued_t queued;
-        if (!chat_outbox_message(i, &queued))
-            break;
-        if (queued.conversation_id != about.id)
-            continue;
-
-        used = (uint8_t)(used + emit_message(out, used, max, "you - waiting to send",
-                                             queued.body, true, true));
-    }
-
-    return used;
-}
-
-static void compose(uint16_t conversation_id, const char *name) {
-    char body[CHAT_BODY_MAX + 1];
-    char prompt[40];
-    snprintf(prompt, sizeof prompt, "To %s", name);
-
-    if (!keyin_text(prompt, "sent at the next sync", body, CHAT_BODY_MAX,
-                    KEYIN_TEXT, NULL))
-        return;
-
-    if (!*body)
-        return;
-
-    if (chat_send(conversation_id, body))
-        ui_message("Queued.", "It goes at the next sync.");
-    else
-        ui_message("Could not queue that.", "The outbox may be full.");
-}
-
-/* One conversation: its messages, and a way to add to them. */
-static void chat_thread(uint8_t index) {
-    chat_conversation_t conversation;
-    chat_get_conversation(index, &conversation);
-
-    static chat_line_t lines[CHAT_MAX_LINES];
-    uint8_t count = build_lines(index, lines, CHAT_MAX_LINES);
-
-    uint8_t first = count > CHAT_ROWS ? count - CHAT_ROWS : 0;
-    bool dirty = true;
-    bool drew = false;
-
-    input_reset();
-    for (;;) {
-        if (dirty) {
-            gfx_FillScreen(UI_BG);
-            ui_header(conversation.name);
-
-            if (!count) {
-                gfx_SetTextFGColor(UI_DIM);
-                gfx_SetTextBGColor(UI_BG);
-                gfx_PrintStringXY("Nothing here yet.", 10, 100);
-                gfx_PrintStringXY("2nd writes a message.", 10, 118);
-            }
-
-            for (uint8_t row = 0; row < CHAT_ROWS && first + row < count; row++) {
-                const chat_line_t *line = &lines[first + row];
-                int y = CHAT_TOP + row * CHAT_LINE_H;
-
-                gfx_SetTextBGColor(UI_BG);
-                gfx_SetTextFGColor(line->waiting ? UI_DIM
-                                                 : (line->heading ? UI_ACCENT : UI_FG));
-                gfx_PrintStringXY(line->text, line->mine ? 20 : 8, y);
-            }
-
-            ui_footer(chat_outbox_count_for(conversation.id)
-                          ? "dim = waiting for a sync      clear back"
-                          : "2nd write   up/down scroll   clear back");
-            dirty = false;
-            drew = true;
-        }
-
-        ui_present(drew);
-        drew = false;
-        input_scan();
-
-        if (input_repeat(kb_KeyUp) && first) {
-            first--;
-            dirty = true;
-        } else if (input_repeat(kb_KeyDown) && first + CHAT_ROWS < count) {
-            first++;
-            dirty = true;
-        }
-
-        if (input_pressed(kb_Key2nd)) {
-            compose(conversation.id, conversation.name);
-            count = build_lines(index, lines, CHAT_MAX_LINES);
-            first = count > CHAT_ROWS ? count - CHAT_ROWS : 0;
-            input_reset();
-            dirty = true;
-        }
-
-        if (input_pressed(kb_KeyClear))
-            return;
-    }
-}
-
-void ui_chat_screen(void) {
-    chat_open();
-
-    menu_list_t list = { chat_conversation_count(), 0, 0 };
-    bool dirty = true;
-    bool drew = false;
-
-    input_reset();
-    for (;;) {
-        if (dirty) {
-            gfx_FillScreen(UI_BG);
-            ui_header("Messages");
-
-            if (!list.count) {
-                gfx_SetTextFGColor(UI_DIM);
-                gfx_SetTextBGColor(UI_BG);
-                gfx_PrintStringXY("No conversations yet.", 10, 90);
-                gfx_PrintStringXY("Sync with a computer that is", 10, 112);
-                gfx_PrintStringXY("signed in to the relay.", 10, 130);
-            }
-
-            for (uint16_t row = 0; row < UI_LIST_ROWS && list.first + row < list.count;
-                 row++) {
-                uint16_t index = list.first + row;
-                draw_row_background(&list, row);
-
-                chat_conversation_t conversation;
-                chat_get_conversation((uint8_t)index, &conversation);
-
-                int text_y = UI_LIST_TOP + row * UI_ROW_HEIGHT + 6;
-                gfx_SetTextFGColor(UI_FG);
-                gfx_SetTextBGColor(index == list.selected ? UI_SELECT_BG : UI_BG);
-                gfx_PrintStringXY(conversation.name, 12, text_y);
-
-                /* Anything typed here and not yet carried away, so the list
-                 * answers "did that send?" without opening each one. */
-                uint16_t waiting = chat_outbox_count_for(conversation.id);
-                if (waiting) {
-                    char note[16];
-                    sprintf(note, "%u waiting", waiting);
-                    gfx_SetTextFGColor(UI_ACCENT);
-                    gfx_PrintStringXY(note, GFX_LCD_WIDTH - 100, text_y);
-                }
-            }
-
-            draw_scrollbar(&list);
-            ui_footer("enter  open              clear  back");
-            dirty = false;
-            drew = true;
-        }
-
-        ui_present(drew);
-        drew = false;
-        input_scan();
-
-        if (list_navigate(&list))
-            dirty = true;
-
-        if (list.count && input_pressed(kb_KeyEnter)) {
-            chat_thread((uint8_t)list.selected);
-            chat_open();
-            list.count = chat_conversation_count();
             input_reset();
             dirty = true;
         }
@@ -1024,7 +696,7 @@ static void sync_line(uint8_t row, const char *text) {
 static void sync_draw(void) {
     char line[40];
 
-    sync_line(0, sync_echo_mode ? "eOS - ECHO TEST" : "eOS");
+    sync_line(0, sync_echo_mode ? "eBookSync - ECHO TEST" : "eBookSync");
     sync_line(2, sync_state);
 
     sprintf(line, "%u done, %uK moved", sync_chunks_received,

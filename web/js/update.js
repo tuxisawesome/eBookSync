@@ -1,8 +1,8 @@
 /*
- * Pushing a new build of eOS to the calculator.
+ * Pushing a new build of eBookSync to the calculator.
  *
- * The builds are static files next to this page -- `web/eos/EOS.8xp`,
- * `web/eos/EOSUP.8xp` and `web/eos/build.json` -- so GitHub Pages serves them
+ * The builds are static files next to this page -- `web/comics/COMICS.8xp`,
+ * `web/comics/CSUP.8xp` and `web/comics/build.json` -- so GitHub Pages serves them
  * same-origin with no server and no CORS. `tools/stage_update.sh` puts them
  * there.
  *
@@ -14,7 +14,7 @@
 import { UPDATE_CHUNK_SIZE, UPDATE_TARGET } from './link.js';
 import { readVariable } from './tifile.js';
 
-export const CATALOGUE = 'eos/build.json';
+export const CATALOGUE = 'comics/build.json';
 
 /**
  * CRC-32, the ordinary reflected one, matching calc/src/crc32.c.
@@ -69,14 +69,14 @@ export async function loadCatalogue(base = '') {
   if (!manifest || typeof manifest.build !== 'number') return null;
 
   const [reader, updater] = await Promise.all([
-    fetch(`${base}eos/EOS.8xp`, { cache: 'no-cache' }).then((r) => r.arrayBuffer()),
-    fetch(`${base}eos/EOSUP.8xp`, { cache: 'no-cache' }).then((r) => r.arrayBuffer()),
+    fetch(`${base}comics/COMICS.8xp`, { cache: 'no-cache' }).then((r) => r.arrayBuffer()),
+    fetch(`${base}comics/CSUP.8xp`, { cache: 'no-cache' }).then((r) => r.arrayBuffer()),
   ]);
 
   return {
     build: manifest.build,
-    reader: imageFrom(new Uint8Array(reader), 'EOS'),
-    updater: imageFrom(new Uint8Array(updater), 'EOSUP'),
+    reader: imageFrom(new Uint8Array(reader), 'COMICS'),
+    updater: imageFrom(new Uint8Array(updater), 'CSUP'),
   };
 }
 
@@ -87,17 +87,35 @@ export async function loadCatalogue(base = '') {
  * none. It is a seven-kilobyte program with no state of its own, so keeping it
  * in step by simply always sending it costs less than tracking its version
  * would -- and it means the only file that ever has to be installed by hand is
- * EOS.8xp: a calculator with no updater is given one on its first sync.
+ * COMICS.8xp: a calculator with no updater is given one on its first sync.
  */
 export function plan(hello, catalogue) {
-  if (!catalogue || !hello) return { reader: false, updater: false, build: 0 };
+  if (!catalogue || !hello) {
+    return { reader: false, updater: false, armed: false, build: 0 };
+  }
 
-  const reader = hello.build !== catalogue.build;
+  /*
+   * An armed update is done, not missing.
+   *
+   * A reader update is armed rather than installed, so HELLO goes on reporting
+   * the build that is *running* until prgmCSUP has been run. Comparing only
+   * those two numbers means the page offers to send a build it has already
+   * sent, every time, for ever -- which reads as "still out of date by one" and
+   * as though the update had not worked.
+   *
+   * What is armed still has to be the build we would send: one armed from an
+   * earlier deploy is genuinely out of date and should be replaced.
+   */
+  const armed = Boolean(hello.updateArmed) && hello.armedBuild === catalogue.build;
+  const behind = hello.build !== catalogue.build;
+
   return {
     build: catalogue.build,
     from: hello.build,
-    reader,
-    updater: reader || !hello.hasUpdater,
+    armed,
+    reader: behind && !armed,
+    /* No point pushing the updater for an update that is already waiting. */
+    updater: (behind && !armed) || !hello.hasUpdater,
   };
 }
 

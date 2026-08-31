@@ -1,4 +1,4 @@
-# The eOS link protocol
+# The eBookSync link protocol
 
 The calculator presents itself as a **USB CDC serial port** using `srldrvce`,
 and the sync page talks to it with the **Web Serial API**. The calculator must
@@ -121,38 +121,33 @@ dropped" is the entire diagnosis, and there is nowhere else to see it.
 
 | cmd | name | payload | reply |
 |-----|------|---------|-------|
-| 0x01 | `HELLO` | the 16-byte library id | `u8 protocol, u24 freeArchive, u8 maxChunks, u8 chunkSize/256, u8 library, u16 build` |
+| 0x01 | `HELLO` | the 16-byte library id | `u8 protocol, u24 freeArchive, u8 maxChunks, u8 chunkSize/256, u8 library, u16 build, u8 flags, u16 armedBuild` |
 | 0x02 | `LIST` | - | `u16 count`, then `count` x 14-byte strip records |
 | 0x03 | `PUT_CHUNK` | the chunk; `arg` = `slot \| (index << 8)` | status only |
 | 0x04 | `DEL` | none; `arg` = slot | `u8 chunksRemoved` |
-| 0x05 | `INDEX_GET` | - | the EOSLIB bytes, device block zeroed (empty if there is no index) |
-| 0x06 | `INDEX_PUT` | the EOSLIB bytes | status only |
+| 0x05 | `INDEX_GET` | - | the CSLIB bytes, device block zeroed (empty if there is no index) |
+| 0x06 | `INDEX_PUT` | the CSLIB bytes | status only |
 | 0x07 | `SPACE` | - | `u24 freeArchive` |
 | 0x08 | `BYE` | - | status only |
 | 0x09 | `RESET` | - | `u16 stripsRemoved` |
 | 0x0A | `UPDATE_BEGIN` | `u16 build, u32 bytes, u16 chunks, u32 crc32`; `arg` = target | status only |
 | 0x0B | `UPDATE_CHUNK` | the chunk; `arg` = `target \| (index << 8)` | status only |
 | 0x0C | `UPDATE_END` | -; `arg` = target | status only |
-| 0x0D | `CHAT_STATE` | - | what is stored and what is queued |
-| 0x0E | `CHAT_OUT_GET` | -; `arg` = index | one queued message |
-| 0x0F | `CHAT_OUT_ACK` | -; `arg` = count | status only |
-| 0x10 | `CHAT_ROSTER_PUT` | the conversation table | status only |
-| 0x11 | `CHAT_IN_PUT` | packed messages; `arg` = conversation | status only |
-| 0x12 | `CLOCK_SET` | `u32 unix seconds` | status only |
+| 0x0D | `CLOCK_SET` | `u32 unix seconds` | status only |
 
 `library` is `0` empty, `1` the same library as the computer's, `2` somebody
 else's, `3` not compared -- see "Two libraries, one calculator" in the README.
 
 An all-zero id means "no identity" at either end, and the two ends of that mean
 different things. Sent *by the computer* it means no comics folder has been
-chosen, so there is nothing to compare and the answer is `3`; connecting for the
-chat or an update alone is ordinary, and answering `2` there would have made the
+chosen, so there is nothing to compare and the answer is `3`; connecting to
+install an update alone is ordinary, and answering `2` there would have made the
 page offer to erase a library on the strength of a comparison it never made.
 Stored *on the calculator* it means the index has been emptied, so the
 calculator is free to take anything and the answer is `0`.
 
 `build` is the reader's build number, from `calc/BUILD`. It is what the page
-compares against `web/eos/build.json` to decide whether it has something newer
+compares against `web/comics/build.json` to decide whether it has something newer
 to push.
 
 A `LIST` strip record is the on-calculator state of one strip:
@@ -175,24 +170,24 @@ hung up on an out-of-date calculator would be unable to fix exactly the
 calculators that need fixing.
 
 Protocol 1 is eBookSync, which has no `UPDATE_*` commands at all, so there is
-nothing the page can push it -- eOS has to be installed once by hand. From 2 on,
+nothing the page can push it -- eBookSync has to be installed once by hand. From 2 on,
 a calculator that is behind can always be brought forward over the link.
 
 ## Updating the reader over the link
 
 A CE program runs in place inside its own variable, so it cannot overwrite
-itself: deleting the variable would delete the code doing the deleting. eOS
+itself: deleting the variable would delete the code doing the deleting. eBookSync
 gets round that with two programs that install each other.
 
 | | |
 |---|---|
-| `EOS` | the reader. Installs `EOSUP`, which is not running while it does. |
-| `EOSUP` | the updater. Installs `EOS`, which is not running while it does. |
+| `COMICS` | the reader. Installs `CSUP`, which is not running while it does. |
+| `CSUP` | the updater. Installs `COMICS`, which is not running while it does. |
 
 So an updater update is invisible -- the reader applies it during the sync that
 brings it down -- and only a reader update needs the user to quit and run
-`prgmEOSUP` once. It also means `EOSUP` can be created from nothing, so the only
-file that ever has to be installed by hand is `EOS.8xp`.
+`prgmCSUP` once. It also means `CSUP` can be created from nothing, so the only
+file that ever has to be installed by hand is `COMICS.8xp`.
 
 The image arrives the way a comic does: `UPDATE_BEGIN`, then one `UPDATE_CHUNK`
 per 16 KB, then `UPDATE_END`. It does not fit in RAM whole -- sync already holds
@@ -207,7 +202,7 @@ comic that arrives damaged is a smeared page. A program that arrives damaged is
 a calculator that will not start the reader, and whose only way back is a cable
 and TI Connect. `UPDATE_END` CRC-32s every chunk where it lies in flash and
 refuses the lot on a mismatch -- `PROTO_TRUNCATED` -- with nothing replaced and
-nothing armed. `prgmEOSUP` checks again before it deletes anything, because the
+nothing armed. `prgmCSUP` checks again before it deletes anything, because the
 chunks have been sitting in the archive since the sync and that is the last
 moment at which finding them damaged is free.
 
@@ -216,53 +211,22 @@ left is a calculator with a current updater and its old reader -- which still
 works, and can still be updated next time. The other order would leave an armed
 reader update and an updater too old to be trusted with it.
 
-`HELLO`'s `build` and `flags` are what drive all of this: `flags` bit 0 says
-`prgmEOSUP` is installed, bit 1 says a reader update is armed and waiting for
-it. Both cost an OS call, so both are gathered once before USB starts.
+`HELLO`'s `build`, `flags` and `armedBuild` are what drive all of this. `flags`
+bit 0 says `prgmCSUP` is installed, bit 1 says a reader update is armed and
+waiting for it. All of it costs one OS call, gathered once before USB starts.
 
-## Chat
-
-The calculator has no network -- only a cable -- so everything moves at sync
-time. `docs/FORMAT.md` has the records; this is the exchange.
-
-```
-CHAT_STATE      -> u8 version, u8 count,
-                   { u16 id, u32 lastServerId } x count,
-                   u16 outboxCount, u16 outboxBytes
-CHAT_OUT_GET    arg = index  -> one outbox record, or PROTO_NOT_FOUND past the end
-CHAT_OUT_ACK    arg = count  -> drop the first `count` queued messages
-CHAT_ROSTER_PUT the conversation table, replacing what is there
-CHAT_IN_PUT     arg = conversation id; packed message records, appended
-```
-
-**Take before you give, and acknowledge last.** The computer reads the whole
-outbox, stores it durably, and only then sends `CHAT_OUT_ACK`. Acknowledging
-first would lose messages if the page died in between; storing first can at
-worst store them twice, and the relay de-duplicates. The key it de-duplicates on
-is built from the calculator's own sequence number, which is why that number is
-kept in the conversation table and never repeats -- an outbox that is emptied
-and refilled carries on counting rather than starting again.
-
-**`CHAT_ROSTER_PUT` replaces the whole table, and the calculator splices its own
-values back in.** The computer does not know how far the calculator has read or
-how much each conversation is holding, so it sends zeros there -- exactly the
-arrangement the library index's device block uses, and for the same reason.
-Without it, every sync would re-send every message the calculator already had.
-
-**A `CHAT_IN_PUT` never splits a record.** The far end appends what it is given
-and walks it as whole records afterwards, so a record straddling two commands
-would leave a log that stops parsing at the join.
-
-**None of this is gated on the library.** Only the comics care which computer
-they came from: mixing two libraries would leave the calculator holding strips
-the page cannot account for. The chat belongs to whoever the page is signed in
-to the relay as, and the calculator is a second terminal for that one account --
-so a calculator carrying somebody else's comics still syncs its messages.
+`build` is what the calculator is *running*. A reader update is armed rather
+than installed, so that number does not move until `prgmCSUP` has been run --
+which is why `armedBuild` exists. Without it a page comparing only `build`
+against its own catalogue offers to send a build it has already sent, every
+time, and the calculator reads as permanently one behind. An armed update
+matching the catalogue means "done, waiting to be installed"; one that does not
+match is from an earlier deploy and is genuinely replaced.
 
 ## Setting the clock
 
-The CE has an RTC, but it is very often unset, and message and read timestamps
-depend on it. `CLOCK_SET` carries the computer's unix time at the start of every
+The CE has an RTC, but it is very often unset, and read timestamps depend on
+it. `CLOCK_SET` carries the computer's unix time at the start of every
 sync; the calculator stores the *difference* in the index's device block rather
 than touching the RTC, so nothing depends on what epoch the clock counts from --
 only on it running. The write happens only when the correction moves by more
@@ -311,18 +275,16 @@ fails. A sync that gets `3` should `DEL` more strips and retry the same chunk.
 
 1. `HELLO`, then `CLOCK_SET`, then `LIST` and `INDEX_GET`.
 
-   The update and the chat run here too, and neither waits on the library:
-   `UPDATE_*` if the page has a newer build, then the chat exchange above.
-   Messages come before comics because the chat is seconds and a library sync is
-   minutes -- an interrupted sync should still have brought the messages.
+   The update runs here too, and it does not wait on the library: `UPDATE_*` if
+   the page has a newer build.
 2. The computer merges the calculator's read flags and scroll positions into
-   `eos.json`; the calculator wins, because that is where reading happened.
+   `ebooksync.json`; the calculator wins, because that is where reading happened.
 3. `DEL` for every strip that auto-cleanup decided to drop, then `SPACE` to see
    what that recovered.
 4. `PUT_CHUNK` for every chunk of every strip being pushed. Chunks are
    independent and acknowledged one at a time, so an interrupted sync resumes by
    simply re-`LIST`ing and sending what is missing.
-5. `INDEX_PUT` with a freshly built EOSLIB describing what is now resident. The
+5. `INDEX_PUT` with a freshly built CSLIB describing what is now resident. The
    calculator splices its own device block back into it -- see docs/FORMAT.md.
 6. `BYE`.
 

@@ -2,8 +2,8 @@
  * Typing text on a calculator.
  *
  * input.c reports which keys are down; nothing until now turned that into
- * characters, because nothing until now needed any. The password does, and so
- * does the chat composer, so it is worth doing once and properly.
+ * characters, because nothing until now needed any. The password does, so it is
+ * worth doing once and properly.
  *
  * The letters are the ones printed on the keys in green, so the calculator
  * itself is the keyboard legend -- there is no on-screen layout to learn and
@@ -18,7 +18,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* Enough for a password or a chat message; both are bounded elsewhere. */
+/* Comfortably more than a password; the caller bounds it further. */
 #define KEYIN_MAX 128
 
 typedef enum {

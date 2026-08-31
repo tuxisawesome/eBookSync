@@ -1,5 +1,5 @@
 /*
- * eOS for the TI-84 Plus CE.
+ * eBookSync for the TI-84 Plus CE.
  *
  * Comics are converted on a computer into .csx containers (see docs/FORMAT.md)
  * and pushed over USB by the sync page; this program lists what arrived, reads
@@ -70,13 +70,13 @@ int main(void) {
     }
 
     /*
-     * eOS renamed every variable it owns, so a calculator upgraded from
-     * eBookSync is still holding that library -- typically megabytes of it --
-     * with nothing left that will ever read it again. Offer to reclaim it once.
-     * Nothing else ever does, and the archive is the whole budget.
+     * A calculator that ran the eOS naming is still holding that library --
+     * typically megabytes of it -- under names nothing here will ever read
+     * again. Offer to reclaim it once; nothing else ever does, and the archive
+     * is the whole budget.
      */
     if (lib_has_legacy()
-        && ui_confirm("Old eBookSync comics are", "using space. Delete them?")) {
+        && ui_confirm("Old eOS comics are using", "space. Delete them?")) {
         ui_notice("Deleting old comics...", "This takes a moment.");
         uint16_t gone = lib_sweep_legacy();
 
@@ -87,7 +87,7 @@ int main(void) {
 
     /*
      * A reader update cannot install itself -- this program is running from the
-     * variable it would have to replace -- so prgmEOSUP does it. Say so on the
+     * variable it would have to replace -- so prgmCSUP does it. Say so on the
      * way in, because a downloaded update that nobody knows about is the same
      * as no update at all.
      */
@@ -95,7 +95,7 @@ int main(void) {
     if (update_pending(&update) && update.target == UPDATE_TARGET_READER) {
         char line[40];
         sprintf(line, "Update ready: build %u.", update.build);
-        ui_message(line, "Quit and run prgmEOSUP.");
+        ui_message(line, "Quit and run prgmCSUP.");
     }
 
     uint16_t book = 0;
@@ -103,11 +103,6 @@ int main(void) {
         ui_result_t result = ui_book_menu(&book);
         if (result == UI_BACK)
             break;
-        if (result == UI_CHAT) {
-            ui_chat_screen();
-            lib_open();
-            continue;
-        }
         if (result == UI_SETUP) {
             ui_setup_screen();
             lib_open();

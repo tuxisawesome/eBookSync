@@ -10,7 +10,7 @@
 
 import { makeStore } from './idb.js';
 
-const withStore = makeStore('eos-cache', 'containers', { legacy: 'ebooksync-cache' });
+const withStore = makeStore('ebooksync-cache', 'containers', { legacy: 'eos-cache' });
 
 /** Everything about the settings that changes the bytes we produce. */
 export function settingsKey(settings) {

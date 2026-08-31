@@ -1,4 +1,4 @@
-eOS
+eBookSync
 
 A comic reader for the TI-84 Plus CE.
 

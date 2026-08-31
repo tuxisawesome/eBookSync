@@ -1,6 +1,6 @@
 /*
  * The key-value stores the page keeps in IndexedDB, and the one-time move off
- * the names eBookSync used.
+ * whatever name they were last under.
  *
  * Both stores -- the library folder handle and the converted-container cache --
  * are a plain map opened exactly the same way, so the mechanics live here once
@@ -10,8 +10,8 @@
  * a store's identity, so renaming one silently abandons everything in it: the
  * directory handle is what lets the page reopen your library without asking,
  * and the container cache is tens of seconds of ZX0 work per strip. Starting
- * eOS with both gone would look exactly like a bug, so the first use of a store
- * adopts whatever the old database held and then drops it.
+ * Starting with both gone would look exactly like a bug, so the first use of a
+ * store adopts whatever the old database held and then drops it.
  */
 
 function open(name, storeName) {
@@ -104,8 +104,8 @@ export function makeStore(name, storeName, { legacy = null } = {}) {
       const to = await open(name, storeName);
       try {
         for (const [key, value] of entries) {
-          /* Never overwrite: anything already here was written by eOS and is
-           * newer than what the old database is holding. */
+          /* Never overwrite: anything already here is newer than what the old
+           * database is holding. */
           if ((await run(to, storeName, 'readonly', (store) => store.get(key))) === undefined) {
             await run(to, storeName, 'readwrite', (store) => store.put(value, key));
           }

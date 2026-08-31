@@ -13,8 +13,6 @@
  * is all this protocol ever wanted. See docs/PROTOCOL.md.
  */
 
-import { parseOutboxRecord, parseState } from './chatwire.js';
-
 /* srldrvce presents these -- the shared V-USB CDC identifiers. */
 export const USB_VENDOR_ID = 0x16c0;
 export const USB_PRODUCT_ID = 0x05e1;
@@ -74,27 +72,21 @@ export const CMD = {
   UPDATE_CHUNK: 0x0b,
   UPDATE_END: 0x0c,
 
-  CHAT_STATE: 0x0d,
-  CHAT_OUT_GET: 0x0e,
-  CHAT_OUT_ACK: 0x0f,
-  CHAT_ROSTER_PUT: 0x10,
-  CHAT_IN_PUT: 0x11,
-
-  CLOCK_SET: 0x12,
+  CLOCK_SET: 0x0d,
 };
 
 /*
  * Which program an UPDATE_* command is about.
  *
- * Each is installed by the other: the reader replaces EOSUP during the sync
- * that brings it down, and EOSUP replaces the reader when the user runs it. A
+ * Each is installed by the other: the reader replaces CSUP during the sync
+ * that brings it down, and CSUP replaces the reader when the user runs it. A
  * CE program runs in place inside its own variable and cannot overwrite itself,
  * which is the whole reason there are two. See calc/src/update.h.
  */
 export const UPDATE_TARGET = { READER: 0, UPDATER: 1 };
 
 /* HELLO's flag byte. */
-export const FLAG_UPDATER = 0x01;   /* prgmEOSUP is installed */
+export const FLAG_UPDATER = 0x01;   /* prgmCSUP is installed */
 export const FLAG_ARMED = 0x02;     /* a reader update is waiting for it */
 
 /* One update chunk, matching the calculator's payload buffer exactly. */
@@ -106,8 +98,8 @@ const BUSY = 0xfe;
 /* What HELLO reports about the library already on the calculator. */
 /*
  * UNKNOWN is not a failure: it means this page has no library folder chosen, so
- * there was nothing to compare. Connecting for the chat or an update alone is
- * ordinary, and neither is about comics.
+ * there was nothing to compare. Connecting to install an update alone is
+ * ordinary, and that is not about comics.
  */
 export const LIBRARY = { EMPTY: 0, SAME: 1, DIFFERENT: 2, UNKNOWN: 3 };
 
@@ -121,9 +113,6 @@ export const STATUS = {
   6: 'payload ended early',
   7: 'the calculator cannot do that right now',
 };
-
-/* The one status the callers below treat as an answer rather than a fault. */
-const STATUS_NOT_FOUND = 5;
 
 export class ProtocolError extends Error {
   constructor(cmd, status) {
@@ -311,6 +300,15 @@ export class Calculator {
       flags: body.length >= 10 ? body[9] : 0,
       hasUpdater: body.length >= 10 && (body[9] & FLAG_UPDATER) !== 0,
       updateArmed: body.length >= 10 && (body[9] & FLAG_ARMED) !== 0,
+      /*
+       * Which build is waiting for prgmCSUP, or 0.
+       *
+       * `build` above is what is *running*, and a reader update does not change
+       * that until the updater has been run -- so without this a page cannot
+       * tell an update it has just sent from one that is genuinely missing, and
+       * offers to send the same build again for ever.
+       */
+      armedBuild: body.length >= 12 ? body[10] | (body[11] << 8) : 0,
     };
   }
 
@@ -336,7 +334,7 @@ export class Calculator {
 
   /**
    * Finish an update: the calculator checksums what it stored and either
-   * installs it (the updater) or arms it for prgmEOSUP (the reader).
+   * installs it (the updater) or arms it for prgmCSUP (the reader).
    *
    * A CRC mismatch comes back as a ProtocolError with status 6, and nothing has
    * been replaced at that point -- the damaged image is discarded on the
@@ -346,50 +344,7 @@ export class Calculator {
     await this.request(CMD.UPDATE_END, new Uint8Array(0), target);
   }
 
-  /* ------------------------------------------------------------------ chat */
-
-  /**
-   * What the calculator is holding and what it has queued.
-   *
-   * None of the chat commands care which library the calculator carries. Only
-   * the comics can be mixed up by plugging into the wrong computer; the chat
-   * belongs to whoever's credentials this page is using, and the calculator is
-   * a second terminal for that one account.
-   */
-  async chatState() {
-    return parseState(await this.request(CMD.CHAT_STATE));
-  }
-
-  /** One queued message, or null once the index runs past the end. */
-  async chatOutGet(index) {
-    try {
-      return parseOutboxRecord(await this.request(CMD.CHAT_OUT_GET, new Uint8Array(0), index));
-    } catch (error) {
-      if (error instanceof ProtocolError && error.status === STATUS_NOT_FOUND) return null;
-      throw error;
-    }
-  }
-
-  /**
-   * Drop the first `count` queued messages.
-   *
-   * Sent once they are stored durably here -- not once they reach the relay. If
-   * the network is down they are still safely off the calculator, and the
-   * relay's own de-duplication makes sending them again free.
-   */
-  async chatOutAck(count) {
-    await this.request(CMD.CHAT_OUT_ACK, new Uint8Array(0), count);
-  }
-
-  async chatPutRoster(bytes) {
-    await this.request(CMD.CHAT_ROSTER_PUT, bytes);
-  }
-
-  async chatPutMessages(conversationId, bytes) {
-    await this.request(CMD.CHAT_IN_PUT, bytes, conversationId);
-  }
-
-  /** Set the calculator's clock, so message and read timestamps mean something. */
+  /** Set the calculator's clock, so read timestamps mean something. */
   async setClock(unixSeconds) {
     const payload = new Uint8Array(4);
     new DataView(payload.buffer).setUint32(0, unixSeconds, true);

@@ -164,9 +164,9 @@ class Strip:
 
 
 def chunk_name(slot, chunk):
-    """Appvar name for one chunk of a strip: EO<slot><chunk>, both hex."""
+    """Appvar name for one chunk of a strip: CS<slot><chunk>, both hex."""
     if not 0 <= slot <= 0xFF:
         raise ValueError(f"strip slot {slot} out of range 0-255")
     if not 0 <= chunk <= 0xFF:
         raise ValueError(f"chunk index {chunk} out of range 0-255")
-    return f"EO{slot:02X}{chunk:02X}"
+    return f"CS{slot:02X}{chunk:02X}"

@@ -1,12 +1,12 @@
 /*
  * Drives the real library index parser on the host.
  *
- * Loads EOSLIB.8xv, parses it through calc/src/library.c, and prints every book
+ * Loads CSLIB.8xv, parses it through calc/src/library.c, and prints every book
  * and strip record plus a checksum of each expanded title bitmap.
  * tools/hosttest/check_library.py compares that with what tools/csx/library.py
  * put in.
  *
- *   lib_probe <dir-with-EOSLIB.8xv> [save <strip> <flags> <pos> <layer>]
+ *   lib_probe <dir-with-CSLIB.8xv> [save <strip> <flags> <pos> <layer>]
  */
 
 #include "library.h"

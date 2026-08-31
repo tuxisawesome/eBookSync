@@ -262,7 +262,7 @@ export async function execute(calculator, meta, books, currentPlan, {
 }
 
 /**
- * The EOSLIB describing exactly what is resident now.
+ * The CSLIB describing exactly what is resident now.
  *
  * Books and strips go in in the order stored in eos.json, and the reader
  * draws them in the order it finds them -- that is the whole mechanism by which

@@ -7,7 +7,7 @@
  * strips, and drag them into the order you want to read them.
  *
  * Order lives in eos.json, not in filenames, and flows straight through
- * to the calculator: EOSLIB lists books and strips in array order and the reader
+ * to the calculator: CSLIB lists books and strips in array order and the reader
  * draws them in the order it finds them.
  */
 
@@ -17,10 +17,6 @@ import * as libraryStore from './library.js';
 import * as metaStore from './meta.js';
 import * as syncEngine from './sync.js';
 import * as updater from './update.js';
-import * as chatUi from './chatui.js';
-import * as chatSync from './chatsync.js';
-import * as chatStore from './chatstore.js';
-import * as chatWire from './chatwire.js';
 import { PAGE_BUILD } from './version.js';
 import {
   Calculator, LIBRARY, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
@@ -86,10 +82,6 @@ const state = {
    * disk, where fetch cannot reach a relative path. */
   catalogue: null,
   updatePlan: null,
-  /* The calculator's chat state as of connecting, so the sync plan can say what
-   * the chat half is going to do. Without it the plan describes the library
-   * only, and a sync with messages waiting reads as "nothing to do". */
-  chatState: null,
   expanded: new Set(),
   filter: '',
   pool: null,
@@ -474,15 +466,17 @@ function refreshUpdate() {
   }
 
   /*
-   * A reader update that has been sent is not installed yet, and cannot be:
-   * the reader is running from the variable prgmEOSUP has to replace. Saying so
-   * is the whole mechanism -- an update nobody knows to install is the same as
-   * no update at all.
+   * A reader update that has been sent is not installed yet, and cannot be: the
+   * reader is running from the variable prgmCSUP has to replace. Saying which
+   * build is waiting is the difference between "this worked, go and run the
+   * updater" and "this appears to have done nothing".
    */
   if (hello && hello.updateArmed) {
     ui.updateNotice.hidden = false;
-    ui.updateNotice.textContent = 'An update is waiting on the calculator. Quit the '
-      + 'reader and run prgmEOSUP to install it, then run EOS again.';
+    const which = hello.armedBuild ? `Build ${hello.armedBuild}` : 'An update';
+    ui.updateNotice.textContent = `${which} is on the calculator, waiting to be `
+      + 'installed. Quit the reader, run prgmCSUP, then run COMICS again. '
+      + `It is still running build ${hello.build} until you do.`;
   } else {
     ui.updateNotice.hidden = true;
   }
@@ -729,7 +723,7 @@ async function connect() {
      * defaultMeta() minted. All-zero means "no identity" to the calculator, so
      * it reports itself as empty rather than as holding somebody else's comics
      * -- which is what a random id would have looked like. Connecting for the
-     * chat or an update alone is a perfectly ordinary thing to want.
+     * an update alone is a perfectly ordinary thing to want.
      */
     const libraryId = state.root
       ? metaStore.libraryIdBytes(state.meta)
@@ -772,13 +766,6 @@ async function connect() {
       await calculator.setClock(Math.floor(Date.now() / 1000));
     } catch { /* not fatal */ }
 
-    /* Not fatal: a calculator that cannot answer this still syncs comics. */
-    try {
-      state.chatState = await calculator.chatState();
-    } catch {
-      state.chatState = null;
-    }
-
     state.resident = await calculator.list();
     state.deviceIndex = await calculator.getIndex();
 
@@ -816,7 +803,7 @@ async function connect() {
       ui.reset.hidden = state.resident.length === 0;
       setStatus(state.root
         ? `Connected. ${state.resident.length} strips on the calculator.`
-        : 'Connected. Choose a comics folder to sync a library, or use the Chat tab.');
+        : 'Connected. Choose a comics folder to sync a library.');
     }
 
     renderTree();
@@ -827,7 +814,6 @@ async function connect() {
     state.calculator = null;
     state.hello = null;
     state.updatePlan = null;
-    state.chatState = null;
     refreshDevice();
     setStatus(describeConnectError(error), 'error');
   }
@@ -847,7 +833,7 @@ function describeCompatibility(hello) {
       canSync: false,
       canUpdate: false,
       message: `This calculator is running eBookSync (protocol ${hello.version}), which `
-        + 'cannot be updated over the cable. Install EOS.8xp once with TI Connect CE or '
+        + 'cannot be updated over the cable. Install COMICS.8xp once with TI Connect CE or '
         + 'ticalc.link, and everything after that arrives over this link.',
     };
   }
@@ -873,7 +859,7 @@ function describeCompatibility(hello) {
 
 function describeConnectError(error) {
   if (error.name === 'NotFoundError') {
-    return 'No calculator chosen. Run EOS, press 2nd for the Sync screen, plug the '
+    return 'No calculator chosen. Run COMICS, press 2nd for the Sync screen, plug the '
       + 'cable in, then try again.';
   }
   if (error.name === 'InvalidStateError') {
@@ -900,43 +886,7 @@ function indexIsStale() {
   }
 }
 
-/** Bring the local store up to date with the relay. Never fatal. */
-async function pullChat(log = () => {}) {
-  try {
-    const arrived = await chatUi.refresh();
-    if (arrived) log(`Chat: ${arrived} new message(s) from the relay.`);
-    return arrived;
-  } catch (error) {
-    log(`Chat: could not read the relay (${error.message}). Using what is stored here.`);
-    return 0;
-  }
-}
-
-/**
- * What the chat half of a sync would move, or null if there is no chat set up.
- *
- * An estimate, made before the conversation list has been pushed: a
- * conversation the calculator has not heard of yet counts as entirely
- * outstanding, which is exactly what will happen to it.
- */
-async function chatWork() {
-  const account = chatUi.account();
-  if (!account || !state.chatState) return null;
-
-  const conversations = await chatStore.conversations();
-  if (!conversations.length) return null;
-
-  const missing = chatSync.outstanding(
-    await chatStore.messages(), state.chatState,
-    conversations.slice(0, chatWire.MAX_CONVERSATIONS), account.id);
-
-  let toSend = 0;
-  for (const list of missing.values()) toSend += list.length;
-
-  return { toSend, toCollect: state.chatState.outboxCount };
-}
-
-function describePlan(plan, chat = null) {
+function describePlan(plan) {
   const parts = [];
 
   const list = (title, items, render) => {
@@ -979,31 +929,14 @@ function describePlan(plan, chat = null) {
     parts.push(warning);
   }
 
-  /* The chat moves on the same sync, and it is the whole reason a sync can be
-   * worth running when the library has not changed at all. */
-  if (chat && (chat.toSend || chat.toCollect)) {
-    const line = document.createElement('p');
-    const said = [];
-    if (chat.toSend) said.push(`send ${chat.toSend} message(s) to the calculator`);
-    if (chat.toCollect) said.push(`collect ${chat.toCollect} typed on it`);
-    line.textContent = `Chat: ${said.join(', ')}.`;
-    parts.push(line);
-  }
-
-  const nothingToDo = plan.empty && !(chat && (chat.toSend || chat.toCollect));
-  if (nothingToDo) {
+  if (plan.empty) {
     const nothing = document.createElement('p');
-    nothing.textContent = 'Nothing to do — the calculator already matches your library, '
-      + 'and there are no messages to move.';
+    nothing.textContent = 'Nothing to do — the calculator already matches your library.';
     parts.push(nothing);
-  } else if (plan.empty) {
-    const note = document.createElement('p');
-    note.textContent = 'No comics need moving; this sync is for the messages.';
-    parts.push(note);
   }
 
   ui.planBody.replaceChildren(...parts);
-  ui.planGo.disabled = nothingToDo;
+  ui.planGo.disabled = plan.empty;
 }
 
 async function runSync() {
@@ -1015,7 +948,7 @@ async function runSync() {
 
   if (!state.root) {
     setStatus('Choose the folder holding your comics before syncing a library. '
-      + 'Chat and updates work without one.', 'error');
+      + 'Updating the calculator works without one.', 'error');
     return;
   }
 
@@ -1028,8 +961,7 @@ async function runSync() {
     freeArchive: state.freeArchive,
     indexStale: indexIsStale(),
   });
-  await pullChat();
-  describePlan(plan, await chatWork());
+  describePlan(plan);
 
   ui.planDialog.returnValue = '';
   ui.planDialog.showModal();
@@ -1059,13 +991,6 @@ async function runSync() {
   };
 
   state.pool = state.pool || new syncEngine.ConversionPool();
-
-  /*
-   * Messages first, comics second. The chat exchange is seconds; a library sync
-   * is minutes, and stopping it halfway is a normal thing to do. Doing the
-   * quick half first means an interrupted sync still brought the messages.
-   */
-  await exchangeChat(appendLog);
 
   try {
     const result = await syncEngine.execute(state.calculator, state.meta, state.books, plan, {
@@ -1126,7 +1051,7 @@ async function runSync() {
  *
  * The reader half is not installed by this -- it cannot be, since the reader is
  * running from the variable that has to be replaced -- so the honest report at
- * the end is "sent, now go and run prgmEOSUP". The updater half is installed by
+ * the end is "sent, now go and run prgmCSUP". The updater half is installed by
  * the reader as it arrives, and needs nothing from the user at all.
  */
 async function runUpdate() {
@@ -1136,7 +1061,7 @@ async function runUpdate() {
 
   const summary = updatePlan.reader
     ? `Send build ${updatePlan.build} to the calculator?\n\n`
-      + 'Nothing is replaced until you quit the reader and run prgmEOSUP. '
+      + 'Nothing is replaced until you quit the reader and run prgmCSUP. '
       + 'Your comics are not touched.'
     : 'Install the updater on the calculator?\n\nThis is what applies future updates.';
   if (!window.confirm(summary)) return;
@@ -1164,10 +1089,11 @@ async function runUpdate() {
     state.updatePlan = updater.plan(state.hello, catalogue);
 
     if (done.reader) {
-      log(`Build ${updatePlan.build} is on the calculator.`);
-      log('Quit the reader and run prgmEOSUP to install it.');
-      setStatus(`Build ${updatePlan.build} sent. Quit the reader and run prgmEOSUP `
-        + 'to install it, then run EOS again.');
+      log(`Build ${updatePlan.build} is on the calculator, waiting to be installed.`);
+      log('Quit the reader and run prgmCSUP, then run COMICS again.');
+      setStatus(`Build ${updatePlan.build} sent. Quit the reader and run prgmCSUP `
+        + 'to install it, then run COMICS again. The calculator still reports the '
+        + 'old build until you do — that is expected.');
     } else {
       log('The updater is installed.');
       setStatus('The updater is installed.');
@@ -1181,78 +1107,6 @@ async function runUpdate() {
     ui.progressClose.hidden = false;
     refreshDevice();
   }
-}
-
-/**
- * The chat half of a sync.
- *
- * Deliberately its own step, and deliberately not gated on the library. Only
- * the comics care which computer they came from -- mixing two libraries would
- * leave the calculator holding strips this page cannot account for -- but the
- * chat belongs to whoever this page is signed in to the relay as, and the
- * calculator is a second terminal for that account.
- *
- * Never fatal. A relay that is unreachable, or an account that is not signed
- * in, must not stop comics moving.
- */
-async function exchangeChat(log = () => {}) {
-  const calculator = state.calculator;
-  if (!calculator) return null;
-
-  const account = chatUi.account();
-  if (!account) {
-    log('Chat: not signed in to a relay, skipping.');
-    return null;
-  }
-
-  /*
-   * Read from the relay first, so what goes to the calculator is current.
-   *
-   * The exchange sends whatever this computer is holding, and this computer
-   * only learns of new messages when the chat panel polls -- which it does on
-   * its own schedule and not necessarily just before a sync. Without this, a
-   * sync run shortly after a message arrived would send the calculator the
-   * state from the previous poll and report that as everything.
-   *
-   * Best effort: an unreachable relay must not stop the calculator being given
-   * what is already here.
-   */
-  await pullChat(log);
-
-  let summary = null;
-  try {
-    summary = await chatSync.exchange(calculator, chatStore, {
-      userId: account.id,
-      onStatus: log,
-    });
-
-    if (summary.skipped) log(`Chat: ${summary.skipped}.`);
-    else {
-      log(`Chat: sent ${summary.sent}, took ${summary.taken}.`);
-    }
-  } catch (error) {
-    log(`Chat: could not exchange messages (${error.message}).`);
-    return null;
-  }
-
-  /*
-   * Uploading is separate, and separately allowed to fail. Anything taken off
-   * the calculator is already stored here, so a relay that is down costs a
-   * delay rather than a message.
-   */
-  try {
-    const relay = chatUi.relay();
-    if (relay) {
-      const drained = await chatSync.drain(relay, chatStore, { onStatus: log });
-      if (drained.uploaded) log(`Chat: sent ${drained.uploaded} to the relay.`);
-      if (summary && summary.taken) await relay.noteCalculatorSync();
-      await chatUi.refresh();
-    }
-  } catch (error) {
-    log(`Chat: the relay is unreachable (${error.message}). Messages are safe here.`);
-  }
-
-  return summary;
 }
 
 async function resetCalculator() {
@@ -1364,17 +1218,11 @@ async function start() {
    * did not work. This is how to tell those apart without guessing.
    */
   ui.pageBuild.textContent = `build ${PAGE_BUILD}`;
-  console.info(`eOS sync page, build ${PAGE_BUILD}`);
+  console.info(`eBookSync sync page, build ${PAGE_BUILD}`);
 
   bindSettings();
   bindTreeDrop();
   refreshSettings();
-
-  /* The chat panel keeps its own state and its own polling; it only needs the
-   * library half to exist so the tabs have something to switch between. */
-  chatUi.start().catch((error) => {
-    console.warn('chat panel did not start:', error);
-  });
 
   ui.chooseFolder.addEventListener('click', async () => {
     try {
@@ -1405,4 +1253,4 @@ start().catch((error) => setStatus(`Startup failed: ${error.message}`, 'error'))
 
 /* Exposed for the browser console: clearing the conversion cache is the fix for
  * "it converted something wrong", and there is no reason to spend UI on it. */
-window.eos = { state, cache: cacheStore };
+window.ebooksync = { state, cache: cacheStore };

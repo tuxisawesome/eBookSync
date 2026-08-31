@@ -1,17 +1,17 @@
 /*
- * Installing a new build of eOS, pushed over the sync link.
+ * Installing a new build of the reader, pushed over the sync link.
  *
  * A CE program runs in place inside its own variable, so it cannot overwrite
- * itself: deleting the variable would delete the code doing the deleting. eOS
+ * itself: deleting the variable would delete the code doing the deleting. eBookSync
  * gets round that with two programs that install each other.
  *
- *   EOS    the reader. Installs EOSUP, which is not running while it does.
- *   EOSUP  the updater. Installs EOS, which is not running while it does.
+ *   COMICS  the reader. Installs CSUP, which is not running while it does.
+ *   CSUP    the updater. Installs COMICS, which is not running while it does.
  *
  * So an updater update is invisible -- the reader applies it during the sync
  * that brings it down -- and only a reader update needs the user to quit and
- * run prgmEOSUP once. It also means EOSUP can be created from nothing, so the
- * only file that ever has to be installed by hand is EOS.8xp.
+ * run prgmCSUP once. It also means CSUP can be created from nothing, so the
+ * only file that ever has to be installed by hand is COMICS.8xp.
  *
  * The image arrives the way a comic does: one archived appvar per 16 KB chunk.
  * It does not fit in RAM whole -- sync already holds 16 KB for the payload and
@@ -25,7 +25,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define UPDATE_MANIFEST     "EOSUPD"
+#define UPDATE_MANIFEST     "CSUPD"
 #define UPDATE_MAGIC        "EUP1"
 #define UPDATE_MANIFEST_SIZE 20
 
@@ -35,12 +35,12 @@
 
 /* Which program an update is for. Each is installed by the other one. */
 typedef enum {
-    UPDATE_TARGET_READER  = 0,   /* EOS,   installed by EOSUP */
-    UPDATE_TARGET_UPDATER = 1,   /* EOSUP, installed by EOS */
+    UPDATE_TARGET_READER  = 0,   /* COMICS, installed by CSUP */
+    UPDATE_TARGET_UPDATER = 1,   /* CSUP,   installed by COMICS */
 } update_target_t;
 
-#define UPDATE_READER_NAME  "EOS"
-#define UPDATE_UPDATER_NAME "EOSUP"
+#define UPDATE_READER_NAME  "COMICS"
+#define UPDATE_UPDATER_NAME "CSUP"
 
 typedef struct {
     uint8_t target;      /* update_target_t */
@@ -50,7 +50,7 @@ typedef struct {
     uint32_t crc;
 } update_manifest_t;
 
-/* The appvar holding one chunk: EOSU<index>, hex. */
+/* The appvar holding one chunk: CSU<index>, hex. */
 void update_chunk_name(char *name, uint8_t index);
 
 /* Delete the manifest and every chunk. Safe to call when there is nothing. */

@@ -20,7 +20,6 @@ tools/hosttest/lib_probe
 tools/hosttest/ui_probe
 tools/hosttest/usb_probe
 tools/hosttest/update_probe
-tools/hosttest/chat_probe
 
 # Generated on every build: about.txt by tools/make_about.sh, and the build
 # number from calc/BUILD by tools/make_build.sh.
@@ -33,9 +32,3 @@ __pycache__/
 # Converter output: comics, not source.
 out/
 *.8xv
-
-# The relay's database and its Python caches. The database is per-deployment
-# state, not source, and on a real host it lives outside the tree entirely.
-server/*.db
-server/*.db-wal
-server/*.db-shm

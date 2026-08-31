@@ -2,8 +2,8 @@
 # Makefile Options
 # ----------------------------
 
-NAME = EOS
-DESCRIPTION = "eOS"
+NAME = COMICS
+DESCRIPTION = "eBookSync comic reader"
 COMPRESSED = YES
 ARCHIVED = YES
 

@@ -26,7 +26,6 @@ ${CC:-cc} $flags -o "$dir/ui_probe" \
     "$root/calc/src/ui.c" "$root/calc/src/input.c" "$root/calc/src/library.c" \
     "$root/calc/src/render.c" "$root/calc/src/csx.c" "$root/calc/src/keyin.c" \
     "$root/calc/src/update.c" "$root/calc/src/crc32.c" "$root/calc/src/sha256.c" \
-    "$root/calc/src/chat.c" \
     "$dir/reader_main.o"
 rm -f "$dir/reader_main.o"
 
@@ -34,17 +33,11 @@ rm -f "$dir/reader_main.o"
 ${CC:-cc} $flags -o "$dir/usb_probe" \
     "$dir/usb_probe.c" $common "$dir/shim/usbwire.c" \
     "$root/calc/src/usb.c" "$root/calc/src/csx.c" "$root/calc/src/library.c" \
-    "$root/calc/src/update.c" "$root/calc/src/crc32.c" "$root/calc/src/sha256.c" \
-    "$root/calc/src/chat.c"
+    "$root/calc/src/update.c" "$root/calc/src/crc32.c" "$root/calc/src/sha256.c"
 
-# calc/src/chat.c against the browser's packer.
-${CC:-cc} $flags -o "$dir/chat_probe" \
-    "$dir/chat_probe.c" $common "$root/calc/src/chat.c" "$root/calc/src/library.c" \
-    "$root/calc/src/csx.c" "$root/calc/src/sha256.c"
-
-# What prgmEOSUP does, so the half of an update that never touches the wire is
+# What prgmCSUP does, so the half of an update that never touches the wire is
 # testable too.
 ${CC:-cc} $flags -o "$dir/update_probe" \
     "$dir/update_probe.c" $common "$root/calc/src/update.c" "$root/calc/src/crc32.c"
 
-echo "built $dir/render_probe, $dir/lib_probe, $dir/ui_probe, $dir/usb_probe, $dir/update_probe and $dir/chat_probe"
+echo "built $dir/render_probe, $dir/lib_probe, $dir/ui_probe, $dir/usb_probe and $dir/update_probe"

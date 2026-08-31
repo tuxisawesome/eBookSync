@@ -6,6 +6,7 @@ compiled for the host, and compares every field and every expanded title bitmap.
 Then exercises the write-back path the reader uses when it leaves a strip.
 """
 
+import re
 import subprocess
 import sys
 import tempfile
@@ -14,7 +15,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from csx import library as lib, tifile   # noqa: E402
+from csx import format as fmt, library as lib, tifile   # noqa: E402
 
 
 def checksum(packed):
@@ -116,6 +117,45 @@ def check_password(index):
     return failures
 
 
+def check_legacy_names():
+    """The sweep must never point at the names in use.
+
+    A blanket rename once made LIB_LEGACY_NAME equal LIB_NAME, and the reader
+    spent every launch offering to delete the library it had just opened. The
+    two constants are a pair and have to be checked as one.
+    """
+    header = (HERE.parent.parent / "calc" / "src" / "library.h").read_text()
+    source = (HERE.parent.parent / "calc" / "src" / "library.c").read_text()
+
+    def define(name):
+        found = re.search(rf'#define\s+{name}\s+"([^"]*)"', header)
+        return found.group(1) if found else None
+
+    failures = []
+    live, legacy = define("LIB_NAME"), define("LIB_LEGACY_NAME")
+
+    if not live or not legacy:
+        failures.append("cannot find LIB_NAME / LIB_LEGACY_NAME in library.h")
+    elif live == legacy:
+        failures.append(f"the legacy sweep targets the live index ({live})")
+
+    if live != lib.NAME:
+        failures.append(f"library.h says {live}, tools/csx says {lib.NAME}")
+
+    # The legacy chunk prefix must differ from the one in use, too.
+    prefix = re.search(r"legacy_chunk_name.*?name\[0\] = '(.)';\s*\n\s*name\[1\] = '(.)';",
+                       source, re.S)
+    if not prefix:
+        failures.append("cannot find the legacy chunk prefix in library.c")
+    else:
+        legacy_prefix = prefix.group(1) + prefix.group(2)
+        live_prefix = fmt.chunk_name(0, 0)[:2]
+        if legacy_prefix == live_prefix:
+            failures.append(f"the legacy chunk sweep targets live chunks ({live_prefix})")
+
+    return failures
+
+
 def main():
     books = sample_books()
     index = lib.build(books)
@@ -173,10 +213,11 @@ def main():
             failures.append("write-back corrupted a neighbouring record")
 
         failures += check_password(index)
+        failures += check_legacy_names()
 
     for failure in failures:
         print("  FAIL " + failure)
-    total = 1 + len(books) * 5 + len(flat) * 9 + 2 + 7
+    total = 1 + len(books) * 5 + len(flat) * 9 + 2 + 7 + 3
     print(f"{total - len(failures)}/{total} library checks pass")
     return 1 if failures else 0
 

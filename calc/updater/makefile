@@ -2,8 +2,8 @@
 # Makefile Options
 # ----------------------------
 
-NAME = EOSUP
-DESCRIPTION = "eOS updater"
+NAME = CSUP
+DESCRIPTION = "eBookSync updater"
 COMPRESSED = YES
 ARCHIVED = YES
 

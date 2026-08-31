@@ -1,4 +1,4 @@
-# eOS
+# eBookSync
 
 Read comics on a TI-84 Plus CE.
 
@@ -7,21 +7,18 @@ runs in your browser, converts your comics into something a 48 MHz eZ80 can
 draw, and pushes them over USB.
 
 - `calc/` — the reader. C for the CE toolchain.
-- `calc/updater/` — `EOSUP`, the tiny program that installs a new reader.
+- `calc/updater/` — `CSUP`, the tiny program that installs a new reader.
 - `web/` — the sync page. Plain HTML/CSS/ES modules, no build step, no server.
-- `server/` — the chat relay. Flask, deployed separately; see `server/README.md`.
 - `tools/` — a desktop converter and the host test harness.
 - `docs/FORMAT.md` — the `.csx` strip format and the library index.
 - `docs/PROTOCOL.md` — the link protocol.
 
-eOS was called eBookSync. The rename went all the way down: the program is
-`EOS.8xp`, the library index appvar is `EOSLIB`, strip chunks are `EO<slot><chunk>`
-and the metadata file beside your comics is `eos.json`. An eBookSync library
-already on a calculator cannot be read by eOS, so the first run offers to delete
-it and reclaim the space; your files on the computer are untouched and syncing
-again refills it. On the computer, `ebooksync.json` is read once and its library
-identity carried into `eos.json`, so a library that has already been synced is
-still recognised as the same one.
+This was briefly called **eOS**, and the names went with it. If a calculator is
+still holding a library under those — `EOSLIB` and `EO<slot><chunk>` — the first
+run offers to delete it and reclaim the space; your files on the computer are
+untouched and syncing again refills it. On the computer, `eos.json` is read once
+if `ebooksync.json` is not there and its library identity carried across, so a
+library that has already been synced is still recognised as the same one.
 
 ## What it does
 
@@ -31,14 +28,14 @@ you reach the end.
 
 The sync page reads a folder of comics off your disk — one folder per book —
 lets you arrange the library and tick which books and strips you want, converts
-them, and sends them. It also carries chat and new builds of the reader itself
-over the same cable. It reads back what you have finished, records that in a
+them, and sends them. It also carries new builds of the reader itself over the
+same cable. It reads back what you have finished, records that in a
 metadata file beside your comics, and can clear read strips off the calculator
 to make room for more.
 
 The library is editable in the page: drag images in to add them, create, rename
 and delete books and strips, and drag rows into the order you want to read them.
-That order lives in `eos.json` next to your comics, and it is the order the
+That order lives in `ebooksync.json` next to your comics, and it is the order the
 calculator shows — not whatever the filenames happen to sort into.
 
 ## Constraints worth knowing
@@ -77,9 +74,9 @@ around 50 KB of free RAM. That drives everything:
 cd calc && make
 ```
 
-Send `calc/bin/EOS.8xp` to the calculator with TI Connect CE or
+Send `calc/bin/COMICS.8xp` to the calculator with TI Connect CE or
 [ticalc.link](https://ticalc.link). This first transfer uses TI's own link
-protocol; everything after it goes over eOS's own — including later builds of
+protocol; everything after it goes over eBookSync's own — including later builds of
 the reader itself, so this is the only time you need TI Connect.
 
 **2. Lay out your comics.**
@@ -124,7 +121,7 @@ is on the calculator removes it from the calculator too, on the next sync.
 
 **4. Connect the calculator.**
 
-Run `EOS`, unlock it if you have set a password, press `2nd` on the book list to
+Run `COMICS`, unlock it if you have set a password, press `2nd` on the book list to
 reach the Sync screen, plug in the
 cable, and press **Connect calculator** on the page, then pick the calculator's
 serial port from the browser's list.
@@ -147,7 +144,7 @@ memory bus, and USB loses whenever graphx has the LCD in its 8bpp mode.
 Reaching the last 5% of a strip marks it read on its own.
 
 On the book list: `del` marks a whole book read or unread, `mode` opens
-settings, `2nd` opens the sync screen, `y=` opens chat. On the strip list, `del` marks one strip.
+settings, `2nd` opens the sync screen. On the strip list, `del` marks one strip.
 
 Settings (`mode` from the book list) has four entries:
 
@@ -156,7 +153,6 @@ Settings (`mode` from the book list) has four entries:
   the computer are untouched, and syncing again refills it.
 - **Link echo test** — echoes bytes straight back to the computer, for working
   out why a sync will not start. `docs/PROTOCOL.md` explains what it is for.
-  This used to be `alpha` from the book list; that key is chat now.
 - **About** — the text of `about.txt`, scrollable with the arrow keys.
 
 `about.txt` lives at the root of the repository and is baked into the program on
@@ -165,66 +161,9 @@ the repository for itself. Edit the file and rebuild; there is nothing to
 regenerate by hand. It is drawn with the built-in font, so it is ASCII only and
 lines longer than 40 characters run off the side.
 
-## Chat
-
-eOS carries messages as well as comics. Three places can read the same
-conversations:
-
-| | |
-|---|---|
-| the **relay** | a small Flask service that holds the history — `server/README.md` |
-| the **PWA** | served by the relay, installable, what most people will use |
-| the **sync page** | the Chat tab, next to your library |
-| the **calculator** | `y=` from the book list |
-
-The calculator has no network. Everything reaches it at sync time: messages you
-have been sent come down, messages you typed on it go up, and the relay records
-when that last happened so other people can see it. Someone messaging you sees
-`calc · 14:02` beside your name, which is the difference between "has not
-replied" and "has not plugged in since Tuesday".
-
-**Setting it up.** Deploy the relay (`server/README.md`), open its admin panel,
-add people and open conversations. Then in the sync page's **Chat** tab, put in
-the relay's address and sign in.
-
-**If something looks wrong after a deploy, check the build number** beside the
-title in the page header. GitHub Pages caches JavaScript, and an ES module graph
-caches each file on its own — so a fix that has not reached your browser yet
-looks exactly like a fix that did not work. If the number is behind what
-`tools/stage_update.sh` last stamped, hard-refresh (Ctrl-Shift-R, or Cmd-Shift-R)
-rather than looking for a bug. The console prints the same number on load. The sign-in is kept in your browser and
-deliberately *not* in `eos.json` — that file sits beside your comics and travels
-with the folder.
-
-**Your account is one account.** The calculator is not a separate user; it is a
-second terminal for yours. Anything typed on either is from you, and the history
-syncs both ways.
-
-**On the calculator**, `y=` opens the conversation list, `enter` opens one,
-`2nd` writes a message, and `clear` goes back.
-
-What you write is queued until a sync carries it away, and you can see it in the
-meantime: it appears at the end of the conversation, dimmed, under
-`you - waiting to send`, and the conversation list shows how many are waiting.
-Without that a message would vanish for two syncs — one to hand it over, another
-to bring it back from the relay — which looks exactly like having lost it.
-
-Two limits worth knowing:
-
-- **ASCII only.** The calculator has no CJK font — the same reason comic titles
-  are pre-rendered bitmaps. The page folds messages down before sending them:
-  accents are flattened, everything else becomes `?`.
-- **Each conversation keeps about 8 KB on the calculator**, roughly two hundred
-  messages, oldest dropped first. Flash is the comics' budget and chat is a
-  guest in it. The relay keeps everything.
-
-Nothing about chat is required to read comics, and a relay that is unreachable
-never stops a sync — messages taken off the calculator are stored on the
-computer first and go up whenever the relay comes back.
-
 ## The password
 
-Set one in Settings and eOS asks for it on the way in. Three wrong answers close
+Set one in Settings and eBookSync asks for it on the way in. Three wrong answers close
 the reader.
 
 Typing uses the letters printed on the keys: `alpha` switches between digits and
@@ -252,25 +191,25 @@ password do not look alike.
 ## Updating the calculator over the cable
 
 A CE program runs in place inside its own variable, so it cannot overwrite
-itself. eOS therefore ships **two** programs that install each other:
+itself. eBookSync therefore ships **two** programs that install each other:
 
 | | |
 |---|---|
-| `EOS` | the reader. Installs `EOSUP`. |
-| `EOSUP` | the updater. Installs `EOS`. |
+| `COMICS` | the reader. Installs `CSUP`. |
+| `CSUP` | the updater. Installs `COMICS`. |
 
 The page keeps the latest of both next to itself, and offers them when the
 calculator says it is behind. The updater is applied during the sync and you
 never see it. A reader update is sent and *armed*: to install it, quit the
-reader, run `prgmEOSUP` once, and run `EOS` again. The reader says so on the way
+reader, run `prgmCSUP` once, and run `COMICS` again. The reader says so on the way
 in, and the page says so when it has finished sending.
 
-Nothing is replaced until you run `prgmEOSUP`, so an interrupted update costs
+Nothing is replaced until you run `prgmCSUP`, so an interrupted update costs
 only the bytes it moved. The image is CRC-32 checked when it arrives and again
 before anything is deleted — a damaged one is thrown away rather than installed.
 
-A calculator with no `EOSUP` at all is given one on its first sync, which is why
-`EOS.8xp` is the only file you ever have to install by hand.
+A calculator with no `CSUP` at all is given one on its first sync, which is why
+`COMICS.8xp` is the only file you ever have to install by hand.
 
 To cut a build:
 
@@ -283,7 +222,7 @@ Commit what it puts in `web/eos/`; that is what the page serves.
 ## Two libraries, one calculator
 
 Each library folder gets an identifier the first time it is used, stored in
-`eos.json`, and the calculator keeps a copy alongside the comics. If you
+`ebooksync.json`, and the calculator keeps a copy alongside the comics. If you
 connect a calculator holding a different library, the page says so and offers to
 erase it rather than mixing the two -- the calculator would otherwise end up
 with comics the library cannot account for. The calculator's own sync screen

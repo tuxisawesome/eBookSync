@@ -1,5 +1,5 @@
 /*
- * eOS wrapper around Einar Saukas' ZX0 compressor (BSD-3-Clause, see
+ * eBookSync wrapper around Einar Saukas' ZX0 compressor (BSD-3-Clause, see
  * LICENSE in this directory). Exposes a one-call API so tools/csx can drive it
  * through ctypes instead of shelling out per band.
  */

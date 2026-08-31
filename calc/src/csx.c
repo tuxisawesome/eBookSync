@@ -29,8 +29,8 @@ static char hex_digit(uint8_t value) {
 }
 
 void csx_chunk_name(char *name, uint8_t slot, uint8_t chunk) {
-    name[0] = 'E';
-    name[1] = 'O';
+    name[0] = 'C';
+    name[1] = 'S';
     name[2] = hex_digit(slot >> 4);
     name[3] = hex_digit(slot & 0x0F);
     name[4] = hex_digit(chunk >> 4);

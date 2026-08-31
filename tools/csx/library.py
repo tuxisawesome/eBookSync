@@ -1,6 +1,6 @@
-"""The EOSLIB library index: what is on the calculator, and what it is called.
+"""The CSLIB library index: what is on the calculator, and what it is called.
 
-EOSLIB is a single appvar describing only the content actually resident on the
+CSLIB is a single appvar describing only the content actually resident on the
 calculator -- the computer stays the source of truth for the whole library. It
 carries the book/strip tree, per-strip read state and saved scroll position, and
 the pre-rendered title bitmaps.
@@ -18,9 +18,9 @@ import struct
 
 from . import titles as titles_mod, zx0
 
-MAGIC = b"EOSLB"
+MAGIC = b"CSLIB"
 VERSION = 3
-NAME = "EOSLIB"
+NAME = "CSLIB"
 
 HEADER_FMT = "<5sBHHH16s64s"   # 92 bytes: 28, then the device block
 
@@ -135,9 +135,9 @@ def parse(data):
     magic, version, book_count, strip_count, _, library_id, _device = struct.unpack_from(
         HEADER_FMT, data, 0)
     if magic != MAGIC:
-        raise ValueError("not an EOSLIB index")
+        raise ValueError("not a CSLIB index")
     if version != VERSION:
-        raise ValueError(f"unsupported EOSLIB version {version}")
+        raise ValueError(f"unsupported CSLIB version {version}")
 
     def title_at(offset):
         width, height, length = struct.unpack_from("<HBH", data, offset)

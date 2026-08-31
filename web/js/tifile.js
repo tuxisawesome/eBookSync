@@ -5,7 +5,7 @@
  * strip can be loaded with TI Connect CE or into CEmu without the USB path --
  * the sync protocol sends raw chunk payloads instead.
  *
- * Reading is what the self-update needs: web/eos/EOS.8xp is a file in this
+ * Reading is what the self-update needs: web/comics/COMICS.8xp is a file in this
  * format, and what goes over the link is the program body inside it, not the
  * wrapper. The calculator creates the variable itself.
  *
@@ -32,7 +32,7 @@ export function encodeName(name) {
   return out;
 }
 
-export function writeAppvar(name, payload, { archived = true, comment = 'eOS' } = {}) {
+export function writeAppvar(name, payload, { archived = true, comment = 'eBookSync' } = {}) {
   if (payload.length > MAX_VAR_SIZE) {
     throw new Error(`${payload.length} bytes exceeds the ${MAX_VAR_SIZE} byte appvar limit`);
   }

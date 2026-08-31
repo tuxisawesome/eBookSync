@@ -37,13 +37,12 @@ static void put32(uint8_t *p, uint32_t value) {
 
 void update_chunk_name(char *name, uint8_t index) {
     static const char hex[] = "0123456789ABCDEF";
-    name[0] = 'E';
-    name[1] = 'O';
-    name[2] = 'S';
-    name[3] = 'U';
-    name[4] = hex[index >> 4];
-    name[5] = hex[index & 0x0F];
-    name[6] = '\0';
+    name[0] = 'C';
+    name[1] = 'S';
+    name[2] = 'U';
+    name[3] = hex[index >> 4];
+    name[4] = hex[index & 0x0F];
+    name[5] = '\0';
 }
 
 void update_discard(void) {

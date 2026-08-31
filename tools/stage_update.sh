@@ -48,10 +48,10 @@ make -C "$root/calc/updater" >/dev/null
     echo "export const PAGE_BUILD = $build;"
 } > "$root/web/js/version.js"
 
-out="$root/web/eos"
+out="$root/web/comics"
 mkdir -p "$out"
-cp "$root/calc/bin/EOS.8xp" "$out/EOS.8xp"
-cp "$root/calc/updater/bin/EOSUP.8xp" "$out/EOSUP.8xp"
+cp "$root/calc/bin/COMICS.8xp" "$out/COMICS.8xp"
+cp "$root/calc/updater/bin/CSUP.8xp" "$out/CSUP.8xp"
 
 # The manifest carries the sizes as a cheap sanity check on what was served;
 # the authoritative integrity check is the CRC the calculator runs over what it
@@ -64,10 +64,10 @@ build = int(sys.argv[2])
 
 manifest = {
     "build": build,
-    "eos": {"bytes": (out / "EOS.8xp").stat().st_size},
-    "eosup": {"bytes": (out / "EOSUP.8xp").stat().st_size},
+    "comics": {"bytes": (out / "COMICS.8xp").stat().st_size},
+    "updater": {"bytes": (out / "CSUP.8xp").stat().st_size},
 }
 (out / "build.json").write_text(json.dumps(manifest, indent=2) + "\n")
 PY
 
-echo "staged $out/EOS.8xp, $out/EOSUP.8xp and $out/build.json"
+echo "staged $out/COMICS.8xp, $out/CSUP.8xp and $out/build.json"

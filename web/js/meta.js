@@ -1,6 +1,6 @@
 /*
- * eos.json: the order of things, what has been read, what is selected, and when
- * we last synced.
+ * ebooksync.json: the order of things, what has been read, what is selected,
+ * and when we last synced.
  *
  * It lives in the root of the library directory so the state travels with the
  * comics. The calculator is authoritative for read flags and scroll positions
@@ -10,14 +10,14 @@
  * Order is stored here rather than inferred from filenames because the point of
  * the library editor is to let you arrange a library that does not happen to
  * sort the way you want it read. The order flows straight through to the
- * calculator: EOSLIB lists books and strips in array order, and the reader draws
+ * calculator: CSLIB lists books and strips in array order, and the reader draws
  * them in the order it finds them.
  */
 
 import { readJson, writeJson, titleFromFilename } from './fs.js';
 import { DEFAULT_PRESET, LAYER_PRESETS } from './convert.js';
 
-export const META_FILENAME = 'eos.json';
+export const META_FILENAME = 'ebooksync.json';
 export const VERSION = 4;
 
 /*
@@ -27,7 +27,7 @@ export const VERSION = 4;
  * on their disk: load() reads the old name when the new one is not there and
  * carries the library id across, and the next save writes the new one. The old
  * file is left alone rather than deleted -- it costs a few kilobytes, and an
- * eOS that turns out to be a mistake should be able to be walked back.
+ * eBookSync that turns out to be a mistake should be able to be walked back.
  */
 export const LEGACY_META_FILENAME = 'ebooksync.json';
 
@@ -124,7 +124,7 @@ export async function load(root) {
    * reconcile() from the natural sort the scan already did, which is exactly
    * the order a version 1 library was displayed in.
    *
-   * Version 4 is the eBookSync-to-eOS rename and changes nothing in here -- the
+   * Version 4 is the eBookSync-to-eBookSync rename and changes nothing in here -- the
    * library id is what matters and it is carried across above, so a library
    * that has already been synced is still recognised as the same one. */
   return meta;

@@ -1,15 +1,12 @@
 /*
- * The two web front ends: the sync page and the relay's chat client.
+ * The sync page, as far as it can be checked without a DOM.
  *
- * Neither has a DOM in the harness, so this checks the things that can be
- * checked without one -- and they are exactly the things that went wrong.
+ * Which is further than it sounds: the things that went wrong here were not
+ * behaviour, they were a stylesheet and a missing element id.
  *
  * The bug this exists for: `hidden` is `display: none` in the *user agent*
  * stylesheet, which loses to any author rule that sets `display` on the same
- * element. `main { display: grid }` therefore left the chat panel showing
- * underneath the library, and `body.chat #app { display: flex }` left the
- * relay's sign-in form stacked above the messages. Both looked like layout
- * bugs and were the same one-line omission.
+ * element -- so `main { display: grid }` left a `<main hidden>` on screen.
  *
  *   node tools/hosttest/check_page.mjs
  */
@@ -79,32 +76,25 @@ function displayRulesFor(css, names) {
   const html = read('web', 'index.html');
   const css = read('web', 'css', 'app.css');
   const main = read('web', 'js', 'main.js');
-  const chatui = read('web', 'js', 'chatui.js');
 
   check('the sync page makes hidden win', guardsHidden(css), true);
 
-  /* The chat panel and the library are separate tabs, so exactly one shows. */
-  check('the library view is a distinct element', /id="library-view"/.test(html), true);
-  check('the chat view starts hidden', /id="chat-view"[^>]*\shidden/.test(html), true);
-
-  const hazards = displayRulesFor(css, ['library-view', 'chat-view', 'chat-body', 'main']);
+  const hazards = displayRulesFor(css, ['main']);
   check('and there is a reason the guard is needed', hazards.length > 0, true);
 
   /* Every element the JS reaches for has to exist, or a whole panel silently
    * does nothing. */
   const ids = [...html.matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
   const missing = [];
-  for (const source of [main, chatui]) {
-    for (const use of source.matchAll(/\bel\('([^']+)'\)/g)) {
-      if (!ids.includes(use[1])) missing.push(use[1]);
-    }
+  for (const use of main.matchAll(/\bel\('([^']+)'\)/g)) {
+    if (!ids.includes(use[1])) missing.push(use[1]);
   }
   check('every element the page script reaches for exists', missing, []);
 }
 
 /* --- the page does not invent a library identity ------------------------- */
 /*
- * The field list for eos.json belongs in meta.js, next to the code that reads
+ * The field list for ebooksync.json belongs in meta.js, next to the code that reads
  * it back. When main.js kept its own copy it left `libraryId` out, so the id
  * was read on every load and saved on none -- and every reconnect reported the
  * user's own calculator as holding a different library.
@@ -118,25 +108,6 @@ function displayRulesFor(css, names) {
         /metaStore\.serialisable\(state\.meta\)/.test(main), true);
   check('and adopts the calculator\'s identity rather than minting one',
         /metaStore\.adoptLibraryId\(state\.meta, held\)/.test(main), true);
-}
-
-/* --- the sync plan accounts for chat ------------------------------------- */
-/*
- * describePlan disables the dialog's button when there is nothing to do, and
- * "nothing" used to mean the library alone -- so a sync with messages waiting
- * said "nothing to do" and refused to run.
- */
-{
-  const main = read('web', 'js', 'main.js');
-
-  check('the plan is given what the chat would move',
-        /describePlan\(plan, await chatWork\(\)\)/.test(main), true);
-  check('and the button is disabled on both halves together, not one',
-        /const nothingToDo = plan\.empty && !\(chat/.test(main), true);
-  check('the relay is read before the plan is described',
-        /await pullChat\(\);\s*\n\s*describePlan/.test(main), true);
-  check('and again before the calculator exchange',
-        /await pullChat\(log\);/.test(main), true);
 }
 
 /* --- the page says which build it is ------------------------------------- */
@@ -153,25 +124,6 @@ function displayRulesFor(css, names) {
   check('the page has somewhere to show its build', /id="page-build"/.test(html), true);
   check('and version.js declares one', /export const PAGE_BUILD = \d+/.test(version), true);
   check('and the page fills it in', /pageBuild\.textContent/.test(main), true);
-}
-
-/* --- the relay's chat client ---------------------------------------------- */
-{
-  const html = read('server', 'templates', 'app.html');
-  const css = read('server', 'static', 'app.css');
-  const app = read('server', 'static', 'app.js');
-
-  check('the relay page makes hidden win', guardsHidden(css), true);
-  check('the sign-in form starts hidden', /id="signin"[^>]*\shidden/.test(html), true);
-  check('and so does the app shell', /id="app"[^>]*\shidden/.test(html), true);
-
-  const hazards = displayRulesFor(css, ['app', 'signin', 'back', 'conversations', 'thread']);
-  check('and there is a reason the guard is needed here too', hazards.length > 0, true);
-
-  const ids = [...html.matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
-  const missing = [...app.matchAll(/\bel\('([^']+)'\)/g)]
-    .map((m) => m[1]).filter((id) => !ids.includes(id));
-  check('every element the client reaches for exists', missing, []);
 }
 
 /* --- and the guard actually does something -------------------------------- */
