@@ -189,14 +189,11 @@ bool ui_confirm(const char *line1, const char *line2) {
         input_scan();
 
         /*
-         * Before anything else looks at those keys. The combination holds 2nd,
-         * and 2nd on the book list opens the sync screen -- so a screen that
-         * checked its own keys first would go there instead of locking.
+         * No lock check here. 2nd is "yes" on this screen, and a question that
+         * answered itself by turning the calculator off would be worse than
+         * one that cannot be locked out of. The same goes for the password
+         * prompt, where 2nd switches case.
          */
-        if (lock_poll()) {
-            dirty = true;
-            continue;
-        }
         if (input_pressed(kb_Key2nd))
             return true;
         if (input_pressed(kb_KeyClear))
@@ -283,7 +280,7 @@ ui_result_t ui_book_menu(uint16_t *selection) {
                 gfx_SetTextFGColor(UI_DIM);
                 gfx_SetTextBGColor(UI_BG);
                 gfx_PrintStringXY("No comics yet.", 10, 90);
-                gfx_PrintStringXY("Press 2nd to sync from a computer.", 10, 108);
+                gfx_PrintStringXY("Press mode, then Sync, to fill it.", 10, 108);
             }
 
             for (uint16_t row = 0; row < UI_LIST_ROWS; row++) {

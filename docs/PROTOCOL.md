@@ -301,9 +301,15 @@ recovers on its own instead of failing every command after it.
 ## Status codes
 
 `0` OK, `1` unknown command, `2` bad length, `3` not enough archive space,
-`4` could not create or archive the variable, `5` not found, `6` payload ended
+`4` could not build the variable in RAM, `5` not found, `6` payload ended
 early, `7` the command does not apply right now, `8` the stored chunk does not
 match its checksum.
+
+`3` and `4` are both "no room" and they are not the same room. `3` is the
+archive, and deleting comics fixes it. `4` is RAM -- a 16 KB chunk is created
+there before it is archived -- and deleting comics does nothing at all. They
+were one status until a calculator with megabytes of archive free started
+reporting the archive as full.
 
 `freeArchive` is what fits **without** a garbage collect. Deleted variables do
 not hand their space back until the OS collects, and it does that by itself

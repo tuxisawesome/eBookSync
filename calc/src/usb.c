@@ -40,6 +40,7 @@
 #include "crc32.h"
 #include "csx.h"
 #include "library.h"
+#include "scratch.h"
 #include "update.h"
 #include "wall.h"
 
@@ -343,7 +344,18 @@ static void do_index_get(void) {
 }
 
 /* Create one appvar from `data`, and archive it. */
-static bool store_from(const char *name, const uint8_t *data, uint32_t length) {
+/*
+ * `built` says the variable was created and written in RAM; the return value
+ * says it also reached the archive.
+ *
+ * The two failures are different resources and the computer can only act on one
+ * of them. Running out of RAM to build a 16 KB variable in reported itself as
+ * "not enough archive space" on a calculator with megabytes of archive free,
+ * which sends the user to delete comics that were never the problem.
+ */
+static bool store_from(const char *name, const uint8_t *data, uint32_t length,
+                       bool *built) {
+    *built = false;
     ti_Delete(name);
 
     uint8_t handle = ti_Open(name, "w");
@@ -351,6 +363,7 @@ static bool store_from(const char *name, const uint8_t *data, uint32_t length) {
         return false;
 
     bool ok = ti_Write(data, (size_t)length, 1, handle) == 1;
+    *built = ok;
 
     /*
      * Archive rather than checking for room first: the OS collects deleted
@@ -366,7 +379,8 @@ static bool store_from(const char *name, const uint8_t *data, uint32_t length) {
 
 /* The same, from the start of the payload buffer. */
 static bool store(const char *name, uint32_t length) {
-    return store_from(name, payload, length);
+    bool built;
+    return store_from(name, payload, length, &built);
 }
 
 /*
@@ -417,8 +431,11 @@ static void do_put_chunk(void) {
     char name[9];
     csx_chunk_name(name, argument, index);
 
-    if (!store_from(name, payload + 5, length)) {
-        answer(PROTO_NO_ROOM, NULL, 0);
+    bool built;
+    if (!store_from(name, payload + 5, length, &built)) {
+        /* Built but not archived is the archive being full; not built at all is
+         * RAM, and no amount of deleting comics will help with that. */
+        answer(built ? PROTO_NO_ROOM : PROTO_WRITE_FAIL, NULL, 0);
         return;
     }
 
@@ -980,14 +997,13 @@ bool proto_run(proto_progress_t progress, bool echo_only) {
     gc_count = 0;
     ti_SetGCBehavior(gc_before, gc_after);
 
-    /* The band cache has been handed back by now, so there is room. */
-    payload = malloc(CSX_CHUNK_SIZE + PROTO_ARG_BYTES);
+    /* Shared with the lock screen, which cannot be up while this is. */
+    payload = scratch;
 
     if (usb_Init(handle_event, NULL, srl_GetCDCStandardDescriptors(),
                  USB_DEFAULT_INIT_FLAGS) != USB_SUCCESS) {
         usb_Cleanup();
         ti_SetGCBehavior(NULL, NULL);
-        free(payload);
         payload = NULL;
         return false;
     }
@@ -1019,7 +1035,6 @@ bool proto_run(proto_progress_t progress, bool echo_only) {
 
     usb_Cleanup();
     ti_SetGCBehavior(NULL, NULL);
-    free(payload);
     payload = NULL;
     return true;
 }

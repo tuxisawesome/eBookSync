@@ -131,7 +131,7 @@ export const STATUS = {
   1: 'unknown command',
   2: 'bad length',
   3: 'not enough archive space',
-  4: 'could not write the variable',
+  4: 'the calculator ran out of memory to build the variable in',
   5: 'not found',
   6: 'payload ended early',
   7: 'the calculator cannot do that right now',

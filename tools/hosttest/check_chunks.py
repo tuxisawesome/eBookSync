@@ -208,6 +208,22 @@ def main():
               (Path(tmp) / f"{fmt.chunk_name(10, 0)}.bin").exists(), True)
         check("bad-crc session: probe used the link correctly", code, 0)
 
+    # --- a chunk still fits with the buffer now shared -----------------------
+    #
+    # The payload buffer and the lock screen's band scratch are the same memory,
+    # because neither can be live while the other is. A full chunk plus its
+    # index and CRC has to fit in it, and getting that arithmetic wrong rejects
+    # every full chunk while every short one works.
+    with tempfile.TemporaryDirectory() as tmp:
+        full = bytes(i & 0xFF for i in range(16384))
+        probe = Probe(save_dir=tmp)
+        probe.hello()
+        check("a full 16 KB chunk still fits", probe.put_chunk(7, 1, full), STATUS_OK)
+        code = probe.close()
+        stored = Path(tmp) / f"{fmt.chunk_name(7, 1)}.bin"
+        check("and lands whole", stored.read_bytes() if stored.exists() else None, full)
+        check("full-chunk session: probe used the link correctly", code, 0)
+
     # --- does the strip actually open? ------------------------------------
     #
     # The failure this whole command exists for. Every chunk that arrives is
