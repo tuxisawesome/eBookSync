@@ -60,4 +60,16 @@ bool lock_prompt(void);
  */
 keyin_backdrop_t lock_backdrop(void);
 
+/*
+ * Put the operating system's power-on flag in step with the setting.
+ *
+ * Safe to call at any time, and called on the way into the reader so it
+ * re-asserts itself: the flag lives in RAM, so a RAM clear turns it off without
+ * telling anybody.
+ */
+void lock_arm_power_on(void);
+
+/* Is prgmONSCRPT installed? Without it there is nothing for the OS to run. */
+bool lock_power_on_ready(void);
+
 #endif /* LOCK_H */

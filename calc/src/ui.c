@@ -575,6 +575,7 @@ static void password_screen(void) {
 void ui_setup_screen(void) {
     static const char *const entries[] = {
         "Password",
+        "Lock at power-on",
         "Erase the library",
         "Link echo test",
         "About",
@@ -625,11 +626,28 @@ void ui_setup_screen(void) {
                     gfx_PrintStringXY("comics, not a determined one.", 10, 176);
                     break;
                 case 1:
+                    if (!lib_password_set()) {
+                        gfx_PrintStringXY("Set a password first -- there", 10, 140);
+                        gfx_PrintStringXY("would be nothing to ask for.", 10, 158);
+                    } else if (!lock_power_on_ready()) {
+                        gfx_PrintStringXY("Sync first: the calculator has", 10, 140);
+                        gfx_PrintStringXY("no copy of the lock screen to", 10, 158);
+                        gfx_PrintStringXY("run yet.", 10, 176);
+                    } else {
+                        gfx_PrintStringXY(lib_lock_on_power()
+                            ? "On. Turning the calculator on"
+                            : "Off. Turning it on goes to the", 10, 140);
+                        gfx_PrintStringXY(lib_lock_on_power()
+                            ? "asks for the password first."
+                            : "operating system as usual.", 10, 158);
+                    }
+                    break;
+                case 2:
                     gfx_PrintStringXY("Deletes every comic on this", 10, 140);
                     gfx_PrintStringXY("calculator. The computer keeps", 10, 158);
                     gfx_PrintStringXY("its copies.", 10, 176);
                     break;
-                case 2:
+                case 3:
                     gfx_PrintStringXY("Echoes bytes straight back to", 10, 140);
                     gfx_PrintStringXY("the computer. For working out", 10, 158);
                     gfx_PrintStringXY("why a sync will not start.", 10, 176);
@@ -669,9 +687,29 @@ void ui_setup_screen(void) {
             switch (selected) {
                 case 0:
                     password_screen();
+                    lock_arm_power_on();
                     break;
 
                 case 1:
+                    if (!lib_password_set()) {
+                        ui_message("Set a password first.", "There is nothing to ask for.");
+                    } else if (!lock_power_on_ready()) {
+                        ui_message("Sync first.", "The lock screen is not here yet.");
+                    } else {
+                        bool wanted = !lib_lock_on_power();
+                        if (!lib_set_lock_on_power(wanted)) {
+                            ui_message("Could not save that.", NULL);
+                        } else {
+                            lock_arm_power_on();
+                            ui_message(wanted ? "Lock at power-on: on."
+                                              : "Lock at power-on: off.",
+                                       wanted ? "The password is asked for first."
+                                              : NULL);
+                        }
+                    }
+                    break;
+
+                case 2:
                     if (ui_confirm("Erase every comic on this", "calculator?")) {
                         uint16_t removed = lib_reset();
                         char message[40];
@@ -680,7 +718,7 @@ void ui_setup_screen(void) {
                     }
                     break;
 
-                case 2:
+                case 3:
                     ui_sync_run(true);
                     break;
 

@@ -128,6 +128,13 @@ bool lib_ensure(void) {
 #define DEV_WALL_SET      0x01
 
 #define DEV_PW_SET        0x01
+
+/*
+ * Ask the operating system to run the lock screen when the calculator is
+ * turned on. Only meaningful with a password set, and stored beside it because
+ * it is the same decision: deleting the index turns this off too.
+ */
+#define DEV_PW_POWERON    0x02
 #define DEV_SALT_SIZE     16
 #define DEV_CLOCK_SIZE    4
 
@@ -226,7 +233,7 @@ bool lib_password_store(const char *password) {
     device_copy(block);
 
     if (!password || !*password) {
-        block[DEV_PW_FLAGS] &= (uint8_t)~DEV_PW_SET;
+        block[DEV_PW_FLAGS] &= (uint8_t)~(DEV_PW_SET | DEV_PW_POWERON);
         memset(block + DEV_PW_SALT, 0, DEV_SALT_SIZE + SHA256_SIZE);
         block[DEV_PW_FAILURES] = 0;
         return lib_set_device(block);
@@ -244,6 +251,26 @@ bool lib_password_store(const char *password) {
     password_digest(block + DEV_PW_SALT, password, block + DEV_PW_HASH);
     block[DEV_PW_FLAGS] |= DEV_PW_SET;
     block[DEV_PW_FAILURES] = 0;
+    return lib_set_device(block);
+}
+
+bool lib_lock_on_power(void) {
+    const uint8_t *device = lib_device();
+    return device && (device[DEV_PW_FLAGS] & DEV_PW_SET)
+                  && (device[DEV_PW_FLAGS] & DEV_PW_POWERON);
+}
+
+bool lib_set_lock_on_power(bool wanted) {
+    uint8_t block[LIB_DEVICE_SIZE];
+    device_copy(block);
+
+    if (wanted == ((block[DEV_PW_FLAGS] & DEV_PW_POWERON) != 0))
+        return true;               /* an index rewrite is a flash write */
+
+    if (wanted)
+        block[DEV_PW_FLAGS] |= DEV_PW_POWERON;
+    else
+        block[DEV_PW_FLAGS] &= (uint8_t)~DEV_PW_POWERON;
     return lib_set_device(block);
 }
 

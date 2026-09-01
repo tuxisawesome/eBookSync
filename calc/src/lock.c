@@ -5,6 +5,7 @@
 #include "library.h"
 #include "render.h"
 #include "ui.h"
+#include "update.h"
 #include "wall.h"
 
 #include <graphx.h>
@@ -12,6 +13,7 @@
 #include <sys/lcd.h>
 #include <sys/power.h>
 #include <sys/rtc.h>
+#include <fileioc.h>
 #include <ti/flags.h>
 #include <tice.h>
 
@@ -306,5 +308,51 @@ bool lock_poll(void) {
     locking = true;
     lock_engage();
     locking = false;
+    return true;
+}
+
+/* ------------------------------------------------------- lock at power-on */
+
+/*
+ * Tell the operating system whether to run the lock screen when the calculator
+ * is turned on.
+ *
+ * TI-OS runs a program called ONSCRPT at power-on when this flag is set. That
+ * is a documented feature of the operating system, and it is the only way a
+ * program can get control before the homescreen -- the alternative is a Flash
+ * application, and those cannot be installed without TI's signing key.
+ *
+ * Three things have to be true or the flag comes off: the user asked for it,
+ * there is a password to ask for, and prgmONSCRPT is actually installed. The
+ * last is not paranoia. os_Flags lives in RAM, so a RAM clear takes the flag
+ * with it -- which is the escape hatch if this ever goes wrong -- but a sync
+ * that never delivered ONSCRPT would otherwise leave the OS trying to run a
+ * program that is not there, at every power-on.
+ *
+ * Called on the way in, so it re-asserts itself after a RAM clear has silently
+ * turned it off, and again whenever the setting changes.
+ */
+void lock_arm_power_on(void) {
+    bool wanted = lib_lock_on_power();
+
+    if (wanted) {
+        uint8_t handle = ti_OpenVar(UPDATE_LOCK_NAME, "r", OS_TYPE_PRGM);
+        if (handle)
+            ti_Close(handle);
+        else
+            wanted = false;
+    }
+
+    if (wanted)
+        os_Flags[OS_FLAGS_HOOKS1] |= 1 << OS_FLAGS_HOOKS1_ALT_ON;
+    else
+        os_Flags[OS_FLAGS_HOOKS1] &= (uint8_t)~(1 << OS_FLAGS_HOOKS1_ALT_ON);
+}
+
+bool lock_power_on_ready(void) {
+    uint8_t handle = ti_OpenVar(UPDATE_LOCK_NAME, "r", OS_TYPE_PRGM);
+    if (!handle)
+        return false;
+    ti_Close(handle);
     return true;
 }
