@@ -205,9 +205,14 @@ static void sleep_until_on(void) {
     boot_Set48MHzMode();
 
     /*
-     * A wake from APD hands the LCD back in the operating system's own mode, so
-     * graphx has to be told again. Harmless if the power-down never fired.
+     * A wake from the power-down hands the LCD back in the operating system's
+     * own 16bpp mode, and graphx will not put it back if it believes it is
+     * already running -- which shows up as the last thing drawn repeating four
+     * times in the wrong colours, 8bpp bytes being read two to a pixel. End it
+     * first so the re-init actually re-initialises. Harmless if the power-down
+     * never fired.
      */
+    gfx_End();
     gfx_Begin();
     gfx_SetDrawBuffer();
     ui_set_chrome_palette();

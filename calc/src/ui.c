@@ -308,7 +308,7 @@ ui_result_t ui_book_menu(uint16_t *selection) {
             }
 
             draw_scrollbar(&list);
-            ui_footer("enter open  2nd sync  del read  mode setup");
+            ui_footer("enter open  2nd lock  del read  mode setup");
             dirty = false;
             drew = true;
         }

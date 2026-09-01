@@ -300,6 +300,7 @@ static bool on_latched;
 void kb_EnableOnLatch(void) { on_latched = true; }
 void kb_DisableOnLatch(void) { on_latched = false; }
 void kb_ClearOnLatch(void) { shim_kb_on = 0; }
+bool shim_on_latch_enabled(void) { return on_latched; }
 
 uint8_t shim_kb_on_read(void) {
     kb_Scan();                 /* time passes; the script gets its turn */

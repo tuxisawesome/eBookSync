@@ -282,6 +282,16 @@ with tempfile.TemporaryDirectory() as tmp:
           LEAD + press("2nd+on") + press("on") + press("clear"),
           RUNNING, directory=directory)
 
+# --- the ON latch is handed back on the way out -----------------------------
+#
+# It has to be enabled before kb_On reports anything -- not doing that is why
+# 2nd+ON could never fire -- but keypadc's header warns it persists between
+# program runs. Enabling it and walking away leaves the operating system's own
+# ON handling sitting underneath the reader's.
+check("quitting hands the ON latch back", LEAD + press("clear"), CLOSED,
+      expect_output="on latch released")
+
+
 # --- the lock screen must not ask the heap for anything ---------------------
 #
 # render_init() takes the band cache by calling malloc until it is refused, so

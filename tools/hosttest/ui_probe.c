@@ -84,6 +84,13 @@ static const struct { const char *name; kb_lkey_t key; } KEYS[] = {
  */
 static void report(void) {
     printf("apd %d\n", (os_Flags[OS_FLAGS_APD] >> OS_FLAGS_APD_RUNNING) & 1);
+
+    /*
+     * The ON latch has to be handed back. keypadc's header says it persists
+     * between program runs, so a reader that enabled it and walked away leaves
+     * the operating system's own ON handling sitting underneath ours.
+     */
+    printf("on latch %s\n", shim_on_latch_enabled() ? "left on" : "released");
 }
 
 static kb_lkey_t lookup(const char *name) {

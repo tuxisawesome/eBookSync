@@ -54,12 +54,14 @@ int main(void) {
     wall_sweep();
 
     if (!ui_password_gate()) {
+        input_release();
         gfx_End();
         return 0;
     }
 
     if (!render_init()) {
         ui_message("Not enough free memory.", "Archive or delete some files.");
+        input_release();
         gfx_End();
         return 1;
     }
@@ -131,6 +133,13 @@ int main(void) {
 
     render_free();
     ti_SetGCBehavior(NULL, NULL);
+
+    /*
+     * Hand the ON latch back. keypadc's header is explicit that it persists
+     * between program runs, so a reader that enabled it and walked away leaves
+     * the operating system's own ON handling sitting on top of ours.
+     */
+    input_release();
     gfx_End();
     return 0;
 }

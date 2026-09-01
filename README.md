@@ -196,8 +196,10 @@ password do not look alike.
 
 ## Locking it
 
-Press `2nd` anywhere in the reader and the calculator turns off. Press `on` again and it comes back to your wallpaper, with the date and
-time along the top and the password prompt under them.
+Press `2nd` anywhere in the reader and the calculator turns off. Press `on` and
+it comes back to your wallpaper, with the date and time along the top; any key
+then brings up the password prompt, drawn on a plain background so a
+full-screen image is not redrawn behind every keystroke.
 
 It is a real power-off, not an imitation: the reader winds the operating
 system's own automatic power-down timer to nothing and lets the OS do it, which
@@ -221,7 +223,7 @@ TI's signing key or a privilege-escalation exploit. So quitting to the
 homescreen is quitting, and the lock is a lock on your comics rather than on the
 calculator.
 
-The sync screen is the one place `2nd`+`on` does nothing. A transfer is in flight there
+The sync screen is the one place `2nd` does nothing. A transfer is in flight there
 and graphics are handed back to the operating system for the duration; locking
 would strand a strip half-written. Press `clear` first.
 

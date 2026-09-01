@@ -6,4 +6,4 @@
  * It is the same number the calculator reports over HELLO, so a page and a
  * reader can be told apart from each other at a glance.
  */
-export const PAGE_BUILD = 18;
+export const PAGE_BUILD = 19;

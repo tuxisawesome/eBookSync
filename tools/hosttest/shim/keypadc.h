@@ -1,5 +1,6 @@
 #ifndef KEYPADC_H
 #define KEYPADC_H
+#include <stdbool.h>
 #include <stdint.h>
 typedef uint16_t kb_lkey_t;
 extern uint16_t shim_kb_data[8];
@@ -86,5 +87,9 @@ uint8_t shim_kb_on_read(void);
 void kb_EnableOnLatch(void);
 void kb_DisableOnLatch(void);
 void kb_ClearOnLatch(void);
+
+/* Is the latch still on? It persists between program runs on hardware, so
+ * leaving it enabled is a real thing to get wrong. */
+bool shim_on_latch_enabled(void);
 
 #endif
