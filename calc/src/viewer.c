@@ -11,6 +11,7 @@
 #include "csx.h"
 #include "input.h"
 #include "library.h"
+#include "lock.h"
 #include "render.h"
 #include "ui.h"
 
@@ -169,6 +170,13 @@ bool viewer_run(uint16_t strip_index) {
         }
 
         input_scan();
+
+        /* 2nd+ON reaches the viewer too. The lock puts palette entries 0-15
+         * back the way it found them, so the strip only needs drawing again. */
+        if (lock_poll()) {
+            dirty = true;
+            overlay = OVERLAY_FRAMES;
+        }
 
         unsigned held = input_held_frames();
         int step = PAN_STEP_SLOW;

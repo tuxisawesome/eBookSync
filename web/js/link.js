@@ -13,11 +13,23 @@
  * is all this protocol ever wanted. See docs/PROTOCOL.md.
  */
 
+import { crc32 } from './crc32.js';
+
 /* srldrvce presents these -- the shared V-USB CDC identifiers. */
 export const USB_VENDOR_ID = 0x16c0;
 export const USB_PRODUCT_ID = 0x05e1;
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
+
+/*
+ * The oldest calculator that checksums what it stores.
+ *
+ * Below this, PUT_CHUNK has no room for a CRC and there is no VERIFY, so a
+ * strip is sent the old way and taken on trust -- which is exactly the gap
+ * protocol 4 exists to close. Worth saying out loud rather than letting the
+ * page quietly behave differently against an older reader.
+ */
+export const VERIFIED_PROTOCOL_VERSION = 4;
 
 /*
  * The oldest calculator this page can still talk to at all.
@@ -73,7 +85,18 @@ export const CMD = {
   UPDATE_END: 0x0c,
 
   CLOCK_SET: 0x0d,
+  VERIFY: 0x0e,
+  WALLPAPER: 0x0f,
 };
+
+/*
+ * The slot the lock screen wallpaper lives in, matching CSX_WALLPAPER_SLOT.
+ *
+ * A 320x240 image is a very short strip, so it goes over the wire as an
+ * ordinary container through PUT_CHUNK and needs nothing of its own. Strip
+ * slots are handed out upwards from 0 and stop one short of this.
+ */
+export const WALLPAPER_SLOT = 0xffff;
 
 /*
  * Which program an UPDATE_* command is about.
@@ -112,7 +135,12 @@ export const STATUS = {
   5: 'not found',
   6: 'payload ended early',
   7: 'the calculator cannot do that right now',
+  8: 'the chunk did not arrive intact',
 };
+
+/* The two worth branching on by name rather than by number. */
+export const STATUS_NO_ROOM = 3;
+export const STATUS_BAD_CRC = 8;
 
 export class ProtocolError extends Error {
   constructor(cmd, status) {
@@ -139,6 +167,12 @@ export class Calculator {
     /* Whatever arrived but has not been consumed yet: a stream gives no
      * guarantee about where reads land relative to messages. */
     this.pending = new Uint8Array(0);
+    /*
+     * The protocol the calculator answered HELLO with, or 0 before it has.
+     * putChunk shapes its payload from this, so an older reader still gets the
+     * form it understands over the same link the update travels on.
+     */
+    this.version = 0;
   }
 
   /** Prompt for the calculator's serial port, or reuse one already granted. */
@@ -287,6 +321,7 @@ export class Calculator {
      * to offer -- see describeCompatibility().
      */
     const version = body[0];
+    this.version = version;
     return {
       version,
       compatible: version === PROTOCOL_VERSION,
@@ -384,12 +419,54 @@ export class Calculator {
    * The slot takes the whole of `arg`, so the chunk index goes at the front of
    * the payload. A library may hold more than 256 strips and a slot is 16 bits;
    * there is no room left in the header for both. See docs/PROTOCOL.md.
+   *
+   * From protocol 4 the chunk's CRC-32 rides in front of it too, and the
+   * calculator reads the stored appvar back out of flash to check it. `crc` may
+   * be omitted, in which case it is computed here.
+   *
+   * A protocol 3 calculator is sent the old form. That is not politeness: the
+   * update that would bring it up to 4 travels over this same link, so the page
+   * has to stay able to talk to a reader that is behind.
    */
-  async putChunk(slot, index, chunk) {
-    const payload = new Uint8Array(1 + chunk.length);
+  async putChunk(slot, index, chunk, crc = null) {
+    const verified = this.version >= VERIFIED_PROTOCOL_VERSION;
+    const payload = new Uint8Array((verified ? 5 : 1) + chunk.length);
+
     payload[0] = index;
-    payload.set(chunk, 1);
+    if (verified) {
+      new DataView(payload.buffer).setUint32(1, crc === null ? crc32(chunk) : crc, true);
+    }
+    payload.set(chunk, verified ? 5 : 1);
+
     await this.request(CMD.PUT_CHUNK, payload, slot);
+  }
+
+  /**
+   * Does this strip open on the calculator?
+   *
+   * Runs csx_open() over there -- the same call the reader makes when a strip is
+   * picked -- so the answer means what it will mean then. Returns the chunk
+   * count, or null if the strip cannot be opened or the reader is too old to
+   * have been asked.
+   *
+   * A per-chunk CRC cannot stand in for this. It only ever sees the chunks that
+   * turned up, and a strip with a hole in it is stored, indexed, and drawn in
+   * the menu with its title -- it fails only when somebody opens it.
+   */
+  async verifyStrip(slot) {
+    /* Too old to be asked. Say so rather than reporting a pass, so the caller
+     * can tell "checked and fine" from "could not check". */
+    if (this.version < VERIFIED_PROTOCOL_VERSION) {
+      return { checked: false, ok: true, chunkCount: 0 };
+    }
+
+    try {
+      const body = await this.request(CMD.VERIFY, new Uint8Array(0), slot);
+      return { checked: true, ok: true, chunkCount: body.length ? body[0] : 0 };
+    } catch (error) {
+      if (error instanceof ProtocolError) return { checked: true, ok: false, chunkCount: 0 };
+      throw error;
+    }
   }
 
   async deleteStrip(slot) {
@@ -399,6 +476,26 @@ export class Calculator {
     } catch (error) {
       /* Deleting something that was already gone is not a failure. */
       if (error instanceof ProtocolError && error.status === 5) return 0;
+      throw error;
+    }
+  }
+
+  /**
+   * Claim, or disown, the wallpaper sitting in the reserved slot.
+   *
+   * The calculator checksums it and records that in the device block, which is
+   * what ties it to the table of contents: delete the index to get past the
+   * password and the wallpaper goes with it. Silently does nothing on a reader
+   * too old to have a lock screen.
+   */
+  async setWallpaper(present) {
+    if (this.version < VERIFIED_PROTOCOL_VERSION) return false;
+
+    try {
+      await this.request(CMD.WALLPAPER, new Uint8Array(0), present ? 1 : 0);
+      return true;
+    } catch (error) {
+      if (error instanceof ProtocolError) return false;
       throw error;
     }
   }

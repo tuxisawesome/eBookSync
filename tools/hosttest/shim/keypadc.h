@@ -62,4 +62,16 @@ typedef enum {
 #define kb_KeyDiv     ((kb_lkey_t)(6 << 8 | 1<<4))
 #define kb_KeyPower   ((kb_lkey_t)(6 << 8 | 1<<5))
 #define kb_IsDown(lkey) (kb_Data[(lkey) >> 8] & (lkey))
+
+/*
+ * ON is not in the key matrix.
+ *
+ * keypadc puts kb_Data at 0xF50010 and the ON key at 0xF00020, a different
+ * peripheral entirely, so no amount of kb_Scan() will ever report it. The
+ * reader reads it directly for the 2nd+ON lock combination; the test harness
+ * needs somewhere to put the answer.
+ */
+extern uint8_t shim_kb_on;
+#define kb_On (shim_kb_on & 1)
+
 #endif

@@ -1,10 +1,16 @@
 /*
  * CRC-32, the ordinary reflected one (polynomial 0xEDB88320).
  *
- * Nothing else in this protocol is checksummed, and deliberately so: the wire
- * is a USB byte stream with its own integrity, and a comic that arrives damaged
- * is a smeared page. A program that arrives damaged is a calculator that will
- * not start the reader, which is worth a second of arithmetic to rule out.
+ * Used for two things: the program image an update carries, and every chunk of
+ * every comic.
+ *
+ * Comics were left unchecked for a long time on the argument that a damaged one
+ * is only a smeared page. It is not. The reader refuses a container it cannot
+ * parse, and it has no way to say what went wrong or when -- so a chunk damaged
+ * during a sync becomes a strip that will not open, discovered days later with
+ * the cable put away. PUT_CHUNK now carries a CRC and the calculator reads the
+ * appvar back out of flash to check it, which covers the flash write as well as
+ * the wire.
  *
  * Computed a byte at a time with no lookup table. A 256-entry table would be a
  * kilobyte of the reader's very limited RAM to save a few tenths of a second,

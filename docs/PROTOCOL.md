@@ -54,7 +54,7 @@ and replies both go out as a single write.
 Arguments ride in the header's `arg` field where they fit: `DEL` carries the
 slot there, and so does `PUT_CHUNK`. A slot is 16 bits, so `PUT_CHUNK` has
 nothing left over for the chunk index and puts it at the front of the payload
-instead.
+instead, with the chunk's CRC-32 behind it.
 
 That would have been impossible on the old packet-based transport -- a few
 argument bytes at the front would have shared a packet with the data behind
@@ -103,9 +103,12 @@ transfer ever completing and no error ever reported. `srl_echo`, the one
 device-mode program in the toolchain that is known to work, makes no graphx
 calls at all and runs on the homescreen.
 
-So `ui_sync_screen()` calls `gfx_End()` before touching USB, draws its status on
-the OS text display, and calls `gfx_Begin()` again afterwards. The phase marker
-writes 16bpp pixels straight into video memory for the same reason.
+So `ui_sync_run()` calls `gfx_End()` before touching USB, draws its status on
+the OS text display, and calls `gfx_Begin()` again afterwards -- and puts the
+menus' garbage-collect handlers back, because `proto_run()` swapped in its own
+for the duration and cleared them on the way out. Forgetting that last part left
+every collect for the rest of the session drawing the OS prompt into 8bpp
+memory, where it cannot be seen and cannot be answered.
 
 ## The keypad, of all things
 
@@ -131,7 +134,7 @@ dropped" is the entire diagnosis, and there is nowhere else to see it.
 |-----|------|---------|-------|
 | 0x01 | `HELLO` | the 16-byte library id | `u8 protocol, u24 freeArchive, u8 maxChunks, u8 chunkSize/256, u8 library, u16 build, u8 flags, u16 armedBuild` |
 | 0x02 | `LIST` | - | `u16 count`, then `count` x 15-byte strip records |
-| 0x03 | `PUT_CHUNK` | `u8 chunkIndex`, then the chunk; `arg` = slot | status only |
+| 0x03 | `PUT_CHUNK` | `u8 chunkIndex`, `u32 crc32`, then the chunk; `arg` = slot | status only |
 | 0x04 | `DEL` | none; `arg` = slot | `u8 chunksRemoved` |
 | 0x05 | `INDEX_GET` | - | the CSLIB bytes, device block zeroed (empty if there is no index) |
 | 0x06 | `INDEX_PUT` | the CSLIB bytes | status only |
@@ -142,6 +145,7 @@ dropped" is the entire diagnosis, and there is nowhere else to see it.
 | 0x0B | `UPDATE_CHUNK` | the chunk; `arg` = `target \| (index << 8)` | status only |
 | 0x0C | `UPDATE_END` | -; `arg` = target | status only |
 | 0x0D | `CLOCK_SET` | `u32 unix seconds` | status only |
+| 0x0E | `VERIFY` | -; `arg` = slot | `u8 chunkCount`, or `PROTO_NOT_FOUND` |
 
 `library` is `0` empty, `1` the same library as the computer's, `2` somebody
 else's, `3` not compared -- see "Two libraries, one calculator" in the README.
@@ -172,7 +176,7 @@ A `LIST` strip record is the on-calculator state of one strip:
 
 ## Version skew
 
-`PROTO_VERSION` is 3. The page reports a mismatch rather than refusing to talk,
+`PROTO_VERSION` is 4. The page reports a mismatch rather than refusing to talk,
 and that is deliberate: the update travels over this same link, so a page that
 hung up on an out-of-date calculator would be unable to fix exactly the
 calculators that need fixing.
@@ -180,8 +184,16 @@ calculators that need fixing.
 Protocol 1 has no `UPDATE_*` commands at all, so there is nothing the page can
 push it and the reader has to be installed once by hand. From 2 on, a calculator
 that is behind can always be brought forward over the link -- the `UPDATE_*`
-commands and `HELLO`'s reply are unchanged between 2 and 3, which is what keeps
-that escape hatch open across a format change like the 16-bit slot.
+commands and `HELLO`'s reply are unchanged from 2 to 4, which is what keeps that
+escape hatch open across format changes like the 16-bit slot and the chunk
+checksum.
+
+4 is where `PUT_CHUNK` grew its CRC-32 and `VERIFY` appeared. The page sends the
+old, unchecksummed `PUT_CHUNK` to a protocol 3 calculator and skips `VERIFY`
+there, because the build that would bring it up to 4 travels over this same
+link. That means a calculator on 3 is still taking its comics on trust -- which
+is exactly the gap 4 exists to close, so it is worth updating rather than
+living with.
 
 ## Updating the reader over the link
 
@@ -206,15 +218,29 @@ chunks sitting in the archive can be checksummed and copied through pointers
 without ever being staged. `target` is `0` for the reader and `1` for the
 updater.
 
-**This is the one thing here that is checksummed.** Nothing else in the protocol
-is, deliberately: the wire is a USB byte stream with its own integrity, and a
-comic that arrives damaged is a smeared page. A program that arrives damaged is
-a calculator that will not start the reader, and whose only way back is a cable
-and TI Connect. `UPDATE_END` CRC-32s every chunk where it lies in flash and
-refuses the lot on a mismatch -- `PROTO_TRUNCATED` -- with nothing replaced and
-nothing armed. `prgmCSUP` checks again before it deletes anything, because the
-chunks have been sitting in the archive since the sync and that is the last
-moment at which finding them damaged is free.
+`UPDATE_END` CRC-32s every chunk where it lies in flash and refuses the lot on a
+mismatch -- `PROTO_TRUNCATED` -- with nothing replaced and nothing armed.
+`prgmCSUP` checks again before it deletes anything, because the chunks have been
+sitting in the archive since the sync and that is the last moment at which
+finding them damaged is free.
+
+**This used to be the only thing here that was checksummed**, on the argument
+that the wire is a USB byte stream with its own integrity and a comic that
+arrives damaged is only a smeared page. That argument was wrong in a way that
+took a while to see. A damaged comic is not a smeared page: the reader refuses
+to open a container it cannot parse, and it has no way to say why or when the
+damage happened. Worse, nothing checked that a strip was *complete*, and a strip
+missing a chunk is stored, indexed, and drawn in the menu with its title and
+size -- indistinguishable from a good one until somebody picks it, which may be
+days later with the cable long since put away.
+
+So comics are checked too now, in two places. `PUT_CHUNK` carries the chunk's
+CRC-32, and the calculator reads the appvar back out of flash to check it --
+which covers the flash write, not just the wire -- deleting it and answering
+`PROTO_BAD_CRC` on a mismatch, so the page can simply send it again. And
+`VERIFY` runs `csx_open()` on a finished strip, the same call the reader makes
+when you pick one, so "it will not open" is something the sync says while the
+cable is still in.
 
 The page sends the updater first. If the session dies between the two, what is
 left is a calculator with a current updater and its old reader -- which still
@@ -272,14 +298,27 @@ recovers on its own instead of failing every command after it.
 
 `0` OK, `1` unknown command, `2` bad length, `3` not enough archive space,
 `4` could not create or archive the variable, `5` not found, `6` payload ended
-early, `7` the command does not apply right now.
+early, `7` the command does not apply right now, `8` the stored chunk does not
+match its checksum.
 
 `freeArchive` is what fits **without** a garbage collect. Deleted variables do
 not hand their space back until the OS collects, and it does that by itself
 during the next archive write that needs the room -- so the number is a floor.
 `PUT_CHUNK` therefore does not pre-check for space: it writes the variable and
 archives it, letting the collect happen, and only reports `3` if that genuinely
-fails. A sync that gets `3` should `DEL` more strips and retry the same chunk.
+fails.
+
+`3` and `8` are answered differently, and the difference is whether repeating
+the request could change anything. `8` means the bytes that landed are not the
+bytes that were sent, and the page still holds the right ones, so it re-sends
+the same chunk -- three times before giving up on the strip. `3` means there is
+no room, which will still be true on the second attempt: the page gives up on
+that strip and says so, leaving the choice of what to remove where it belongs,
+with the person who can see the plan. Making room on the calculator's own
+authority would delete comics nobody agreed to delete.
+
+Either way the strip is abandoned rather than half-written: the page `DEL`s the
+slot before moving on, so the next sync starts from nothing.
 
 ## How a sync goes
 
@@ -291,12 +330,23 @@ fails. A sync that gets `3` should `DEL` more strips and retry the same chunk.
    `ebooksync.json`; the calculator wins, because that is where reading happened.
 3. `DEL` for every strip that auto-cleanup decided to drop, then `SPACE` to see
    what that recovered.
-4. `PUT_CHUNK` for every chunk of every strip being pushed. Chunks are
-   independent and acknowledged one at a time, so an interrupted sync resumes by
-   simply re-`LIST`ing and sending what is missing.
-5. `INDEX_PUT` with a freshly built CSLIB describing what is now resident. The
+4. `PUT_CHUNK` for every chunk of every strip being pushed, each carrying its
+   own CRC-32. Chunks are independent and acknowledged one at a time, so an
+   interrupted sync resumes by simply re-`LIST`ing and sending what is missing.
+5. `VERIFY` on the strip's slot. Only if that comes back OK does the page record
+   the strip as resident -- otherwise it is `DEL`ed and reported, and the next
+   sync sends it again.
+
+   This is not belt and braces. The index in step 6 is built from what the page
+   believes is resident, and the `LIST` it reads back afterwards is built from
+   that index, so without step 5 the page is only ever checking its own claim
+   against itself.
+6. `INDEX_PUT` with a freshly built CSLIB describing what is now resident. The
    calculator splices its own device block back into it -- see docs/FORMAT.md.
-6. `BYE`.
+
+The page does not send `BYE`. The connection stays open so a second sync costs
+no reconnection, and the calculator leaves the sync screen when the user presses
+`clear`. `BYE` exists for anything that wants to hang up politely.
 
 Expect roughly 30-60 seconds per strip. Full-speed bulk gives about 1 Mbit/s in
 practice, but the flash write and the occasional garbage collect dominate, which

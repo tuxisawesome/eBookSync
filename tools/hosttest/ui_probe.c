@@ -55,6 +55,7 @@ static const struct { const char *name; kb_lkey_t key; } KEYS[] = {
     { "right", kb_KeyRight }, { "enter", kb_KeyEnter }, { "clear", kb_KeyClear },
     { "2nd", kb_Key2nd }, { "mode", kb_KeyMode }, { "del", kb_KeyDel },
     { "add", kb_KeyAdd }, { "sub", kb_KeySub }, { "idle", 0 },
+    { "on", kb_KeyOn },
 
     /* Enough of the keypad to type. keyin.c reads the letters printed on the
      * keys, so "math" types A, "1" types Y, and so on. */
@@ -126,9 +127,20 @@ int main(int argc, char **argv) {
             snprintf(name, sizeof name, "%s", argv[arg]);
         }
 
+        /*
+         * "a+b" holds both at once, which is the only way to script a chord --
+         * and 2nd+ON, the lock combination, is one.
+         */
+        kb_lkey_t keys[4];
+        int count = 0;
+        for (char *part = strtok(name, "+"); part && count < 4;
+             part = strtok(NULL, "+")) {
+            keys[count++] = lookup(part);
+        }
+
         /* A key has to come up before it can go down again, so every press is
          * followed by an idle frame unless the caller asked to hold it. */
-        shim_keys_add(lookup(name), frames);
+        shim_keys_add_many(keys, count, frames);
         if (!colon) shim_keys_add(0, 1);
     }
 

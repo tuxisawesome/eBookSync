@@ -76,6 +76,21 @@
       <small>KB. The calculator has about 3000 KB of archive in total.</small>
     </label>
 
+    <label class="field">
+      <span>Lock screen wallpaper</span>
+      <input id="wallpaper-file" type="file" accept="image/jpeg,image/png">
+      <small>
+        Saved as <code>wallpaper.jpg</code> in your library folder and sent on
+        the next sync. Press <strong>2nd</strong> and <strong>on</strong> on the
+        calculator to lock it.
+      </small>
+    </label>
+
+    <div class="field" id="wallpaper-current" hidden>
+      <img id="wallpaper-preview" alt="The current wallpaper" width="160" height="120">
+      <button id="wallpaper-clear" type="button">Remove the wallpaper</button>
+    </div>
+
     <h2>Calculator</h2>
     <dl class="stats">
       <dt>Status</dt><dd id="device-status">Not connected</dd>

@@ -261,6 +261,7 @@ uint24_t os_PutStrFull(const char *string) { (void)string; return 0; }
 
 uint16_t shim_vram[240 * 320];
 uint16_t shim_kb_data[8];
+uint8_t shim_kb_on;
 uint8_t shim_kb_config;
 
 static uint16_t script[MAX_FRAMES][8];
@@ -275,10 +276,21 @@ void shim_keys_clear(void) {
     scans = 0;
 }
 
-void shim_keys_add(kb_lkey_t key, int frames) {
+/*
+ * `keys` are held together, which is how a chord is scripted. Group 0 is not
+ * part of the key matrix and the reader never reads it, so it carries the ON
+ * key here -- see kb_On in the shim's keypadc.h.
+ */
+void shim_keys_add_many(const kb_lkey_t *keys, int count, int frames) {
     for (int i = 0; i < frames && script_length < MAX_FRAMES; i++, script_length++) {
-        if (key) script[script_length][key >> 8] = (uint8_t)key;
+        for (int k = 0; k < count; k++) {
+            if (keys[k]) script[script_length][keys[k] >> 8] |= (uint8_t)keys[k];
+        }
     }
+}
+
+void shim_keys_add(kb_lkey_t key, int frames) {
+    shim_keys_add_many(&key, 1, frames);
 }
 
 long shim_scan_count(void) { return scans; }
@@ -287,8 +299,10 @@ void kb_Scan(void) {
     scans++;
     if (script_position < script_length) {
         memcpy(shim_kb_data, script[script_position++], sizeof shim_kb_data);
+        shim_kb_on = (uint8_t)(shim_kb_data[0] & 1);
         return;
     }
+    shim_kb_on = 0;
 
     /* Script exhausted: hold nothing down. If the program is still going round
      * its loop long after that, it is not going to exit on its own -- which for
@@ -369,4 +383,37 @@ void zx0_Decompress(void *dst, const void *src) {
                 break;
         }
     }
+}
+
+/* ------------------------------------------------------------------ power */
+
+uint8_t shim_backlight;
+
+void boot_Set6MHzMode(void) { }
+void boot_Set48MHzMode(void) { }
+
+/* ------------------------------------------------------------------- clock */
+
+static uint8_t clock_day = 31, clock_month = 8, clock_hours = 14, clock_minutes = 7;
+static uint16_t clock_year = 2026;
+
+void shim_set_clock(uint8_t day, uint8_t month, uint16_t year,
+                    uint8_t hours, uint8_t minutes) {
+    clock_day = day;
+    clock_month = month;
+    clock_year = year;
+    clock_hours = hours;
+    clock_minutes = minutes;
+}
+
+void boot_GetDate(uint8_t *day, uint8_t *month, uint16_t *year) {
+    *day = clock_day;
+    *month = clock_month;
+    *year = clock_year;
+}
+
+void boot_GetTime(uint8_t *seconds, uint8_t *minutes, uint8_t *hours) {
+    *seconds = 0;
+    *minutes = clock_minutes;
+    *hours = clock_hours;
 }

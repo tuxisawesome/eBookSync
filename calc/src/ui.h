@@ -13,6 +13,23 @@
 void ui_set_chrome_palette(void);
 
 /*
+ * Install the menus' garbage-collect handlers.
+ *
+ * The OS may defragment the archive on any archive write -- marking a book
+ * read, saving a scroll position, storing the device block -- and it asks the
+ * user first. That prompt needs the LCD in its normal mode, and graphx has it
+ * in 8bpp, so the before-handler calls gfx_End() and the after-handler puts it
+ * back and re-maps the index, every pointer into which has just moved.
+ *
+ * It lives here rather than in main() because it has to be re-installed as well
+ * as installed: proto_run() swaps in its own pair for the duration of a sync
+ * and clears them on the way out, so without this the reader spends the whole
+ * rest of the session with no handler and draws the prompt into 8bpp memory,
+ * where it is invisible while the OS waits for a keypress.
+ */
+void ui_install_gc(void);
+
+/*
  * Show what has been drawn and wait for the frame.
  *
  * Menus used to run flat out, so key repeat was counted in loop iterations of
@@ -22,6 +39,7 @@ void ui_set_chrome_palette(void);
  * `drew` copies the new frame back into the drawing buffer so both hold the
  * same image; without that, pacing by swapping every turn would flicker between
  * the current frame and the previous one.
+ *
  */
 void ui_present(bool drew);
 

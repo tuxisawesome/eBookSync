@@ -48,6 +48,9 @@ around 50 KB of free RAM. That drives everything:
 - A strip costs roughly 140 KB at fit-width only, 390 KB with a 1.5x zoom layer,
   or 550 KB with 2x — so between about 5 and 22 strips fit at once. That is why
   clearing read strips is part of the design rather than an afterthought.
+- **One strip cannot exceed 1024 KB** once converted. Past that the reader
+  cannot open it at all, so the page refuses it and says which detail level
+  would fit. A very long episode at `fit+2x` can reach it.
 - Your *library* is not bounded by that. It can hold up to 65535 strips; the
   calculator just carries a few dozen of them at a time.
 - Titles are usually Chinese and the calculator has no CJK font, so the browser
@@ -142,6 +145,7 @@ memory bus, and USB loses whenever graphx has the LCD in its 8bpp mode.
 | `mode` | jump between fit-width and full zoom |
 | `del` | mark read or unread by hand |
 | `clear` | back |
+| `2nd`+`on` | lock the calculator |
 
 Reaching the last 5% of a strip marks it read on its own.
 
@@ -190,6 +194,38 @@ The password is stored as a random salt and SHA-256(salt + password), so it is
 not on the calculator in readable form and two calculators with the same
 password do not look alike.
 
+## Locking it
+
+Press `2nd` and `on` together, anywhere in the reader, and the screen goes dark
+the same way it does for the operating system's own `2nd`+`on`. Press `on` again
+and it comes back to your wallpaper, with the date and time along the top and
+the password prompt under them.
+
+**This one is a lock, not a speed bump, and it locks you out too.** Three wrong
+answers turn the screen off again and it comes back still locked — there is no
+way past it from the keypad, and no "closing" that hands you back the operating
+system. The ways out are the password, pulling the batteries, or a computer with
+this page on it. Set a password you will remember before you rely on it.
+
+If no password is set the gesture still works, as a screen blanker: any key
+brings it back.
+
+The sync screen is the one place it does nothing. A transfer is in flight there
+and graphics are handed back to the operating system for the duration; locking
+would strand a strip half-written. Press `clear` first.
+
+## The wallpaper
+
+Choose an image under **Lock screen wallpaper** in the page. It is copied into
+your library folder as `wallpaper.jpg` and sent on the next sync — cropped to
+fill the 320x240 screen, and reduced to 16 colours like everything else.
+
+Deleting the library index takes the wallpaper with it. That is deliberate, and
+it is the same deterrent the password already had: the index is the one thing
+that can say those bytes are a wallpaper, so a calculator whose table of
+contents has been thrown away to get past the prompt does not get to keep
+wearing your picture either. Sync again and it comes back.
+
 ## Updating the calculator over the cable
 
 A CE program runs in place inside its own variable, so it cannot overwrite
@@ -216,10 +252,10 @@ A calculator with no `CSUP` at all is given one on its first sync, which is why
 To cut a build:
 
 ```sh
-sh tools/stage_update.sh          # bumps calc/BUILD, builds both, copies to web/eos/
+sh tools/stage_update.sh          # bumps calc/BUILD, builds both, copies to web/comics/
 ```
 
-Commit what it puts in `web/eos/`; that is what the page serves.
+Commit what it puts in `web/comics/`; that is what the page serves.
 
 ## Two libraries, one calculator
 

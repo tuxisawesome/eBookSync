@@ -15,7 +15,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define PROTO_VERSION       3
+#define PROTO_VERSION       4
 
 /*
  * The calculator is a USB CDC serial port, so the computer finds it by the
@@ -31,16 +31,20 @@
  *
  * One chunk, plus room for the arguments that ride in front of it. PUT_CHUNK
  * puts the chunk index there, because a 16-bit slot leaves no room in the
- * header for both -- so a full chunk arrives one byte longer than a chunk.
- * Getting this wrong rejects every full chunk with "bad length" and nothing
- * smaller, which is a memorable afternoon.
+ * header for both -- so a full chunk arrives longer than a chunk. Getting this
+ * wrong rejects every full chunk with "bad length" and nothing smaller, which
+ * is a memorable afternoon.
+ *
+ * Protocol 4 put a CRC-32 in front of the chunk as well, so the arguments are
+ * five bytes now and four was no longer enough. Eight rather than five: the
+ * spare is nothing beside a 16 KB buffer, and it leaves room to do this again.
  */
-#define PROTO_ARG_BYTES     4
+#define PROTO_ARG_BYTES     8
 
 typedef enum {
     PROTO_HELLO      = 0x01,   /* -> version, free archive space */
     PROTO_LIST       = 0x02,   /* -> the resident strips and their read state */
-    PROTO_PUT_CHUNK  = 0x03,   /* <- one 16 KB chunk of a strip */
+    PROTO_PUT_CHUNK  = 0x03,   /* <- u8 chunk, u32 crc32, then the chunk */
     PROTO_DEL        = 0x04,   /* <- delete every chunk of a strip */
     PROTO_INDEX_GET  = 0x05,   /* -> the CSLIB index */
     PROTO_INDEX_PUT  = 0x06,   /* <- replace the CSLIB index */
@@ -60,6 +64,26 @@ typedef enum {
 
     /* The CE's clock is often unset, and read timestamps depend on it. */
     PROTO_CLOCK_SET    = 0x0D, /* <- u32 unix seconds */
+
+    /*
+     * Does this strip actually open?
+     *
+     * A per-chunk CRC says every chunk that arrived was intact. It cannot say
+     * they all arrived, and a strip with a hole in it is stored, listed, drawn
+     * in the menu with its title, and refused only when somebody picks it. This
+     * runs csx_open() on a slot -- the very call the reader makes -- so that
+     * failure surfaces during the sync that caused it.
+     */
+    PROTO_VERIFY       = 0x0E, /* -> u8 chunkCount; arg = slot */
+
+    /*
+     * The lock screen wallpaper, which is an ordinary container in a reserved
+     * slot and arrives through PUT_CHUNK like anything else. This is only the
+     * claim: `arg` 1 says "what is in that slot is the wallpaper", 0 says to be
+     * rid of it. The calculator checksums it and records that in the device
+     * block, which is what makes deleting the index cost the wallpaper too.
+     */
+    PROTO_WALLPAPER    = 0x0F, /* <- arg = 1 to adopt, 0 to forget */
 
     /*
      * Not a command: an unprompted notice that the calculator is about to be
@@ -105,6 +129,15 @@ typedef enum {
     PROTO_NOT_FOUND   = 5,
     PROTO_TRUNCATED   = 6,     /* the payload ended early */
     PROTO_BAD_STATE   = 7,     /* the command does not apply right now */
+
+    /*
+     * What was stored is not what was sent.
+     *
+     * Checked against the bytes where they lie in flash, so it covers the wire
+     * and the flash write both. The chunk is deleted rather than left where
+     * csx_open() would find it later and refuse the whole strip.
+     */
+    PROTO_BAD_CRC     = 8,
 } proto_status_t;
 
 /*

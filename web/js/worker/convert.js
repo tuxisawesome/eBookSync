@@ -18,6 +18,37 @@ import { despeckle, DEFAULT_DESPECKLE, mapToPalette, medianCut, rgbTo1555 } from
  * total canvas area; slicing keeps every intermediate comfortably small. */
 const SLICE_ROWS = 1024;
 
+/* The calculator's screen, which is the whole of a wallpaper. */
+const SCREEN_W = 320;
+const SCREEN_H = 240;
+
+/*
+ * The lock screen wallpaper: exactly one screen, cropped to fill it.
+ *
+ * A 320x240 image is a very short strip, so it goes through the same encoder as
+ * everything else and comes out as an ordinary .csx container -- which is why
+ * the calculator needs no wallpaper format, no wallpaper decoder and no
+ * wallpaper transfer command. Cover rather than letterbox: bars down the side
+ * of a lock screen look like a mistake.
+ */
+async function coverScreen(blob) {
+  const bitmap = await createImageBitmap(blob);
+  const scale = Math.max(SCREEN_W / bitmap.width, SCREEN_H / bitmap.height);
+  const width = Math.round(bitmap.width * scale);
+  const height = Math.round(bitmap.height * scale);
+
+  const canvas = new OffscreenCanvas(SCREEN_W, SCREEN_H);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(bitmap, (SCREEN_W - width) / 2, (SCREEN_H - height) / 2, width, height);
+  bitmap.close();
+
+  return {
+    width: SCREEN_W,
+    height: SCREEN_H,
+    rgba: ctx.getImageData(0, 0, SCREEN_W, SCREEN_H).data,
+  };
+}
+
 async function scaleTo(blob, width) {
   const probe = await createImageBitmap(blob);
   const height = Math.max(1, Math.round(probe.height * width / probe.width));
@@ -46,19 +77,29 @@ function readPixels(bitmap) {
 }
 
 async function convert(blob, settings, report) {
-  const widths = LAYER_PRESETS[settings.detail] || LAYER_PRESETS['fit+1.5x'];
   const threshold = settings.despeckle ?? DEFAULT_DESPECKLE;
-
   const rendered = [];
-  for (const width of widths) {
-    report({ stage: 'scaling', width });
-    const bitmap = await scaleTo(blob, width);
-    const image = readPixels(bitmap);
-    bitmap.close();
 
-    report({ stage: 'denoising', width });
+  if (settings.wallpaper) {
+    /* One layer, screen-sized. No zoom ladder: there is nothing to zoom into. */
+    report({ stage: 'scaling', width: SCREEN_W });
+    const image = await coverScreen(blob);
+
+    report({ stage: 'denoising', width: SCREEN_W });
     image.rgba = despeckle(image.rgba, image.width, image.height, threshold);
     rendered.push(image);
+  } else {
+    const widths = LAYER_PRESETS[settings.detail] || LAYER_PRESETS['fit+1.5x'];
+    for (const width of widths) {
+      report({ stage: 'scaling', width });
+      const bitmap = await scaleTo(blob, width);
+      const image = readPixels(bitmap);
+      bitmap.close();
+
+      report({ stage: 'denoising', width });
+      image.rgba = despeckle(image.rgba, image.width, image.height, threshold);
+      rendered.push(image);
+    }
   }
 
   /* One palette for the whole strip, chosen from the fit-width layer, so

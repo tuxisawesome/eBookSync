@@ -48,8 +48,12 @@ void csx_chunk_name(char *name, uint16_t slot, uint8_t chunk) {
  * "open". The pointer stays valid until a garbage collect moves things around,
  * which cannot happen while we are only reading. The handle is closed
  * immediately because only a handful may be open at once.
+ *
+ * The slot is sixteen bits here and must stay that way: taking it as a uint8_t
+ * silently read CS00<slot & 0xFF><chunk> for every slot from 256 up, which is
+ * either a strip that will not open or, worse, another strip's bytes.
  */
-static const uint8_t *map_chunk(uint8_t slot, uint8_t chunk) {
+static const uint8_t *map_chunk(uint16_t slot, uint8_t chunk) {
     char name[9];
     csx_chunk_name(name, slot, chunk);
 
@@ -112,17 +116,38 @@ bool csx_open(csx_strip_t *strip, uint16_t slot) {
     return true;
 }
 
+/*
+ * Delete every chunk of a strip.
+ *
+ * Chunks are contiguous from 0, so stopping at the first gap is exact and
+ * costs one lookup more than the strip has chunks.
+ *
+ * The tail past CSX_MAX_CHUNKS is for wreckage. A container built before the
+ * encoder enforced the chunk ceiling can have chunks 64 and up; csx_open()
+ * refuses it, and nothing else in the system can name those appvars -- DEL,
+ * lib_reset() and the page's orphan pass all work in slots, not chunk indices
+ * -- so they would sit in the archive for ever. They can only exist if the
+ * strip filled the ceiling, so a gap below it still ends the search and an
+ * ordinary strip costs no extra lookups at all.
+ */
 uint8_t csx_delete(uint16_t slot) {
     char name[9];
-    uint8_t removed = 0;
+    uint16_t removed = 0;
 
-    for (uint8_t chunk = 0; chunk < CSX_MAX_CHUNKS; chunk++) {
-        csx_chunk_name(name, slot, chunk);
-        if (!ti_Delete(name))
-            break;
+    for (uint16_t chunk = 0; chunk < 256; chunk++) {
+        csx_chunk_name(name, slot, (uint8_t)chunk);
+        if (!ti_Delete(name)) {
+            /* A gap below the ceiling ends the strip. A gap above it may not:
+             * keep going to the end of the name space to be sure. */
+            if (chunk < CSX_MAX_CHUNKS)
+                break;
+            continue;
+        }
         removed++;
     }
-    return removed;
+
+    /* The reply carries this in one byte, and 256 would read as none. */
+    return removed > 0xFF ? 0xFF : (uint8_t)removed;
 }
 
 const uint8_t *csx_band(const csx_strip_t *strip, uint16_t index, uint16_t *length) {

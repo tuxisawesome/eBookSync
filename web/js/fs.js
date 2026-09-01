@@ -124,6 +124,40 @@ export async function writeJson(root, name, value) {
   }
 }
 
+/*
+ * One file at the root of the library folder, beside ebooksync.json.
+ *
+ * scanLibrary() only looks inside directories, so a file put here cannot be
+ * mistaken for a book or a strip -- which is what makes the root the right
+ * place for the wallpaper.
+ */
+export async function readFile(root, name) {
+  try {
+    return await (await root.getFileHandle(name)).getFile();
+  } catch {
+    return null;
+  }
+}
+
+export async function writeFile(root, name, blob) {
+  const handle = await root.getFileHandle(name, { create: true });
+  const stream = await handle.createWritable();
+  try {
+    await stream.write(blob);
+  } finally {
+    await stream.close();
+  }
+}
+
+export async function removeFile(root, name) {
+  try {
+    await root.removeEntry(name);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /* ------------------------------------------------------------ library edits */
 
 /*

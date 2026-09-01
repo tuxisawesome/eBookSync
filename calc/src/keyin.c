@@ -1,6 +1,7 @@
 #include "keyin.h"
 
 #include "input.h"
+#include "lock.h"
 #include "render.h"
 #include "ui.h"
 
@@ -77,8 +78,12 @@ static const keyin_key_t KEYS[] = {
 #define VISIBLE     ((BOX_W - 10) / GLYPH_W)
 
 static void draw(const char *prompt, const char *hint, const char *text,
-                 uint8_t length, keyin_style_t style, bool alpha, bool lower) {
-    gfx_FillScreen(UI_BG);
+                 uint8_t length, keyin_style_t style, bool alpha, bool lower,
+                 keyin_backdrop_t backdrop) {
+    if (backdrop)
+        backdrop();
+    else
+        gfx_FillScreen(UI_BG);
     ui_header(prompt);
 
     gfx_SetTextFGColor(UI_DIM);
@@ -117,7 +122,8 @@ static void draw(const char *prompt, const char *hint, const char *text,
 }
 
 bool keyin_text(const char *prompt, const char *hint, char *out, uint8_t max,
-                keyin_style_t style, const char *initial) {
+                keyin_style_t style, const char *initial,
+                keyin_backdrop_t backdrop) {
     if (max > KEYIN_MAX)
         max = KEYIN_MAX;
 
@@ -135,17 +141,31 @@ bool keyin_text(const char *prompt, const char *hint, char *out, uint8_t max,
     bool dirty = true;
     bool drew = false;
 
+    /* A backdrop may be showing a clock, and a clock that only moves when
+     * somebody types is not a clock. Redraw about once a second. */
+    unsigned since_redraw = 0;
+
     input_reset();
     for (;;) {
         if (dirty) {
-            draw(prompt, hint, out, length, style, alpha, lower);
+            draw(prompt, hint, out, length, style, alpha, lower, backdrop);
             dirty = false;
             drew = true;
+            since_redraw = 0;
         }
 
         ui_present(drew);
         drew = false;
         input_scan();
+
+        /* Ahead of the key table: 2nd is the case toggle here. */
+        if (lock_poll()) {
+            dirty = true;
+            continue;
+        }
+
+        if (backdrop && ++since_redraw >= 60)
+            dirty = true;
 
         if (input_pressed(kb_KeyEnter)) {
             out[length] = '\0';

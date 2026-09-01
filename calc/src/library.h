@@ -2,7 +2,7 @@
  * CSLIB: the index of what is actually on the calculator.
  *
  * Parsed in place from flash rather than copied into RAM -- the band cache
- * needs every byte it can get. Only the 16-byte strip record is ever written
+ * needs every byte it can get. Only the 17-byte strip record is ever written
  * back, and only when the reader leaves a strip.
  *
  * Titles are ZX0-compressed 2bpp bitmaps rendered by the sync app, because the
@@ -34,8 +34,11 @@
  * naming is what caps this, and this spends all of it. It used to be one byte,
  * which capped a *library* -- not a calculator -- at 256 strips, because a slot
  * is assigned once and kept even for strips that are not resident.
+ *
+ * One short of 0xFFFF, which belongs to the lock screen wallpaper. See
+ * CSX_WALLPAPER_SLOT.
  */
-#define LIB_MAX_SLOT    0xFFFF
+#define LIB_MAX_SLOT    0xFFFE
 
 /* Largest 2bpp title bitmap the reader has to expand, in bytes. */
 #define LIB_TITLE_MAX   1200
@@ -135,6 +138,18 @@ bool lib_password_store(const char *password);
 uint8_t lib_password_failures(void);
 bool lib_password_note_failure(void);
 bool lib_password_clear_failures(void);
+
+/*
+ * The lock screen wallpaper's checksum, if the index claims one.
+ *
+ * It lives in the device block for the same reason the password does: deleting
+ * the index to get past the prompt has to cost something. Without the claim the
+ * wallpaper appvars are so many unreadable bytes, and the reader deletes them.
+ *
+ * lib_set_wallpaper(NULL) clears the claim.
+ */
+bool lib_wallpaper(uint32_t *crc);
+bool lib_set_wallpaper(const uint32_t *crc);
 
 /*
  * Make sure an index exists, creating an empty one if it does not.

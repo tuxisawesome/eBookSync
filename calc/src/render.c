@@ -116,6 +116,46 @@ static void blit_row(const uint8_t *src, uint16_t src_x, uint8_t *dst, uint16_t 
         *dst = *src >> 4;
 }
 
+/*
+ * Draw a whole 320-wide layer at 1:1, without the band cache.
+ *
+ * `scratch` is one CSX_BAND_MAX buffer the caller owns. render_view() goes
+ * through render_band(), which needs render_init() to have taken its 60 KB --
+ * and the lock screen has to draw before that happens, because the password
+ * gate deliberately runs before the band cache is allocated. There is no reason
+ * to take the biggest allocation in the program for a prompt somebody may not
+ * get past, and a full-screen image is eight bands drawn once, so a cache would
+ * buy nothing anyway.
+ */
+bool render_draw_full(const csx_strip_t *strip, uint8_t *scratch) {
+    const csx_layer_t *layer = &strip->layer[0];
+    if (layer->width != GFX_LCD_WIDTH || layer->cols != 1)
+        return false;
+
+    uint16_t stride = csx_stride(layer, 0);
+
+    for (uint16_t band = 0; band < layer->bands_per_col; band++) {
+        uint16_t top = band * CSX_BAND_HEIGHT;
+        if (top >= GFX_LCD_HEIGHT)
+            break;
+
+        uint16_t length;
+        const uint8_t *payload = csx_band(strip, csx_band_index(strip, 0, 0, band), &length);
+        if (!payload)
+            return false;
+        zx0_Decompress(scratch, payload);
+
+        uint8_t rows = csx_band_rows(layer, band);
+        if (top + rows > GFX_LCD_HEIGHT)
+            rows = (uint8_t)(GFX_LCD_HEIGHT - top);
+
+        for (uint8_t row = 0; row < rows; row++)
+            blit_row(scratch + (uint24_t)row * stride, 0,
+                     &gfx_vbuffer[top + row][0], GFX_LCD_WIDTH);
+    }
+    return true;
+}
+
 void render_view(const csx_strip_t *strip, uint8_t layer_index, uint24_t vx, uint24_t vy) {
     const csx_layer_t *layer = &strip->layer[layer_index];
 

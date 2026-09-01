@@ -92,6 +92,21 @@ collection of comics at 256, however few of them were resident at a time.
 
 16 KB keeps the create-then-archive step comfortably inside free RAM.
 
+**A strip may have at most 64 chunks**, which is `CSX_MAX_CHUNKS` in
+`calc/src/csx.h` and 1024 KB of container. `csx_open()` refuses anything
+claiming more, so a bigger strip is not a slow strip or a clipped one -- it is a
+strip that will not open at all. Nothing used to enforce this: the encoders grew
+the chunk list without a cap and wrote the count into a single header byte, and
+the calculator reported the ceiling in `HELLO` where the page parsed it and
+never looked at it again. The result was strips that synced, listed, and drew in
+the menu with their titles and sizes, and failed only when somebody picked one.
+The page now refuses them, and says which detail level would fit.
+
+At `fit+1.5x` that ceiling is around a 21,500-pixel-tall episode; at `fit+2x`,
+around 15,400. It is a real limit rather than an arbitrary one: 1 MB is a third
+of the whole archive, so a strip that large is not a thing the calculator can
+usefully hold several of.
+
 Bands are bin-packed into chunks with first-fit-decreasing and **never straddle a
 chunk boundary**. That is what lets the reader hand `zx0_Decompress` a pointer
 straight into flash from `ti_GetDataPtr()` with no staging copy. Packing waste is
@@ -193,8 +208,20 @@ it again in the reply.
   17  32  pwHash          SHA-256(salt || password)
   49  1   pwFailures      consecutive wrong answers, kept across power cycles
   50  4   clockOffset     added to time() to get unix seconds
-  54  10  reserved
+  54  1   wallFlags       0 = no lock screen wallpaper
+  55  4   wallCrc         CRC-32 of the wallpaper container, chunk by chunk
+  59  5   reserved
 ```
+
+`wallCrc` is why the wallpaper is in here rather than standing on its own. The
+image itself is an ordinary `.csx` container in slot `0xFFFF` -- a 320x240
+picture is a very short strip -- so `CSFFFF00` would happily outlive `CSLIB`,
+and the one way past the password is to delete `CSLIB`. A calculator whose table
+of contents had been thrown away would still come up wearing its owner's
+wallpaper. The claim lives here instead: no index, no claim, so the reader will
+not draw it and deletes the appvars on the next run. It is a checksum rather
+than a flag so that a wallpaper damaged in flash is noticed rather than smeared
+across the lock screen.
 
 Masking it on the way out does two jobs at once. It keeps the salt and hash off
 the wire, where a computer that is not this library's could otherwise ask for
@@ -235,6 +262,25 @@ The bitmaps are ZX0-compressed. Uncompressed, a worst-case title is
 300 x 16 x 2 / 8 = 1 200 bytes and a library's worth would not fit in one
 appvar; compressed they come to a couple of kilobytes, and the reader expands
 only the row it is currently drawing, into a single scratch buffer.
+
+## The wallpaper
+
+The lock screen wallpaper is not a format. It is a `.csx` container like any
+other, holding one 320x240 layer -- eight bands, one column, usually a chunk or
+two -- stored in slot **0xFFFF** and sent through `PUT_CHUNK` like a comic.
+Strip slots are handed out upwards from 0 and stop at 0xFFFE, so the two can
+never meet.
+
+That is the whole design, and it is worth being explicit about what it buys:
+no wallpaper format, no wallpaper decoder, no wallpaper transfer command, and
+the per-chunk checksum and the `VERIFY` that follows it come along for free.
+`web/js/worker/convert.js` crops the source to fill the screen and hands it to
+the same encoder everything else goes through; `calc/src/render.c` draws it with
+the same band loop, through one borrowed 5 KB buffer rather than the band cache,
+because the lock screen has to be able to draw before `render_init()` has taken
+its sixty kilobytes.
+
+The claim that ties it to the index is in the device block, above.
 
 ## The library on disk, and `ebooksync.json`
 
@@ -286,8 +332,15 @@ have had anyway.
 }
 ```
 
-`id` is a stable 0-255 slot, assigned once and never reassigned; it is what
-names the `CS<slot><chunk>` appvars. It survives renames and moves between
+`id` is a stable slot from 0 to 65534, assigned once and never reassigned; it is
+what names the `CS<slot><chunk>` appvars. 65535 is not handed out: it belongs to
+the lock screen wallpaper.
+
+`wallpaper` is `{ "srcHash": "...", "sentAt": "..." }` once one has been sent, or
+absent. The hash is of `wallpaper.jpg` at the root of the library folder, and a
+hash that no longer matches the file is what makes the next sync send it again.
+The file lives at the root rather than in a book because the scanner only looks
+inside directories, so nothing there can be mistaken for a comic. It survives renames and moves between
 books, so renaming or reordering costs a fresh index on the next sync rather
 than re-sending half a megabyte of chunks.
 

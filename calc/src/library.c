@@ -122,6 +122,10 @@ bool lib_ensure(void) {
 #define DEV_PW_HASH       17
 #define DEV_PW_FAILURES   49
 #define DEV_CLOCK_OFFSET  50
+#define DEV_WALL_FLAGS    54
+#define DEV_WALL_CRC      55
+
+#define DEV_WALL_SET      0x01
 
 #define DEV_PW_SET        0x01
 #define DEV_SALT_SIZE     16
@@ -251,6 +255,44 @@ bool lib_password_note_failure(void) {
      * evidence into its opposite after 256 tries. */
     if (block[DEV_PW_FAILURES] < 0xFF)
         block[DEV_PW_FAILURES]++;
+    return lib_set_device(block);
+}
+
+/*
+ * The wallpaper claim.
+ *
+ * A checksum rather than a bare flag, so a wallpaper damaged in flash is
+ * noticed rather than drawn as noise across the lock screen -- and so the claim
+ * names a particular set of bytes rather than "whatever is in that slot".
+ */
+bool lib_wallpaper(uint32_t *crc) {
+    const uint8_t *device = lib_device();
+    if (!device || !(device[DEV_WALL_FLAGS] & DEV_WALL_SET))
+        return false;
+
+    *crc = read32(device + DEV_WALL_CRC);
+    return true;
+}
+
+bool lib_set_wallpaper(const uint32_t *crc) {
+    uint8_t block[LIB_DEVICE_SIZE];
+    device_copy(block);
+
+    if (!crc) {
+        /* Nothing to clear, and an index rewrite is a flash write. */
+        if (!(block[DEV_WALL_FLAGS] & DEV_WALL_SET))
+            return true;
+
+        block[DEV_WALL_FLAGS] &= (uint8_t)~DEV_WALL_SET;
+        memset(block + DEV_WALL_CRC, 0, 4);
+        return lib_set_device(block);
+    }
+
+    block[DEV_WALL_FLAGS] |= DEV_WALL_SET;
+    block[DEV_WALL_CRC] = (uint8_t)*crc;
+    block[DEV_WALL_CRC + 1] = (uint8_t)(*crc >> 8);
+    block[DEV_WALL_CRC + 2] = (uint8_t)(*crc >> 16);
+    block[DEV_WALL_CRC + 3] = (uint8_t)(*crc >> 24);
     return lib_set_device(block);
 }
 

@@ -11,26 +11,20 @@
  * for why there are two programs and which one installs which.
  */
 
+import { crc32 } from './crc32.js';
 import { UPDATE_CHUNK_SIZE, UPDATE_TARGET } from './link.js';
 import { readVariable } from './tifile.js';
 
 export const CATALOGUE = 'comics/build.json';
 
-/**
- * CRC-32, the ordinary reflected one, matching calc/src/crc32.c.
+/*
+ * Re-exported from ./crc32.js, where it now lives.
  *
- * A corrupt comic is a smeared page; a corrupt program is a calculator that
- * will not start the reader. This is the one thing in the protocol worth
- * checksumming, and both ends have to agree on how.
+ * It moved when comics started being checksummed too: an update is no longer
+ * the only thing in this protocol that is checked, so the arithmetic no longer
+ * belongs to the updater. Callers that had it from here still work.
  */
-export function crc32(bytes) {
-  let crc = 0xffffffff;
-  for (let i = 0; i < bytes.length; i++) {
-    crc ^= bytes[i];
-    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
-  }
-  return (crc ^ 0xffffffff) >>> 0;
-}
+export { crc32 };
 
 export function chunksOf(body) {
   const chunks = [];

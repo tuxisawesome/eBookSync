@@ -37,9 +37,11 @@
 #include "proto.h"
 
 #include "build.h"
+#include "crc32.h"
 #include "csx.h"
 #include "library.h"
 #include "update.h"
+#include "wall.h"
 
 #include <fileioc.h>
 #include <srldrvce.h>
@@ -367,25 +369,90 @@ static bool store(const char *name, uint32_t length) {
 }
 
 /*
+ * Read an appvar back and check it against a CRC.
+ *
+ * ti_GetDataPtr on an archived variable points straight into flash, so this
+ * checks the bytes that were really written rather than the copy still sitting
+ * in the payload buffer. That is the whole point of doing it here rather than
+ * on the computer: it covers the flash write, not just the wire.
+ */
+static bool stored_matches(const char *name, uint32_t want, uint32_t length) {
+    uint8_t handle = ti_Open(name, "r");
+    if (!handle)
+        return false;
+
+    uint32_t size = (uint32_t)ti_GetSize(handle);
+    const uint8_t *data = ti_GetDataPtr(handle);
+    ti_Close(handle);
+
+    if (!data || size != length)
+        return false;
+
+    return crc32_finish(crc32_update(CRC32_INIT, data, (size_t)length)) == want;
+}
+
+/*
  * One chunk of a strip.
  *
  * `arg` is the slot, which needs all sixteen bits of it now that a library may
  * hold more than 256 strips -- so the chunk index moves to the front of the
- * payload. That used to be impossible: the old packet-based transport would
- * have put those bytes in the same packet as the data behind them, with no way
- * to read them separately. A byte stream has no such problem, and the whole
- * payload is already in one buffer before this runs.
+ * payload, and from protocol 4 the chunk's CRC-32 goes in behind it. That used
+ * to be impossible: the old packet-based transport would have put those bytes
+ * in the same packet as the data behind them, with no way to read them
+ * separately. A byte stream has no such problem, and the whole payload is
+ * already in one buffer before this runs.
  */
 static void do_put_chunk(void) {
-    if (!payload_want) {
+    /* u8 chunk index, u32 CRC-32, and at least one byte of chunk. */
+    if (payload_want < 6) {
         answer(PROTO_BAD_LENGTH, NULL, 0);
         return;
     }
 
+    uint8_t index = payload[0];
+    uint32_t want = read32(payload + 1);
+    uint32_t length = payload_want - 5;
+
     char name[9];
-    csx_chunk_name(name, argument, payload[0]);
-    answer(store_from(name, payload + 1, payload_want - 1) ? PROTO_OK : PROTO_NO_ROOM,
-           NULL, 0);
+    csx_chunk_name(name, argument, index);
+
+    if (!store_from(name, payload + 5, length)) {
+        answer(PROTO_NO_ROOM, NULL, 0);
+        return;
+    }
+
+    if (!stored_matches(name, want, length)) {
+        /*
+         * Take it away rather than leave it where csx_open() would find it and
+         * refuse the whole strip months later. The computer sends it again; if
+         * it keeps failing, the sync says so while somebody is still watching.
+         */
+        ti_Delete(name);
+        answer(PROTO_BAD_CRC, NULL, 0);
+        return;
+    }
+
+    answer(PROTO_OK, NULL, 0);
+}
+
+/*
+ * Does this strip open?
+ *
+ * The same call the reader makes when a strip is picked, so a "yes" here means
+ * the same thing it will mean then: every chunk is present, the header parses,
+ * and the geometry is one this build can draw. A per-chunk CRC cannot answer
+ * this -- it only ever sees the chunks that turned up.
+ */
+static void do_verify(void) {
+    csx_strip_t strip;
+
+    if (!csx_open(&strip, argument)) {
+        answer(PROTO_NOT_FOUND, NULL, 0);
+        return;
+    }
+
+    reply_small[0] = strip.chunk_count;
+    answer(PROTO_OK, reply_small, 1);
 }
 
 static void do_index_put(void) {
@@ -520,7 +587,39 @@ static void do_clock_set(void) {
         answer(PROTO_BAD_LENGTH, NULL, 0);
         return;
     }
-    answer(lib_set_clock(read32(payload)) ? PROTO_OK : PROTO_WRITE_FAIL, NULL, 0);
+
+    bool ok = lib_set_clock(read32(payload));
+
+    /*
+     * Writing the device block unarchives and re-archives the index, so the
+     * pointer cached before USB started is stale. That matters more than it
+     * looks: CLOCK_SET is the second command of every sync and INDEX_GET is the
+     * fourth, so the reply to INDEX_GET would be read from wherever the index
+     * used to be.
+     */
+    refresh_index_cache();
+    answer(ok ? PROTO_OK : PROTO_WRITE_FAIL, NULL, 0);
+}
+
+/*
+ * The lock screen wallpaper has just been stored, or is being removed.
+ *
+ * `arg` is 1 to adopt what is in the reserved slot and 0 to be rid of it.
+ * Adopting checksums the container and writes the claim into the device block,
+ * which is what ties the wallpaper to the index -- see calc/src/wall.h.
+ */
+static void do_wallpaper(void) {
+    bool ok;
+    if (argument) {
+        ok = wall_adopt();
+    } else {
+        wall_forget();
+        ok = true;
+    }
+
+    /* Same as above: the claim lives in the index, and writing it moved it. */
+    refresh_index_cache();
+    answer(ok ? PROTO_OK : PROTO_NOT_FOUND, NULL, 0);
 }
 
 /* ---------------------------------------------------------------- the rest */
@@ -554,6 +653,8 @@ static void execute(void) {
         case PROTO_UPDATE_END:   do_update_end(); break;
 
         case PROTO_CLOCK_SET:    do_clock_set(); break;
+        case PROTO_VERIFY:       do_verify(); break;
+        case PROTO_WALLPAPER:    do_wallpaper(); break;
         case PROTO_BYE:       closing = true; answer(PROTO_OK, NULL, 0); break;
         default:              answer(PROTO_BAD_CMD, NULL, 0); break;
     }
@@ -697,18 +798,44 @@ static uint8_t gc_count;
 
 uint8_t proto_collections(void) { return gc_count; }
 
-/* Push a few bytes out with a hard cap on effort, since this runs at a moment
- * when nothing else can. */
+/*
+ * Push a few bytes out with a hard cap on effort, since this runs at a moment
+ * when nothing else can.
+ *
+ * It has to pump USB itself -- srl_Write only moves bytes when the driver gets
+ * a turn, and the loop that would normally give it one is several frames away
+ * inside an OS flash operation. That is a deliberate exception to rule 1 above,
+ * and the only one.
+ *
+ * It must be all or nothing. The protocol is a byte stream with no framing to
+ * resynchronise on, so half an eight-byte header slides every reply after it by
+ * the missing number of bytes, and the computer spends the rest of the session
+ * reading garbage out of correctly-delivered data. If the whole notice cannot
+ * be got out, the link is declared dead instead: the computer sees a timeout,
+ * which is recoverable, rather than a stream that lies.
+ */
 static void send_now(const uint8_t *bytes, size_t length) {
-    for (unsigned attempts = 0; attempts < 4096 && length; attempts++) {
+    size_t left = length;
+
+    for (unsigned attempts = 0; attempts < 4096 && left; attempts++) {
         usb_HandleEvents();
 
-        int sent = srl_Write(&serial, bytes, length);
+        int sent = srl_Write(&serial, bytes, left);
         if (sent < 0)
-            return;
+            break;
         bytes += sent;
-        length -= (size_t)sent;
+        left -= (size_t)sent;
     }
+
+    if (!left)
+        return;
+
+    /* Nothing went out, so nothing is out of step; the computer just waits on
+     * its ordinary timeout. */
+    if (left == length)
+        return;
+
+    fail();
 }
 
 static void gc_before(void) {

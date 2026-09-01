@@ -42,6 +42,10 @@ const ui = {
   keepReadValue: el('keep-read-value'),
   keepReadField: el('keep-read-field'),
   budget: el('budget'),
+  wallpaperFile: el('wallpaper-file'),
+  wallpaperCurrent: el('wallpaper-current'),
+  wallpaperPreview: el('wallpaper-preview'),
+  wallpaperClear: el('wallpaper-clear'),
   deviceStatus: el('device-status'),
   deviceFree: el('device-free'),
   deviceCount: el('device-count'),
@@ -86,6 +90,17 @@ const state = {
   filter: '',
   pool: null,
   busy: false,
+
+  /*
+   * wallpaper.jpg as it is on disk right now: `{ file, hash }`, or null if
+   * there is not one. Hashed on load and after every change, because whether it
+   * needs sending is a comparison against the hash the calculator was last
+   * given -- see meta.wallpaper.
+   */
+  wallpaper: null,
+
+  /* The object URL behind the preview thumbnail, so it can be revoked. */
+  wallpaperUrl: null,
 };
 
 /* What is currently being dragged inside the tree, if anything. dataTransfer
@@ -493,6 +508,70 @@ function refreshSettings() {
   ui.budget.value = String(Math.round(settings.maxDeviceBytes / 1024));
 }
 
+/* ---------------------------------------------------------------- wallpaper */
+
+/*
+ * Read wallpaper.jpg back off the disk and show it.
+ *
+ * The file is the source of truth, not the metadata: dropping a new one into
+ * the folder by hand has to work, and the hash is what decides whether the
+ * calculator needs sending a new one.
+ */
+async function loadWallpaper() {
+  if (state.wallpaperUrl) {
+    URL.revokeObjectURL(state.wallpaperUrl);
+    state.wallpaperUrl = null;
+  }
+
+  const file = state.root
+    ? await fs.readFile(state.root, metaStore.WALLPAPER_FILENAME)
+    : null;
+
+  state.wallpaper = file ? { file, hash: await fs.hashFile(file) } : null;
+
+  ui.wallpaperCurrent.hidden = !file;
+  if (file) {
+    state.wallpaperUrl = URL.createObjectURL(file);
+    ui.wallpaperPreview.src = state.wallpaperUrl;
+  } else {
+    ui.wallpaperPreview.removeAttribute('src');
+  }
+}
+
+/*
+ * What the next sync should do about it.
+ *
+ * Recomputed rather than remembered, so the answer follows the file on disk
+ * even when it was changed outside this page.
+ */
+function wallpaperPlan() {
+  return syncEngine.planWallpaper(state.meta, state.wallpaper && state.wallpaper.file,
+                                  state.wallpaper && state.wallpaper.hash);
+}
+
+async function chooseWallpaper(file) {
+  if (!state.root) {
+    setStatus('Choose the folder holding your comics first.', 'error');
+    return;
+  }
+
+  await runOp('Saving the wallpaper…', async () => {
+    await fs.writeFile(state.root, metaStore.WALLPAPER_FILENAME, file);
+  });
+  await loadWallpaper();
+  refreshSelection();
+}
+
+async function removeWallpaper() {
+  if (!state.root) return;
+
+  await runOp('Removing the wallpaper…', async () => {
+    await fs.removeFile(state.root, metaStore.WALLPAPER_FILENAME);
+  });
+  await loadWallpaper();
+  refreshSelection();
+}
+
 /* --------------------------------------------------------------- persistence */
 
 let saveTimer = null;
@@ -697,6 +776,7 @@ async function loadLibrary(root) {
 
   ui.newBook.disabled = false;
   refreshSettings();
+  await loadWallpaper();
   renderTree();
   refreshSelection();
   refreshDevice();
@@ -929,6 +1009,28 @@ function describePlan(plan) {
     parts.push(warning);
   }
 
+  /*
+   * Strips already known to be too big for the reader to open. Only strips
+   * converted before have a real size to judge, so this is a heads-up rather
+   * than the check -- execute() measures the container it actually built.
+   */
+  if (plan.oversize && plan.oversize.length) {
+    const warning = document.createElement('p');
+    warning.className = 'warn';
+    warning.textContent = `${plan.oversize.length} strip(s) are larger than the `
+      + `${kb(plan.oversize[0].ceiling)} the calculator can open and will be left off. `
+      + 'Choose a lower detail level for them, or split the images.';
+    parts.push(warning);
+  }
+
+  if (plan.wallpaper) {
+    const note = document.createElement('p');
+    note.textContent = plan.wallpaper.action === 'remove'
+      ? 'Remove the lock screen wallpaper.'
+      : 'Send the lock screen wallpaper.';
+    parts.push(note);
+  }
+
   if (plan.empty) {
     const nothing = document.createElement('p');
     nothing.textContent = 'Nothing to do — the calculator already matches your library.';
@@ -937,6 +1039,18 @@ function describePlan(plan) {
 
   ui.planBody.replaceChildren(...parts);
   ui.planGo.disabled = plan.empty;
+}
+
+/*
+ * The largest strip the attached calculator can open, in chunks.
+ *
+ * HELLO has always carried this and the page has always ignored it, which is
+ * how strips the reader could never open came to be synced as though they were
+ * fine. With nothing connected, fall back to what this build of the reader
+ * uses.
+ */
+function deviceMaxChunks() {
+  return (state.hello && state.hello.maxChunks) || syncEngine.MAX_CHUNKS;
 }
 
 async function runSync() {
@@ -960,6 +1074,8 @@ async function runSync() {
   const plan = syncEngine.plan(state.meta, state.books, state.resident, {
     freeArchive: state.freeArchive,
     indexStale: indexIsStale(),
+    maxChunks: deviceMaxChunks(),
+    wallpaper: wallpaperPlan(),
   });
   describePlan(plan);
 
@@ -996,6 +1112,7 @@ async function runSync() {
     const result = await syncEngine.execute(state.calculator, state.meta, state.books, plan, {
       pool: state.pool,
       signal: controller.signal,
+      maxChunks: deviceMaxChunks(),
       onStatus: (text) => {
         ui.progressStatus.textContent = text;
         appendLog(text);
@@ -1016,9 +1133,22 @@ async function runSync() {
       },
     });
 
+    /*
+     * Strips that did not make it. Reported one by one and left off the
+     * calculator, so the next sync sends them again -- silence here is what
+     * turned three bad strips into a mystery a week later.
+     */
+    const failures = result.failures || [];
+    for (const failure of failures) appendLog(`Not sent: ${failure.reason}`);
+
     if (result.aborted) {
       appendLog('Stopped. Chunks already sent stay on the calculator; syncing again resumes.');
       ui.progressStatus.textContent = 'Stopped';
+    } else if (failures.length) {
+      ui.progressStatus.textContent = failures.length === 1
+        ? '1 strip could not be sent'
+        : `${failures.length} strips could not be sent`;
+      ui.progressFill.style.width = '100%';
     } else {
       appendLog('Done.');
       ui.progressStatus.textContent = 'Finished';
@@ -1177,6 +1307,16 @@ function bindSettings() {
     state.filter = ui.filter.value.trim().toLowerCase();
     renderTree();
   });
+
+  ui.wallpaperFile.addEventListener('change', async () => {
+    const [file] = ui.wallpaperFile.files;
+    /* Clear the picker either way, so choosing the same file twice still
+     * fires -- the file on disk may have changed underneath it. */
+    ui.wallpaperFile.value = '';
+    if (file) await chooseWallpaper(file);
+  });
+
+  ui.wallpaperClear.addEventListener('click', () => { removeWallpaper(); });
 }
 
 /* Dropping on the tree background rather than on a book: only whole folders

@@ -27,6 +27,16 @@
 #define CSX_MAX_CHUNKS     64
 #define CSX_MAX_LAYERS     4
 
+/*
+ * The slot the lock screen wallpaper lives in.
+ *
+ * A 320x240 image is just a very short strip, so it is stored as an ordinary
+ * container and arrives through the ordinary PUT_CHUNK. Reserving the top slot
+ * is the whole of the special-casing: the page allocates strip slots upwards
+ * from 0 and stops one short, so the two can never collide.
+ */
+#define CSX_WALLPAPER_SLOT 0xFFFF
+
 /* Largest decompressed band: a full-width column, 4bpp. */
 #define CSX_BAND_MAX       (CSX_COL_WIDTH / 2 * CSX_BAND_HEIGHT)
 

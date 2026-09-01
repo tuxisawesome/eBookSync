@@ -192,6 +192,69 @@ with tempfile.TemporaryDirectory() as tmp:
     check("locked, a good password after earlier failures still gets in",
           LEAD + type_password("1234") + press("enter"), RUNNING, directory=directory)
 
+# --- 2nd+ON locks, wherever you are ----------------------------------------
+#
+# The lock is not the gate on the way in: it can be reached from anywhere in the
+# reader, it blanks the screen the way the operating system's own power gesture
+# does, and three wrong answers put it back to sleep still locked rather than
+# closing the app. That last part is the difference between a lock and a speed
+# bump, and it is the thing worth having a test for -- a lock that quietly let
+# go after three tries would look identical from the outside.
+with tempfile.TemporaryDirectory() as tmp:
+    directory = Path(tmp)
+    locked_library(directory, "1234")
+
+    # Past the gate first, then lock from the book list. Waking needs ON, which
+    # the script carries in the group the key matrix does not use.
+    unlocked = LEAD + type_password("1234")
+
+    check("2nd+ON from the book list locks, and the password gets back in",
+          unlocked + press("2nd+on") + press("on") + type_password("1234"),
+          RUNNING, directory=directory)
+
+    check("the wrong password does not get back in",
+          unlocked + press("2nd+on") + press("on") + type_password("9999"),
+          RUNNING, directory=directory)
+
+    # The whole point: out of tries, it sleeps again rather than closing. The
+    # app is still running, and the script has run out with nobody let in.
+    locked_out = list(unlocked) + press("2nd+on") + press("on")
+    for _ in range(3):
+        locked_out += type_password("9999") + press("enter")
+    check("three wrong answers leave it locked rather than closing the app",
+          locked_out, RUNNING, directory=directory)
+
+    # And it must not be possible to walk away from the lock screen the way you
+    # can walk away from the gate: clear closes the app at startup, and must not
+    # here, because the screen behind it is the library.
+    check("clear does not dismiss the lock",
+          unlocked + press("2nd+on") + press("on") + press("clear") + press("clear")
+          + press("clear") + press("clear"),
+          RUNNING, directory=directory)
+
+    # The strip list and the viewer scan the keypad through their own loops, so
+    # each is its own chance to have missed the hook.
+    check("2nd+ON locks from inside a book too",
+          unlocked + press("enter") + press("2nd+on") + press("on")
+          + type_password("1234"),
+          RUNNING, directory=directory)
+
+with tempfile.TemporaryDirectory() as tmp:
+    directory = Path(tmp)
+    library_with_content(directory)
+
+    # With no password there is nothing to ask for, so it is a screen blanker:
+    # any key brings it back. The key that dismisses it is spent doing that --
+    # so the first clear returns to the book list and the second closes the app,
+    # which is also the proof that the reader is really back where it was.
+    check("with no password set, 2nd+ON blanks and any key returns",
+          LEAD + press("2nd+on") + press("on") + press("clear") + press("clear"),
+          CLOSED, directory=directory)
+
+    check("and the key that dismisses it does not also act",
+          LEAD + press("2nd+on") + press("on") + press("clear"),
+          RUNNING, directory=directory)
+
 for failure in failures:
     print("  FAIL " + failure)
 print(f"{checks - len(failures)}/{checks} reader UI checks pass")

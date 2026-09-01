@@ -35,7 +35,17 @@ export const LEGACY_META_FILENAME = 'ebooksync.json';
 export const DEFAULT_DEVICE_BUDGET = 2_900_000;
 
 /* The largest slot a strip can be given. See nextSlot(). */
-export const MAX_SLOT = 0xffff;
+/*
+ * The highest slot a strip may be given.
+ *
+ * One short of 0xffff, which is reserved for the lock screen wallpaper -- it is
+ * stored as an ordinary container in a slot of its own. See WALLPAPER_SLOT in
+ * link.js and CSX_WALLPAPER_SLOT in calc/src/csx.h.
+ */
+export const MAX_SLOT = 0xfffe;
+
+/* The wallpaper's source file, at the root of the library folder. */
+export const WALLPAPER_FILENAME = 'wallpaper.jpg';
 
 export const DEFAULT_SETTINGS = {
   detail: DEFAULT_PRESET,
@@ -96,6 +106,14 @@ export function defaultMeta() {
     lastSync: null,
     settings: { ...DEFAULT_SETTINGS },
     books: {},
+
+    /*
+     * The lock screen wallpaper, once one has been sent: `{ srcHash }` of the
+     * `wallpaper.jpg` the calculator is holding. Null means there is none, and
+     * a hash that no longer matches the file on disk is what makes the next
+     * sync send it again.
+     */
+    wallpaper: null,
   };
 }
 
@@ -122,6 +140,9 @@ export async function load(root) {
   meta.settings.keepRead = Math.max(0, Number(meta.settings.keepRead) || 0);
   meta.settings.maxDeviceBytes = Number(meta.settings.maxDeviceBytes) || DEFAULT_DEVICE_BUDGET;
   meta.books = raw.books && typeof raw.books === 'object' ? raw.books : {};
+  meta.wallpaper = raw.wallpaper && typeof raw.wallpaper.srcHash === 'string'
+    ? { srcHash: raw.wallpaper.srcHash, sentAt: raw.wallpaper.sentAt || null }
+    : null;
 
   /* Version 1 had no order fields. Anything without one picks its order up in
    * reconcile() from the natural sort the scan already did, which is exactly
@@ -152,6 +173,7 @@ export function serialisable(meta) {
     lastSync: meta.lastSync,
     settings: meta.settings,
     books: meta.books,
+    wallpaper: meta.wallpaper,
   }));
 }
 

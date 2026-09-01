@@ -12,15 +12,16 @@
 #include "about.h"
 #include "keyin.h"
 #include "library.h"
+#include "lock.h"
 #include "proto.h"
 #include "render.h"
 
+#include <fileioc.h>
 #include <graphx.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
 #include <tice.h>
-#include <string.h>
 
 #define LIST_X        10
 #define TITLE_INSET   2
@@ -50,6 +51,31 @@ void ui_set_chrome_palette(void) {
 
     set_ramp(UI_TEXT_RAMP, 248, 248, 248, 24, 24, 24);
     set_ramp(UI_TEXT_RAMP_SEL, 198, 218, 255, 16, 24, 48);
+}
+
+/*
+ * The OS defragments the archive when it runs out of room, and it may decide to
+ * do so on any archive write. It draws its own prompt and waits for a keypress,
+ * and that prompt needs the LCD back in its normal mode -- graphx has it in
+ * 8bpp, where the prompt is drawn into palettised memory and cannot be seen.
+ *
+ * Afterwards every pointer from ti_GetDataPtr has moved, so the index has to be
+ * mapped again. Forgetting that leaves the reader drawing from wherever the
+ * index used to be.
+ */
+static void gc_before(void) {
+    gfx_End();
+}
+
+static void gc_after(void) {
+    gfx_Begin();
+    gfx_SetDrawBuffer();
+    ui_set_chrome_palette();
+    lib_open();
+}
+
+void ui_install_gc(void) {
+    ti_SetGCBehavior(gc_before, gc_after);
 }
 
 void ui_present(bool drew) {
@@ -140,21 +166,37 @@ void ui_message(const char *line1, const char *line2) {
 }
 
 bool ui_confirm(const char *line1, const char *line2) {
-    bool drew = true;
-    gfx_FillScreen(UI_BG);
-    ui_header("Are you sure?");
-    gfx_SetTextFGColor(UI_FG);
-    gfx_SetTextBGColor(UI_BG);
-    gfx_PrintStringXY(line1, 10, 90);
-    if (line2)
-        gfx_PrintStringXY(line2, 10, 108);
-    ui_footer("2nd  yes          clear  no");
+    bool dirty = true;
+    bool drew = false;
 
     input_reset();
     for (;;) {
+        if (dirty) {
+            gfx_FillScreen(UI_BG);
+            ui_header("Are you sure?");
+            gfx_SetTextFGColor(UI_FG);
+            gfx_SetTextBGColor(UI_BG);
+            gfx_PrintStringXY(line1, 10, 90);
+            if (line2)
+                gfx_PrintStringXY(line2, 10, 108);
+            ui_footer("2nd  yes          clear  no");
+            dirty = false;
+            drew = true;
+        }
+
         ui_present(drew);
         drew = false;
         input_scan();
+
+        /*
+         * Before anything else looks at those keys. The combination holds 2nd,
+         * and 2nd on the book list opens the sync screen -- so a screen that
+         * checked its own keys first would go there instead of locking.
+         */
+        if (lock_poll()) {
+            dirty = true;
+            continue;
+        }
         if (input_pressed(kb_Key2nd))
             return true;
         if (input_pressed(kb_KeyClear))
@@ -274,6 +316,16 @@ ui_result_t ui_book_menu(uint16_t *selection) {
         ui_present(drew);
         drew = false;
         input_scan();
+
+        /*
+         * Before anything else looks at those keys. The combination holds 2nd,
+         * and 2nd on the book list opens the sync screen -- so a screen that
+         * checked its own keys first would go there instead of locking.
+         */
+        if (lock_poll()) {
+            dirty = true;
+            continue;
+        }
         if (list_navigate(&list))
             dirty = true;
         if (input_pressed(kb_KeyEnter) && list.count) {
@@ -351,6 +403,16 @@ ui_result_t ui_strip_menu(uint16_t book_index, uint16_t *selection) {
         ui_present(drew);
         drew = false;
         input_scan();
+
+        /*
+         * Before anything else looks at those keys. The combination holds 2nd,
+         * and 2nd on the book list opens the sync screen -- so a screen that
+         * checked its own keys first would go there instead of locking.
+         */
+        if (lock_poll()) {
+            dirty = true;
+            continue;
+        }
         if (list_navigate(&list))
             dirty = true;
         if (input_pressed(kb_KeyEnter) && list.count) {
@@ -422,6 +484,16 @@ void ui_about_screen(void) {
         drew = false;
         input_scan();
 
+        /*
+         * Before anything else looks at those keys. The combination holds 2nd,
+         * and 2nd on the book list opens the sync screen -- so a screen that
+         * checked its own keys first would go there instead of locking.
+         */
+        if (lock_poll()) {
+            dirty = true;
+            continue;
+        }
+
         int last = (int)ABOUT_LINES - rows;
         if (last < 0)
             last = 0;
@@ -458,7 +530,7 @@ static void password_screen(void) {
 
     if (lib_password_set()) {
         if (!keyin_text("Current password", NULL, entered,
-                        LIB_PASSWORD_MAX, KEYIN_MASKED, NULL))
+                        LIB_PASSWORD_MAX, KEYIN_MASKED, NULL, NULL))
             return;
         if (!lib_password_check(entered)) {
             lib_password_note_failure();
@@ -474,7 +546,7 @@ static void password_screen(void) {
     }
 
     if (!keyin_text("New password", "alpha for letters, del to fix", entered,
-                    LIB_PASSWORD_MAX, KEYIN_MASKED, NULL))
+                    LIB_PASSWORD_MAX, KEYIN_MASKED, NULL, NULL))
         return;
 
     if (!*entered) {
@@ -483,7 +555,8 @@ static void password_screen(void) {
     }
 
     char again[LIB_PASSWORD_MAX + 1];
-    if (!keyin_text("Type it again", NULL, again, LIB_PASSWORD_MAX, KEYIN_MASKED, NULL))
+    if (!keyin_text("Type it again", NULL, again, LIB_PASSWORD_MAX, KEYIN_MASKED,
+                   NULL, NULL))
         return;
 
     if (strcmp(entered, again) != 0) {
@@ -574,6 +647,16 @@ void ui_setup_screen(void) {
         drew = false;
         input_scan();
 
+        /*
+         * Before anything else looks at those keys. The combination holds 2nd,
+         * and 2nd on the book list opens the sync screen -- so a screen that
+         * checked its own keys first would go there instead of locking.
+         */
+        if (lock_poll()) {
+            dirty = true;
+            continue;
+        }
+
         if (input_repeat(kb_KeyUp) && selected) {
             selected--;
             dirty = true;
@@ -637,7 +720,7 @@ bool ui_password_gate(void) {
 
         char entered[LIB_PASSWORD_MAX + 1];
         if (!keyin_text("Locked", hint[0] ? hint : NULL, entered,
-                        LIB_PASSWORD_MAX, KEYIN_MASKED, NULL))
+                        LIB_PASSWORD_MAX, KEYIN_MASKED, NULL, lock_backdrop()))
             return false;
 
         if (lib_password_check(entered)) {
@@ -810,6 +893,12 @@ void ui_sync_run(bool echo_only) {
     gfx_Begin();
     gfx_SetDrawBuffer();
     ui_set_chrome_palette();
+
+    /* proto_run() installs its own garbage-collect handlers and clears them on
+     * the way out, so the menus' pair has to go back. Without this every
+     * collect for the rest of the session draws the OS prompt into 8bpp
+     * memory, where nobody can see it and nobody can answer it. */
+    ui_install_gc();
 
     if (!ok)
         ui_message("Could not take over USB.", "Unplug the cable and retry.");

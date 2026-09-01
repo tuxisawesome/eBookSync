@@ -13,38 +13,22 @@
 #include "update.h"
 #include "ui.h"
 #include "viewer.h"
+#include "wall.h"
 
 #include <fileioc.h>
 #include <stdio.h>
 #include <graphx.h>
 #include <tice.h>
 
-/*
- * The OS may decide to defragment the archive whenever a variable is archived,
- * which here means marking a book read. It draws its own prompt, and needs the
- * LCD back in its normal mode to do it -- graphx has it in 8bpp.
- *
- * Afterwards every pointer from ti_GetDataPtr has moved, so the library has to
- * be mapped again. Forgetting that leaves the reader drawing from wherever the
- * index used to be.
- */
-static void gc_before(void) {
-    gfx_End();
-}
-
-static void gc_after(void) {
-    gfx_Begin();
-    gfx_SetDrawBuffer();
-    ui_set_chrome_palette();
-    lib_open();
-}
-
 int main(void) {
     gfx_Begin();
     gfx_SetDrawBuffer();
     ui_set_chrome_palette();
     input_reset();
-    ti_SetGCBehavior(gc_before, gc_after);
+
+    /* The handlers live in ui.c because they have to be re-installed after a
+     * sync as well as installed here; see ui_install_gc(). */
+    ui_install_gc();
 
     /*
      * An empty calculator is the normal state before the first sync, not an
@@ -58,6 +42,16 @@ int main(void) {
      * take it for a prompt someone may not get past.
      */
     lib_open();
+
+    /*
+     * A wallpaper the index does not vouch for is wreckage: either somebody
+     * deleted CSLIB to get past the prompt, or a sync died between storing the
+     * wallpaper and recording it. Either way nothing is left that can say what
+     * those bytes are, so they go -- before the prompt, so a deleted index
+     * cannot even show the owner's wallpaper on the way past.
+     */
+    wall_sweep();
+
     if (!ui_password_gate()) {
         gfx_End();
         return 0;

@@ -22,11 +22,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  Calculator, LIBRARY, PROTOCOL_VERSION, STATUS, UPDATE_TARGET, ProtocolError,
+  Calculator, LIBRARY, PROTOCOL_VERSION, STATUS, STATUS_BAD_CRC, UPDATE_TARGET,
+  ProtocolError,
 } from '../../web/js/link.js';
+import { crc32 } from '../../web/js/crc32.js';
 import * as update from '../../web/js/update.js';
 import { writeAppvar } from '../../web/js/tifile.js';
-import { chunkName } from '../../web/js/convert.js';
+import { buildContainer, chunkName } from '../../web/js/convert.js';
 import * as lib from '../../web/js/library.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -93,10 +95,17 @@ function startProbe(libraryDir, extra = []) {
   return { child, getStderr: () => stderr };
 }
 
-async function session(libraryDir, body, extra = []) {
+/*
+ * `handshake` is on by default because a real session always opens with HELLO,
+ * and putChunk shapes its payload from the version that comes back: protocol 4
+ * puts a CRC in front of the chunk and 3 does not. A test that skipped it would
+ * be exercising a conversation the page never has.
+ */
+async function session(libraryDir, body, extra = [], { handshake = true } = {}) {
   const { child, getStderr } = startProbe(libraryDir, extra);
   const calculator = new Calculator(makePort(child));
   await calculator.open();
+  if (handshake) await calculator.hello();
 
   let result;
   try {
@@ -230,6 +239,7 @@ async function session(libraryDir, body, extra = []) {
  * reader carries on reading from where the index used to be.
  */
 {
+  const directory = mkdtempSync(join(tmpdir(), 'ebooksync-gc-'));
   const chunk = Uint8Array.from({ length: 4096 }, (_, i) => i & 0xff);
   let busy = 0;
 
@@ -245,7 +255,7 @@ async function session(libraryDir, body, extra = []) {
       list: (await calculator.list()).length,
       index: (await calculator.getIndex()).length,
     };
-  }, ['--gc']);
+  }, ['--gc', '--save', directory]);
 
   check('a chunk written across a defragment is accepted', result.hello,
         PROTOCOL_VERSION);
@@ -253,6 +263,113 @@ async function session(libraryDir, body, extra = []) {
   check('the link still works afterwards', result.list >= 0, true);
   check('cached pointers were refetched, not reused', result.index, 0);
   check('defragment session: link used correctly', status, 0);
+
+  /*
+   * And -- the part this test used to leave out -- the chunk it wrote across
+   * the collect is actually the chunk that was sent. "The link survived" was
+   * all it checked, so a defragment that damaged the bytes passed it.
+   */
+  const stored = readFileSync(join(directory, 'CS000900.bin'));
+  check('and the bytes it wrote are the bytes that were sent',
+        Buffer.compare(stored, Buffer.from(chunk)), 0);
+}
+
+/*
+ * --- a chunk that does not match its checksum is refused --------------------
+ *
+ * The calculator CRCs the appvar where it lies in flash, so this covers the
+ * flash write as well as the wire. A chunk that fails must leave nothing
+ * behind: half a strip that csx_open() will refuse is worse than no strip,
+ * because it is indistinguishable from a good one until somebody opens it.
+ */
+{
+  const directory = mkdtempSync(join(tmpdir(), 'ebooksync-crc-'));
+  const chunk = Uint8Array.from({ length: 1024 }, (_, i) => (i * 7) & 0xff);
+
+  const { result, status } = await session(directory, async (calculator) => {
+    let refused = null;
+    try {
+      /* A CRC that belongs to different bytes: the one thing the calculator
+       * can catch and the page cannot. */
+      await calculator.putChunk(11, 0, chunk, (crc32(chunk) ^ 0xffff) >>> 0);
+    } catch (error) {
+      refused = error.status;
+    }
+
+    /* A good chunk elsewhere must still work afterwards. */
+    await calculator.putChunk(12, 0, chunk);
+    return { refused, stillAlive: (await calculator.hello()).version };
+  }, ['--save', directory]);
+
+  check('a chunk whose CRC does not match is refused', result.refused, STATUS_BAD_CRC);
+  check('and it leaves nothing behind',
+        existsSync(join(directory, 'CS000B00.bin')), false);
+  check('the link survives a refused chunk', result.stillAlive, PROTOCOL_VERSION);
+  check('and a good chunk afterwards is stored whole',
+        existsSync(join(directory, 'CS000C00.bin')), true);
+  check('crc session: link used correctly', status, 0);
+
+  const stored = readFileSync(join(directory, 'CS000C00.bin'));
+  check('byte for byte, with the CRC stripped',
+        Buffer.compare(stored, Buffer.from(chunk)), 0);
+}
+
+/*
+ * --- a strip with a hole in it is caught while the cable is still in --------
+ *
+ * This is the failure that started all of it. Every chunk that arrives is
+ * stored and acknowledged, so a strip missing one of them looks like a
+ * complete success: the index lists it, the reader draws it in the menu with
+ * its title and size, and it fails only when somebody picks it, days later.
+ *
+ * A per-chunk CRC cannot see this -- it only ever sees the chunks that turned
+ * up. VERIFY runs csx_open() on the calculator, which is the same call the
+ * reader makes, so the answer means what it will mean then.
+ */
+{
+  /*
+   * Noise, so the bands do not compress and the container needs more than one
+   * chunk. A single-chunk strip cannot have a hole below its own header.
+   */
+  let seed = 12345;
+  const random = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return (seed >> 16) & 0x0f;
+  };
+  const indices = Uint8Array.from({ length: 320 * 128 }, random);
+  const container = buildContainer({
+    layers: [{ width: 320, height: 128, indices }],
+    palette: Array.from({ length: 16 }, (_, i) => i * 0x111),
+  });
+
+  const { result, status } = await session(null, async (calculator) => {
+    /* Everything but the last chunk, which is exactly what an interrupted
+     * transfer or a chunk refused on arrival leaves behind. */
+    for (let i = 0; i < container.chunks.length - 1; i++) {
+      await calculator.putChunk(20, i, container.chunks[i]);
+    }
+    const holed = await calculator.verifyStrip(20);
+
+    /* Now finish it. */
+    const last = container.chunks.length - 1;
+    await calculator.putChunk(20, last, container.chunks[last]);
+    const whole = await calculator.verifyStrip(20);
+
+    /* And a slot with nothing in it at all. */
+    const missing = await calculator.verifyStrip(21);
+
+    return { holed, whole, missing };
+  });
+
+  check('the fixture really does need more than one chunk',
+        container.chunks.length > 1, true);
+  check('a strip missing a chunk does not verify', result.holed,
+        { checked: true, ok: false, chunkCount: 0 });
+  check('the same strip verifies once it is complete', result.whole,
+        { checked: true, ok: true, chunkCount: container.chunks.length });
+  check('an empty slot does not verify', result.missing,
+        { checked: true, ok: false, chunkCount: 0 });
+  check('verify session: link used correctly', status, 0);
 }
 
 

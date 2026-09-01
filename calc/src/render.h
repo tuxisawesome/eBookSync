@@ -1,6 +1,8 @@
 #ifndef RENDER_H
 #define RENDER_H
 
+#include <stdbool.h>
+
 #include "csx.h"
 
 /* Palette indices above the 16 the artwork uses, for the reader's own chrome.
@@ -28,6 +30,14 @@ void render_set_palette(const csx_strip_t *strip);
 /* Draw the viewport of `layer` whose top-left corner is at (vx, vy) in layer
  * coordinates, into the current draw buffer. */
 void render_view(const csx_strip_t *strip, uint8_t layer, uint24_t vx, uint24_t vy);
+
+/*
+ * Draw a whole 320-wide layer 0 at 1:1, decompressing through `scratch` rather
+ * than the band cache -- so it works before render_init() has been called, and
+ * costs one CSX_BAND_MAX buffer instead of sixty kilobytes. False if the strip
+ * is not screen-shaped. Used for the lock screen wallpaper.
+ */
+bool render_draw_full(const csx_strip_t *strip, uint8_t *scratch);
 
 /* Decompress a band, or return it from the cache. NULL if the band is bad. */
 const uint8_t *render_band(const csx_strip_t *strip, uint16_t index);

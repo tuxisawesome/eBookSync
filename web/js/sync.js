@@ -8,8 +8,33 @@
 
 import * as cache from './cache.js';
 import * as library from './library.js';
+import { CHUNK_SIZE } from './convert.js';
+import { ProtocolError, STATUS_BAD_CRC, WALLPAPER_SLOT } from './link.js';
 import { flatten, libraryIdBytes, readOrder } from './meta.js';
 import { hashFile } from './fs.js';
+
+/*
+ * The most chunks a strip may have, matching CSX_MAX_CHUNKS in calc/src/csx.h.
+ *
+ * 64 x 16 KB is 1 MB, and csx_open() refuses anything claiming more -- so a
+ * strip over that is stored, indexed, drawn in the menu with its title and
+ * size, and fails only when somebody picks it. Nothing used to enforce it: the
+ * calculator reports the number in HELLO and the page parsed it into
+ * `maxChunks` and then never looked at it again.
+ *
+ * Only a fallback. The live figure comes from the calculator that is actually
+ * attached, so raising it there does not need a new page.
+ */
+export const MAX_CHUNKS = 64;
+
+/*
+ * How many times to re-send a chunk the calculator says arrived damaged.
+ *
+ * A CRC failure is the one error worth retrying blind: it means the bytes on
+ * the wire or in flash disagree with the bytes we hold, and we still hold them.
+ * Everything else -- no room, no such slot -- fails the same way twice.
+ */
+const CHUNK_ATTEMPTS = 3;
 
 /**
  * Runs conversions in workers, one per core.
@@ -84,7 +109,9 @@ export class ConversionPool {
  * last written, which is a reason to sync even when no bytes need moving.
  * The caller works it out, because doing so needs a canvas to render titles.
  */
-export function plan(meta, books, resident, { freeArchive = null, indexStale = false } = {}) {
+export function plan(meta, books, resident,
+                     { freeArchive = null, indexStale = false,
+                       maxChunks = MAX_CHUNKS, wallpaper = null } = {}) {
   const strips = flatten(meta, books);
   const bySlot = new Map(resident.map((strip) => [strip.slot, strip]));
   const { autoDelete, keepRead, selection, maxDeviceBytes } = meta.settings;
@@ -148,12 +175,24 @@ export function plan(meta, books, resident, { freeArchive = null, indexStale = f
     ? maxDeviceBytes
     : Math.min(maxDeviceBytes, residentBytes + freeArchive);
 
+  const ceiling = maxChunks * CHUNK_SIZE;
   const pushes = [];
   const skipped = [];
+  const oversize = [];
+
   for (const strip of candidates) {
     /* Before conversion the size is a guess from the last time this strip was
      * converted, or from the source file. It is refined once it is converted. */
     const estimate = strip.state.deviceBytes || estimateBytes(strip, meta.settings);
+
+    /*
+     * Only worth saying when we have a real measurement from a previous
+     * conversion -- the estimate is a ratio off the source file and nowhere
+     * near good enough to accuse a strip of being too big. execute() checks
+     * again with the container in hand, which is the check that counts.
+     */
+    if (strip.state.deviceBytes > ceiling) oversize.push({ strip, ceiling });
+
     if (residentBytes + estimate > budget) {
       skipped.push({ strip, estimate });
       continue;
@@ -163,11 +202,30 @@ export function plan(meta, books, resident, { freeArchive = null, indexStale = f
   }
 
   return {
-    strips, deletes, orphans, pushes, skipped, indexStale,
+    strips, deletes, orphans, pushes, skipped, oversize, indexStale, wallpaper,
     projectedBytes: residentBytes,
     budget,
-    empty: !pushes.length && !deletes.length && !orphans.length && !indexStale,
+    empty: !pushes.length && !deletes.length && !orphans.length && !indexStale
+           && !wallpaper,
   };
+}
+
+/**
+ * What this sync should do about the wallpaper.
+ *
+ * Separate from plan() because it needs the file off the disk and plan() is
+ * deliberately pure. `file` is `wallpaper.jpg` from the library root, or null
+ * if there is not one; `hash` is its contents hashed.
+ *
+ * Null means leave it alone -- which is the answer whenever the file on disk is
+ * the one the calculator already has.
+ */
+export function planWallpaper(meta, file, hash) {
+  const sent = meta.wallpaper && meta.wallpaper.srcHash;
+
+  if (!file) return sent ? { action: 'remove' } : null;
+  if (sent === hash) return null;
+  return { action: 'send', file, srcHash: hash };
 }
 
 /* Bytes per source byte, measured across the sample strip at each preset. Only
@@ -192,11 +250,22 @@ export async function execute(calculator, meta, books, currentPlan, {
   onStatus = () => {},
   onProgress = () => {},
   signal = null,
+  maxChunks = MAX_CHUNKS,
 } = {}) {
   const aborted = () => signal && signal.aborted;
 
+  /*
+   * Strips that could not be sent, with the reason.
+   *
+   * One bad strip does not abort the sync. The others are perfectly good, and
+   * the calculator is right here with the cable in it -- finishing and then
+   * reporting what did not make it is more useful than stopping at the first
+   * problem and leaving the rest for another day.
+   */
+  const failures = [];
+
   for (const strip of currentPlan.deletes) {
-    if (aborted()) return { aborted: true };
+    if (aborted()) return { aborted: true, failures };
     onStatus(`Removing ${strip.title}`);
     await calculator.deleteStrip(strip.state.id);
     strip.state.onCalc = false;
@@ -206,14 +275,14 @@ export async function execute(calculator, meta, books, currentPlan, {
   }
 
   for (const orphan of currentPlan.orphans) {
-    if (aborted()) return { aborted: true };
+    if (aborted()) return { aborted: true, failures };
     onStatus(`Removing an unknown strip in slot ${orphan.slot}`);
     await calculator.deleteStrip(orphan.slot);
   }
 
   let index = 0;
   for (const strip of currentPlan.pushes) {
-    if (aborted()) return { aborted: true };
+    if (aborted()) return { aborted: true, failures };
     index++;
 
     onStatus(`Converting ${strip.title} (${index}/${currentPlan.pushes.length})`);
@@ -229,13 +298,40 @@ export async function execute(calculator, meta, books, currentPlan, {
       await cache.put(key, container);
     }
 
+    /*
+     * Refuse it here rather than let the calculator store a strip it can never
+     * open. Everything downstream would report success: every chunk is written
+     * and acknowledged, the index lists it, and the reader draws it in the menu
+     * with its title and size -- it fails only when somebody picks it, days
+     * later, with no way left to tell why.
+     */
+    if (container.chunks.length > maxChunks) {
+      failures.push({
+        strip,
+        reason: `${strip.title} is ${kb(container.totalBytes)} converted, and the `
+          + `calculator cannot open a strip over ${kb(maxChunks * CHUNK_SIZE)}. `
+          + 'Choose a lower Detail setting, or split the image.',
+      });
+      continue;
+    }
+
     onStatus(`Sending ${strip.title} (${index}/${currentPlan.pushes.length})`);
     const started = Date.now();
     let sent = 0;
+    let failed = null;
 
     for (let chunk = 0; chunk < container.chunks.length; chunk++) {
-      if (aborted()) return { aborted: true };
-      await calculator.putChunk(strip.state.id, chunk, container.chunks[chunk]);
+      if (aborted()) return { aborted: true, failures };
+
+      try {
+        await putChunkChecked(calculator, strip.state.id, chunk, container.chunks[chunk]);
+      } catch (error) {
+        if (!(error instanceof ProtocolError)) throw error;
+        failed = `${strip.title}: chunk ${chunk + 1} of ${container.chunks.length} `
+          + `could not be stored -- ${error.message.replace(/^command 0x\w+ failed: /, '')}.`;
+        break;
+      }
+
       sent += container.chunks[chunk].length;
 
       /* Report a rate, so "it feels slow" becomes a number. */
@@ -249,16 +345,131 @@ export async function execute(calculator, meta, books, currentPlan, {
       });
     }
 
+    /*
+     * Ask the calculator to open it before believing it is there.
+     *
+     * This is the check that was missing. `onCalc` used to be set the moment
+     * the last chunk was acknowledged; the index was then built from that flag,
+     * and the LIST read back afterwards was built from that index -- so the
+     * page was only ever checking its own claim against itself. A strip with a
+     * hole in it passed all of that and failed at the reader.
+     */
+    if (!failed) {
+      onStatus(`Checking ${strip.title}`);
+      const verdict = await calculator.verifyStrip(strip.state.id);
+      if (!verdict.ok) {
+        failed = `${strip.title} was sent but will not open on the calculator. `
+          + 'It has been left off; syncing again sends it afresh.';
+      }
+    }
+
+    if (failed) {
+      /* Take the wreckage away, so the next sync starts from nothing rather
+       * than from a half-written strip. */
+      await calculator.deleteStrip(strip.state.id).catch(() => {});
+      strip.state.onCalc = false;
+      strip.state.chunkCount = 0;
+      strip.state.deviceBytes = 0;
+      failures.push({ strip, reason: failed });
+      continue;
+    }
+
     strip.state.onCalc = true;
     strip.state.chunkCount = container.chunks.length;
     strip.state.deviceBytes = container.totalBytes;
+  }
+
+  /*
+   * The wallpaper, last, and before the index push.
+   *
+   * Claiming it writes the device block; INDEX_PUT splices that live block into
+   * whatever the page sends, so the claim survives the index that follows. The
+   * other order would throw it away again.
+   */
+  if (currentPlan.wallpaper && !aborted()) {
+    const trouble = await syncWallpaper(calculator, meta, currentPlan.wallpaper,
+                                        { pool, onStatus });
+    if (trouble) failures.push({ strip: null, reason: trouble });
   }
 
   onStatus('Updating the index');
   await calculator.putIndex(buildIndexFor(meta, books));
   meta.lastSync = new Date().toISOString();
 
-  return { aborted: false };
+  return { aborted: false, failures };
+}
+
+/*
+ * Send, or remove, the lock screen wallpaper. Returns a reason on failure.
+ *
+ * It travels as an ordinary strip in a reserved slot -- so it is checksummed
+ * chunk by chunk and opened by the calculator before it is believed, exactly
+ * like a comic. What is not ordinary is the claim afterwards: that is what ties
+ * it to the index, so that deleting the index to get past the password takes
+ * the wallpaper with it.
+ *
+ * Not cached. It is one screen and converts in a moment, and the conversion
+ * cache is keyed on the detail preset, which a wallpaper does not have.
+ */
+async function syncWallpaper(calculator, meta, wanted, { pool, onStatus }) {
+  if (wanted.action === 'remove') {
+    onStatus('Removing the wallpaper');
+    await calculator.setWallpaper(false);
+    await calculator.deleteStrip(WALLPAPER_SLOT).catch(() => {});
+    meta.wallpaper = null;
+    return null;
+  }
+
+  onStatus('Converting the wallpaper');
+  const container = await pool.convert(wanted.file, { ...meta.settings, wallpaper: true });
+
+  onStatus('Sending the wallpaper');
+  try {
+    for (let chunk = 0; chunk < container.chunks.length; chunk++) {
+      await putChunkChecked(calculator, WALLPAPER_SLOT, chunk, container.chunks[chunk]);
+    }
+  } catch (error) {
+    if (!(error instanceof ProtocolError)) throw error;
+    await calculator.deleteStrip(WALLPAPER_SLOT).catch(() => {});
+    return `the wallpaper could not be stored -- ${error.message}`;
+  }
+
+  const verdict = await calculator.verifyStrip(WALLPAPER_SLOT);
+  if (!verdict.ok || !(await calculator.setWallpaper(true))) {
+    await calculator.setWallpaper(false).catch(() => {});
+    await calculator.deleteStrip(WALLPAPER_SLOT).catch(() => {});
+    return 'the wallpaper was sent but the calculator could not open it';
+  }
+
+  meta.wallpaper = { srcHash: wanted.srcHash, sentAt: new Date().toISOString() };
+  return null;
+}
+
+/* Round KB, for messages. The page has its own; this file has no DOM. */
+function kb(bytes) {
+  return `${Math.round(bytes / 1024)} KB`;
+}
+
+/*
+ * Send one chunk, re-sending it if the calculator says it arrived damaged.
+ *
+ * The calculator CRCs the appvar where it lies in flash, so a rejection means
+ * the bytes it stored are not the bytes we hold -- and we still hold them, so
+ * trying again is exactly the right response. Nothing else is retried: no room
+ * and no such slot fail the same way twice.
+ */
+async function putChunkChecked(calculator, slot, index, chunk) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await calculator.putChunk(slot, index, chunk);
+      return;
+    } catch (error) {
+      const worthRetrying = error instanceof ProtocolError
+        && error.status === STATUS_BAD_CRC
+        && attempt < CHUNK_ATTEMPTS;
+      if (!worthRetrying) throw error;
+    }
+  }
 }
 
 /**

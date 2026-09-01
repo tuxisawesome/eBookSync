@@ -61,7 +61,9 @@ int main(int argc, char **argv) {
         return 1;
 
     csx_strip_t strip;
-    if (!csx_open(&strip, (uint8_t)atoi(argv[2]))) {
+    /* Not a uint8_t: casting here is what hid the slot truncation in
+     * map_chunk() from every test that could have caught it. */
+    if (!csx_open(&strip, (uint16_t)atoi(argv[2]))) {
         fprintf(stderr, "csx_open failed\n");
         return 1;
     }

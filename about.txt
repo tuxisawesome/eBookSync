@@ -22,6 +22,25 @@ KEYS
     del     mark read
     clear   back
 
+  Anywhere
+    2nd+on  lock the calculator
+
+LOCKING
+
+2nd+on turns the screen off. Press on to
+wake it: your wallpaper, the date and
+time, and the password prompt.
+
+Three wrong answers turn it off again
+and it comes back still locked. There is
+no way past it from the keypad, so this
+locks you out too. The ways out are the
+password, the batteries, or the sync
+page on a computer.
+
+With no password set it is just a screen
+blanker and any key returns.
+
 CREDITS
 
 ZX0 compression by Einar Saukas.

@@ -22,6 +22,10 @@ echo "== library index: python builder -> calculator parser =="
 python3 "$dir/check_library.py"
 
 echo
+echo "== chunks: over the link, then opened by the reader =="
+python3 "$dir/check_chunks.py"
+
+echo
 echo "== container: browser encoder -> calculator renderer =="
 python3 "$dir/check_js.py" --node "$node" "$@"
 
