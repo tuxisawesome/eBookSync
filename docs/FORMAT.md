@@ -203,7 +203,7 @@ live block over the incoming bytes before storing them, and `INDEX_GET` zeroes
 it again in the reply.
 
 ```
-  0   1   pwFlags         bit 0 password set, bit 1 lock at power-on
+  0   1   pwFlags         0 = no password set
   1   16  pwSalt
   17  32  pwHash          SHA-256(salt || password)
   49  1   pwFailures      consecutive wrong answers, kept across power cycles

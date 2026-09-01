@@ -41,15 +41,9 @@ page on a computer.
 With no password set it is just a screen
 blanker and any key returns.
 
-Settings has a "Lock at power-on"
-switch.
-With it on, turning the calculator on
-asks for the password first, wherever
-you were. It needs a password and a sync
-before it will turn on.
-
-If it ever goes wrong, clear the RAM:
-hold del while putting a battery back.
+It only works while eBookSync is
+running. A program cannot see a key it
+is not there to read.
 
 CREDITS
 

@@ -54,22 +54,15 @@ bool lock_poll(void);
 bool lock_prompt(void);
 
 /*
- * What to draw behind that prompt: the wallpaper, with the date and time along
- * the top. Passed to keyin_text() by anything that wants the lock screen's
- * appearance -- including the password gate at startup.
- */
-keyin_backdrop_t lock_backdrop(void);
-
-/*
- * Put the operating system's power-on flag in step with the setting.
+ * Show the wallpaper, with the date and time across the top, until any key is
+ * pressed.
  *
- * Safe to call at any time, and called on the way into the reader so it
- * re-asserts itself: the flag lives in RAM, so a RAM clear turns it off without
- * telling anybody.
+ * This is what you wake to, and what the password gate shows on the way into
+ * the reader. The prompt that follows is drawn on a plain background rather
+ * than over the picture: redrawing a full-screen image behind every keystroke
+ * costs eight decompressions and a full-screen blit per character, to show
+ * something nobody is looking at while they type.
  */
-void lock_arm_power_on(void);
-
-/* Is prgmONSCRPT installed? Without it there is nothing for the OS to run. */
-bool lock_power_on_ready(void);
+void lock_wake_screen(void);
 
 #endif /* LOCK_H */

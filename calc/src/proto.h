@@ -15,7 +15,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define PROTO_VERSION       5
+#define PROTO_VERSION       6
 
 /*
  * The calculator is a USB CDC serial port, so the computer finds it by the
@@ -104,7 +104,6 @@ typedef enum {
  */
 #define PROTO_FLAG_UPDATER   0x01   /* prgmCSUP is installed */
 #define PROTO_FLAG_ARMED     0x02   /* a reader update is waiting for it */
-#define PROTO_FLAG_LOCK_ARMED 0x04  /* a lock screen update is too */
 
 /* What HELLO says about the library already on the calculator. */
 typedef enum {

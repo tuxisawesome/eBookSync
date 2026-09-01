@@ -132,7 +132,7 @@ dropped" is the entire diagnosis, and there is nowhere else to see it.
 
 | cmd | name | payload | reply |
 |-----|------|---------|-------|
-| 0x01 | `HELLO` | the 16-byte library id | `u8 protocol, u24 freeArchive, u8 maxChunks, u8 chunkSize/256, u8 library, u16 build, u8 flags, u16 armedBuild, u16 lockBuild` |
+| 0x01 | `HELLO` | the 16-byte library id | `u8 protocol, u24 freeArchive, u8 maxChunks, u8 chunkSize/256, u8 library, u16 build, u8 flags, u16 armedBuild` |
 | 0x02 | `LIST` | - | `u16 count`, then `count` x 15-byte strip records |
 | 0x03 | `PUT_CHUNK` | `u8 chunkIndex`, `u32 crc32`, then the chunk; `arg` = slot | status only |
 | 0x04 | `DEL` | none; `arg` = slot | `u8 chunksRemoved` |
@@ -176,7 +176,7 @@ A `LIST` strip record is the on-calculator state of one strip:
 
 ## Version skew
 
-`PROTO_VERSION` is 5. The page reports a mismatch rather than refusing to talk,
+`PROTO_VERSION` is 6. The page reports a mismatch rather than refusing to talk,
 and that is deliberate: the update travels over this same link, so a page that
 hung up on an out-of-date calculator would be unable to fix exactly the
 calculators that need fixing.
@@ -215,18 +215,12 @@ The image arrives the way a comic does: `UPDATE_BEGIN`, then one `UPDATE_CHUNK`
 per 16 KB, then `UPDATE_END`. It does not fit in RAM whole -- sync already holds
 16 KB for the payload and 2 KB for the serial ring, out of about 50 KB -- and
 chunks sitting in the archive can be checksummed and copied through pointers
-without ever being staged. `target` is `0` for the reader, `1` for the updater and `2` for the lock
-screen.
+without ever being staged. `target` is `0` for the reader and `1` for the updater.
 
-Each target has its own manifest and its own chunks -- `CSUPD<target>` and
-`CSU<target><index>` -- so a sync carrying a new reader *and* a new lock screen
-does not have the second sweep away the first. They shared one set of names
-until there were three of them, and the failure that would have caused is a
-calculator reporting an update as armed that had already been deleted.
-
-`flags` bit 2 says a lock screen update is armed, and `lockBuild` says which --
-the same pair as bit 1 and `armedBuild` do for the reader, and separate for the
-same reason: both can be waiting at once. `prgmCSUP` installs whichever are.
+Each has its own manifest and its own chunks -- `CSUPD<target>` and
+`CSU<target><index>` -- rather than one set shared between them. Only one is
+ever armed today, since the updater is installed as it arrives, but a manifest
+filed under one target can no longer be mistaken for another'"'"'s.
 
 `UPDATE_END` CRC-32s every chunk where it lies in flash and refuses the lot on a
 mismatch -- `PROTO_TRUNCATED` -- with nothing replaced and nothing armed.

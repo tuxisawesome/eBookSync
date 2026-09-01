@@ -80,16 +80,8 @@ int main(void) {
     os_ClrHome();
     say(0, "eBookSync updater");
 
-    /*
-     * The reader and the lock screen are separate images and either may be
-     * waiting, so both are tried. They are installed by the same run because
-     * neither can install itself -- see calc/src/update.h.
-     */
     update_manifest_t manifest;
-    bool anything = update_pending(UPDATE_TARGET_READER, &manifest)
-                 || update_pending(UPDATE_TARGET_LOCK, &manifest);
-
-    if (!anything) {
+    if (!update_pending(UPDATE_TARGET_READER, &manifest)) {
         say(2, "Nothing to install.");
         say(4, "Sync first, then run this.");
         wait_for_key();
@@ -97,9 +89,8 @@ int main(void) {
     }
 
     bool ok = install(UPDATE_TARGET_READER, 2);
-    ok = install(UPDATE_TARGET_LOCK, 4) && ok;
 
-    say(6, ok ? "Run COMICS." : "Sync again to retry.");
+    say(4, ok ? "Run COMICS." : "Sync again to retry.");
     wait_for_key();
     return ok ? 0 : 1;
 }

@@ -41,7 +41,6 @@ const char *update_target_name(uint8_t target) {
     switch (target) {
         case UPDATE_TARGET_READER:  return UPDATE_READER_NAME;
         case UPDATE_TARGET_UPDATER: return UPDATE_UPDATER_NAME;
-        case UPDATE_TARGET_LOCK:    return UPDATE_LOCK_NAME;
         default:                    return NULL;
     }
 }

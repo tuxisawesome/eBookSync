@@ -138,9 +138,6 @@ static uint8_t cached_flags;
  */
 static uint16_t cached_armed_build;
 
-/* The same, for the lock screen. Two targets can be armed at once: they are
- * installed by the same run of prgmCSUP but they are separate images. */
-static uint16_t cached_lock_build;
 static const uint8_t *cached_index;
 static uint16_t cached_index_size;
 
@@ -256,8 +253,7 @@ static void do_hello(void) {
     put16(reply_small + 7, COMICS_BUILD);
     reply_small[9] = cached_flags;
     put16(reply_small + 10, cached_armed_build);
-    put16(reply_small + 12, cached_lock_build);
-    answer(PROTO_OK, reply_small, 14);
+    answer(PROTO_OK, reply_small, 12);
 }
 
 /* Re-map the index after anything that moved or replaced it. */
@@ -576,13 +572,8 @@ static void do_update_end(void) {
 
     bool ok = update_arm(&incoming);
     if (ok) {
-        if (incoming.target == UPDATE_TARGET_LOCK) {
-            cached_flags |= PROTO_FLAG_LOCK_ARMED;
-            cached_lock_build = incoming.build;
-        } else {
-            cached_flags |= PROTO_FLAG_ARMED;
-            cached_armed_build = incoming.build;
-        }
+        cached_flags |= PROTO_FLAG_ARMED;
+        cached_armed_build = incoming.build;
     }
     answer(ok ? PROTO_OK : PROTO_WRITE_FAIL, NULL, 0);
 }
@@ -934,7 +925,6 @@ static usb_error_t handle_event(usb_event_t event, void *event_data,
 static uint8_t gather_update_flags(void) {
     uint8_t flags = 0;
     cached_armed_build = 0;
-    cached_lock_build = 0;
 
     uint8_t handle = ti_OpenVar(UPDATE_UPDATER_NAME, "r", OS_TYPE_PRGM);
     if (handle) {
@@ -946,10 +936,6 @@ static uint8_t gather_update_flags(void) {
     if (update_pending(UPDATE_TARGET_READER, &armed)) {
         flags |= PROTO_FLAG_ARMED;
         cached_armed_build = armed.build;
-    }
-    if (update_pending(UPDATE_TARGET_LOCK, &armed)) {
-        flags |= PROTO_FLAG_LOCK_ARMED;
-        cached_lock_build = armed.build;
     }
 
     return flags;

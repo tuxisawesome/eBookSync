@@ -1,9 +1,9 @@
 {
-  "build": 16,
+  "build": 17,
   "comics": {
-    "bytes": 29868
+    "bytes": 29099
   },
   "updater": {
-    "bytes": 7348
+    "bytes": 7258
   }
 }

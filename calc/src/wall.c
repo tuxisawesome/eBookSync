@@ -7,7 +7,6 @@
 
 #include <fileioc.h>
 #include <graphx.h>
-#include <stdlib.h>
 
 /*
  * What the index says about the wallpaper, worked out once.
@@ -23,6 +22,17 @@ typedef enum {
 } wall_state_t;
 
 static wall_state_t state;
+
+/*
+ * One band's worth of room to decompress into.
+ *
+ * Static, and not malloc'd, which took a bug to learn. render_init() takes the
+ * band cache by calling malloc until it fails, so by the time the reader is
+ * showing a menu there is no heap left at all -- and a lock screen that asked
+ * for five kilobytes got nothing, gave up, and painted a flat colour with the
+ * clock on top of it. The cache adapts to what is left over; this cannot.
+ */
+static uint8_t scratch[CSX_BAND_MAX];
 
 /* CRC-32 of every chunk of the reserved slot, in order. 0 if it will not open. */
 static bool wall_checksum(uint32_t *out) {
@@ -78,20 +88,8 @@ bool wall_draw(void) {
     if (!csx_open(&strip, CSX_WALLPAPER_SLOT))
         return false;
 
-    /*
-     * One band's worth, taken and given back around the draw. The lock screen
-     * can be reached from the viewer, where the band cache already owns most of
-     * what is free, and from the password gate, where nothing has been
-     * allocated at all -- so it borrows rather than keeping anything.
-     */
-    uint8_t *scratch = malloc(CSX_BAND_MAX);
-    if (!scratch)
-        return false;
-
     render_set_palette(&strip);
-    bool drawn = render_draw_full(&strip, scratch);
-    free(scratch);
-    return drawn;
+    return render_draw_full(&strip, scratch);
 }
 
 bool wall_adopt(void) {

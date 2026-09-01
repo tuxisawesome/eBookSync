@@ -85,7 +85,7 @@ export async function loadCatalogue(base = '') {
  */
 export function plan(hello, catalogue) {
   if (!catalogue || !hello) {
-    return { reader: false, updater: false, lock: false, armed: false, build: 0 };
+    return { reader: false, updater: false, armed: false, build: 0 };
   }
 
   /*
@@ -103,25 +103,11 @@ export function plan(hello, catalogue) {
   const armed = Boolean(hello.updateArmed) && hello.armedBuild === catalogue.build;
   const behind = hello.build !== catalogue.build;
 
-  /*
-   * The lock screen is the reader'''s own image under a second name, because
-   * TI-OS runs a program called ONSCRPT at power-on and that is the only way a
-   * program can get control before the homescreen.
-   *
-   * Sent whenever the reader is, and not gated on the calculator wanting it.
-   * It has to be, or the setting could never be turned on: the reader refuses
-   * to arm the OS flag until prgmONSCRPT is actually there, so gating the send
-   * on the setting and the setting on the send would leave neither able to go
-   * first. Present but not armed costs archive and nothing else.
-   */
-  const lockArmed = Boolean(hello.lockArmed) && hello.lockBuild === catalogue.build;
-
   return {
     build: catalogue.build,
     from: hello.build,
     armed,
     reader: behind && !armed,
-    lock: (behind && !lockArmed) || !hello.lockBuild,
     /* No point pushing the updater for an update that is already waiting. */
     updater: (behind && !armed) || !hello.hasUpdater,
   };
@@ -155,7 +141,7 @@ async function push(calculator, target, image, build, onProgress) {
  * updater too old to be trusted with it.
  */
 export async function execute(calculator, catalogue, wanted, { onStatus = () => {} } = {}) {
-  const done = { updater: false, reader: false, lock: false };
+  const done = { updater: false, reader: false };
 
   if (wanted.updater) {
     onStatus('Sending the updater…');
@@ -169,17 +155,6 @@ export async function execute(calculator, catalogue, wanted, { onStatus = () => 
     await push(calculator, UPDATE_TARGET.READER, catalogue.reader, wanted.build,
                (n, of) => onStatus(`Sending the reader… ${n}/${of}`));
     done.reader = true;
-  }
-
-  /*
-   * Last, and the same bytes as the reader. It is armed rather than installed,
-   * like the reader, and prgmCSUP puts both in place in one run.
-   */
-  if (wanted.lock) {
-    onStatus('Sending the lock screen…');
-    await push(calculator, UPDATE_TARGET.LOCK, catalogue.reader, wanted.build,
-               (n, of) => onStatus(`Sending the lock screen… ${n}/${of}`));
-    done.lock = true;
   }
 
   return done;

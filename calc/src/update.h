@@ -47,25 +47,11 @@ typedef enum {
     UPDATE_TARGET_READER  = 0,   /* COMICS,  installed by CSUP */
     UPDATE_TARGET_UPDATER = 1,   /* CSUP,    installed by COMICS */
 
-    /*
-     * The lock screen, which the operating system runs when the calculator is
-     * turned on.
-     *
-     * The name is the mechanism: TI-OS runs a program called ONSCRPT at power
-     * on when the flag at os_Flags[OS_FLAGS_HOOKS1] is set. That is a
-     * documented feature of the operating system rather than anything clever,
-     * and it is the only way a program -- as opposed to a signed Flash
-     * application -- can get control before the homescreen does. See
-     * docs/PROTOCOL.md.
-     */
-    UPDATE_TARGET_LOCK    = 2,   /* ONSCRPT, installed by CSUP */
-
-    UPDATE_TARGET_COUNT   = 3,
+    UPDATE_TARGET_COUNT   = 2,
 } update_target_t;
 
 #define UPDATE_READER_NAME  "COMICS"
 #define UPDATE_UPDATER_NAME "CSUP"
-#define UPDATE_LOCK_NAME    "ONSCRPT"
 
 /* The program one target names, or NULL if the target is not one. */
 const char *update_target_name(uint8_t target);

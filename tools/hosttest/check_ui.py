@@ -143,10 +143,16 @@ def locked_library(directory, password, failures_so_far=0):
     (directory / f"{lib.NAME}.8xv").write_bytes(tifile.write(lib.NAME, index))
 
 
+# The wallpaper and the clock come up first and any key brings up the prompt, so
+# every password entry starts with a keypress that is spent on that. 2nd rather
+# than clear: clear at the prompt means "give up".
+WAKE = press("2nd")
+
+
 # keyin.c reads the letters printed on the keys, so a numeric password is typed
 # with the digit keys and needs no mode changes.
 def type_password(digits):
-    keys = []
+    keys = list(WAKE)
     for digit in digits:
         keys += press(digit)
     return keys + press("enter")
@@ -170,15 +176,20 @@ with tempfile.TemporaryDirectory() as tmp:
     check("locked, three wrong passwords close the app", wrong, CLOSED, directory=directory)
 
     check("locked, clear at the prompt closes the app",
-          LEAD + press("clear"), CLOSED, directory=directory)
+          LEAD + WAKE + press("clear"), CLOSED, directory=directory)
+
+    # And the key that brings the prompt up is spent doing that: it must not
+    # also count as an answer, or the wake screen would burn a try.
+    check("the key that dismisses the wallpaper is not an answer",
+          LEAD + WAKE, RUNNING, directory=directory)
 
     check("locked, the book list is not reachable without the password",
-          LEAD + press("2nd") + press("2nd"), RUNNING,
+          LEAD + WAKE + press("2nd") + press("2nd"), RUNNING,
           directory=directory)
 
     # Nothing typed before the password is right must reach the menus: the sync
     # screen in particular, since that is a way to move comics off the device.
-    status, output = run(LEAD + press("2nd") + press("2nd"), directory)
+    status, output = run(LEAD + WAKE + press("2nd") + press("2nd"), directory)
     checks += 1
     if "sync" in output:
         failures.append("locked: 2nd reached the sync screen before the password")
@@ -239,8 +250,8 @@ with tempfile.TemporaryDirectory() as tmp:
     # can walk away from the gate: clear closes the app at startup, and must not
     # here, because the screen behind it is the library.
     check("clear does not dismiss the lock",
-          unlocked + press("2nd+on") + press("on") + press("clear") + press("clear")
-          + press("clear") + press("clear"),
+          unlocked + press("2nd+on") + press("on") + WAKE + press("clear")
+          + press("clear") + press("clear") + press("clear"),
           RUNNING, directory=directory)
 
     # The strip list and the viewer scan the keypad through their own loops, so
@@ -265,6 +276,23 @@ with tempfile.TemporaryDirectory() as tmp:
     check("and the key that dismisses it does not also act",
           LEAD + press("2nd+on") + press("on") + press("clear"),
           RUNNING, directory=directory)
+
+# --- the lock screen must not ask the heap for anything ---------------------
+#
+# render_init() takes the band cache by calling malloc until it is refused, so
+# by the time a menu is on screen there is no heap left. wall_draw() used to ask
+# for five kilobytes to decompress into, got nothing, gave up, and let the lock
+# screen fall back to a flat fill -- which looks exactly like a wallpaper that
+# is one colour, with a clock on top. It went unnoticed because the fallback is
+# indistinguishable from success.
+#
+# Read from the source rather than measured, which is weaker than it sounds
+# only because the honest behavioural version -- exhaust the heap, then draw --
+# cannot be run on a host whose heap is not finite.
+checks += 1
+wall = (HERE.parent.parent / "calc" / "src" / "wall.c").read_text()
+if "malloc(" in wall:
+    failures.append("wall.c allocates; the band cache will have taken the heap first")
 
 for failure in failures:
     print("  FAIL " + failure)

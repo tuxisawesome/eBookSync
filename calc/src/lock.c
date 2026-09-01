@@ -5,7 +5,6 @@
 #include "library.h"
 #include "render.h"
 #include "ui.h"
-#include "update.h"
 #include "wall.h"
 
 #include <graphx.h>
@@ -86,18 +85,54 @@ static void draw_bar(void) {
 
 /* --------------------------------------------------------------- backdrop */
 
-static void backdrop(void) {
+/*
+ * The wake screen: the wallpaper, with the date and time across the top.
+ *
+ * Not the backdrop to the password prompt. Drawing a full-screen image behind
+ * every keystroke means eight decompressions and a full-screen blit per
+ * character, on a calculator, to show a picture nobody is looking at while they
+ * are typing. So the wallpaper is what you wake to, and the prompt that follows
+ * it is drawn on a plain background.
+ */
+static void draw_wake_screen(void) {
     if (!wall_draw())
         gfx_FillScreen(UI_BG);
 
-    /* wall_draw() loaded the wallpaper's colours into 0-15; the bar and the
-     * prompt are drawn in the chrome entries above them, which it did not
-     * touch. */
+    /* wall_draw() loaded the wallpaper's colours into 0-15; the bar is drawn in
+     * the chrome entries above them, which it did not touch. */
     draw_bar();
 }
 
-keyin_backdrop_t lock_backdrop(void) {
-    return backdrop;
+/*
+ * Show it until any key is pressed.
+ *
+ * Redrawn only to move the clock on -- see draw_wake_screen(). Whatever woke
+ * the calculator is still held down when this starts, and must not also
+ * dismiss it.
+ */
+void lock_wake_screen(void) {
+    unsigned since_redraw = 0;
+    bool dirty = true;
+
+    do { input_scan(); } while (!input_idle());
+
+    for (;;) {
+        if (dirty) {
+            draw_wake_screen();
+            ui_present(true);
+            dirty = false;
+            since_redraw = 0;
+        } else {
+            ui_present(false);
+        }
+
+        input_scan();
+        if (!input_idle())
+            return;
+
+        if (++since_redraw >= 60)
+            dirty = true;
+    }
 }
 
 /* ------------------------------------------------------------------ sleep */
@@ -184,40 +219,6 @@ static void sleep_until_on(void) {
 
 /* ------------------------------------------------------------------- lock */
 
-/*
- * Wait for any key, over the wallpaper. There is nothing to ask for.
- *
- * Redrawn only to move the clock on. Painting the wallpaper every frame would
- * mean eight decompressions and a full-screen blit sixty times a second to show
- * a picture that is not changing, which is a strange thing for a screen whose
- * whole purpose is to be idle.
- */
-static void wait_for_any_key(void) {
-    unsigned since_redraw = 0;
-    bool dirty = true;
-
-    /* Whatever woke it is still held down; that must not also dismiss it. */
-    do { input_scan(); } while (!input_idle());
-
-    for (;;) {
-        if (dirty) {
-            backdrop();
-            ui_present(true);
-            dirty = false;
-            since_redraw = 0;
-        } else {
-            ui_present(false);
-        }
-
-        input_scan();
-        if (!input_idle())
-            return;
-
-        if (++since_redraw >= 60)
-            dirty = true;
-    }
-}
-
 void lock_engage(void) {
     /* The wallpaper takes palette entries 0-15, which belong to whatever was
      * on screen -- a strip in the viewer, or nothing in particular in a menu.
@@ -229,13 +230,15 @@ void lock_engage(void) {
     for (;;) {
         sleep_until_on();
 
-        if (!lib_password_set()) {
-            /* Nothing to ask. It is still a useful gesture -- the screen goes
-             * off and comes back -- so it stays a gesture rather than becoming
-             * an error message. */
-            wait_for_any_key();
+        /*
+         * The wallpaper first, then the prompt. With no password set there is
+         * nothing to ask, and the gesture is simply a screen blanker -- so the
+         * wake screen is the whole of it.
+         */
+        lock_wake_screen();
+
+        if (!lib_password_set())
             break;
-        }
 
         if (lock_prompt())
             break;
@@ -270,7 +273,7 @@ bool lock_prompt(void) {
 
         char entered[LIB_PASSWORD_MAX + 1];
         if (!keyin_text("Locked", hint[0] ? hint : NULL, entered,
-                        LIB_PASSWORD_MAX, KEYIN_MASKED, NULL, backdrop)) {
+                        LIB_PASSWORD_MAX, KEYIN_MASKED, NULL, NULL)) {
             /* clear: no way out, so treat it as a wrong answer and redraw. */
             continue;
         }
@@ -290,6 +293,8 @@ bool lock_prompt(void) {
         lib_password_note_failure();
         ui_message("Wrong password.",
                    tries > 1 ? "Try again." : "Turning off.");
+        if (tries > 1)
+            lock_wake_screen();
     }
     return false;
 }
@@ -308,51 +313,5 @@ bool lock_poll(void) {
     locking = true;
     lock_engage();
     locking = false;
-    return true;
-}
-
-/* ------------------------------------------------------- lock at power-on */
-
-/*
- * Tell the operating system whether to run the lock screen when the calculator
- * is turned on.
- *
- * TI-OS runs a program called ONSCRPT at power-on when this flag is set. That
- * is a documented feature of the operating system, and it is the only way a
- * program can get control before the homescreen -- the alternative is a Flash
- * application, and those cannot be installed without TI's signing key.
- *
- * Three things have to be true or the flag comes off: the user asked for it,
- * there is a password to ask for, and prgmONSCRPT is actually installed. The
- * last is not paranoia. os_Flags lives in RAM, so a RAM clear takes the flag
- * with it -- which is the escape hatch if this ever goes wrong -- but a sync
- * that never delivered ONSCRPT would otherwise leave the OS trying to run a
- * program that is not there, at every power-on.
- *
- * Called on the way in, so it re-asserts itself after a RAM clear has silently
- * turned it off, and again whenever the setting changes.
- */
-void lock_arm_power_on(void) {
-    bool wanted = lib_lock_on_power();
-
-    if (wanted) {
-        uint8_t handle = ti_OpenVar(UPDATE_LOCK_NAME, "r", OS_TYPE_PRGM);
-        if (handle)
-            ti_Close(handle);
-        else
-            wanted = false;
-    }
-
-    if (wanted)
-        os_Flags[OS_FLAGS_HOOKS1] |= 1 << OS_FLAGS_HOOKS1_ALT_ON;
-    else
-        os_Flags[OS_FLAGS_HOOKS1] &= (uint8_t)~(1 << OS_FLAGS_HOOKS1_ALT_ON);
-}
-
-bool lock_power_on_ready(void) {
-    uint8_t handle = ti_OpenVar(UPDATE_LOCK_NAME, "r", OS_TYPE_PRGM);
-    if (!handle)
-        return false;
-    ti_Close(handle);
     return true;
 }

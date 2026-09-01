@@ -58,13 +58,6 @@ int main(void) {
         return 0;
     }
 
-    /*
-     * The operating system's power-on flag lives in RAM, so a RAM clear turns
-     * it off without telling anybody. Put it back in step with the setting on
-     * every run -- and take it off if prgmONSCRPT has gone.
-     */
-    lock_arm_power_on();
-
     if (!render_init()) {
         ui_message("Not enough free memory.", "Archive or delete some files.");
         gfx_End();

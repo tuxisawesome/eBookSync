@@ -124,16 +124,6 @@ bool lib_set_clock(uint32_t unix_seconds);
 bool lib_password_set(void);
 bool lib_password_check(const char *password);
 
-/*
- * Whether the lock screen should come up when the calculator is turned on.
- *
- * Kept beside the password, and false whenever there is no password: a lock
- * screen with nothing to ask for would only be a way to make the calculator
- * harder to use. Removing the password clears this with it.
- */
-bool lib_lock_on_power(void);
-bool lib_set_lock_on_power(bool wanted);
-
 /* Set or, with NULL, remove. Creates an index if there is not one yet. */
 bool lib_password_store(const char *password);
 

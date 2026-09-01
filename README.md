@@ -214,25 +214,13 @@ this page on it. Set a password you will remember before you rely on it.
 If no password is set the gesture still works, as a screen blanker: any key
 brings it back.
 
-**Locking it at power-on.** Settings has a *Lock at power-on* switch. With it on,
-turning the calculator on asks for the password before anything else — so
-`2nd`+`on` at the homescreen, or anywhere in TI-OS, is a lock rather than merely
-a power-off.
-
-It works because TI-OS runs a program called `ONSCRPT` when the calculator is
-turned on, if a flag is set. eBookSync installs its own reader under that name —
-the sync sends the same build twice, once as `COMICS` and once as `ONSCRPT`, and
-`prgmCSUP` installs both — so the lock screen at power-on is the same lock
-screen as everywhere else. It costs about 30 KB of archive.
-
-The switch will not turn on until there is a password to ask for and a synced
-copy of `ONSCRPT` to run. Removing the password turns it off.
-
-**If it ever goes wrong**, the escape is the calculator's normal one: clear the
-RAM (hold `del` while putting a battery back in). The flag lives in RAM, so a
-RAM clear takes it with it and the calculator comes up as usual. The reader puts
-the flag back the next time you run it — which is also how it survives a RAM
-clear you did for some other reason.
+**It only works while the reader is running.** A CE program cannot see a
+keypress when it is not executing, and there is no way round that: TI-OS runs a
+program called `ONSCRPT` at power-on, but not a native one, and the other route
+-- a Flash application, which is what Cesium is -- cannot be installed without
+TI's signing key or a privilege-escalation exploit. So quitting to the
+homescreen is quitting, and the lock is a lock on your comics rather than on the
+calculator.
 
 The sync screen is the one place `2nd`+`on` does nothing. A transfer is in flight there
 and graphics are handed back to the operating system for the duration; locking
