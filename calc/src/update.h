@@ -25,7 +25,16 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define UPDATE_MANIFEST     "CSUPD"
+/*
+ * One armed update per target, so a sync that brings down a new reader and a
+ * new lock screen together does not have the second sweep away the first.
+ *
+ * The manifest is CSUPD<target> and the chunks are CSU<target><index>, both in
+ * hex. Before there were targets these were CSUPD and CSU<index>; update_sweep()
+ * deletes those too, since a calculator updating into this version may be
+ * holding one.
+ */
+#define UPDATE_MANIFEST_LEGACY "CSUPD"
 #define UPDATE_MAGIC        "EUP1"
 #define UPDATE_MANIFEST_SIZE 20
 
@@ -33,14 +42,33 @@
 #define UPDATE_MAX_CHUNKS   16
 #define UPDATE_CHUNK_SIZE   16384
 
-/* Which program an update is for. Each is installed by the other one. */
+/* Which program an update is for. */
 typedef enum {
-    UPDATE_TARGET_READER  = 0,   /* COMICS, installed by CSUP */
-    UPDATE_TARGET_UPDATER = 1,   /* CSUP,   installed by COMICS */
+    UPDATE_TARGET_READER  = 0,   /* COMICS,  installed by CSUP */
+    UPDATE_TARGET_UPDATER = 1,   /* CSUP,    installed by COMICS */
+
+    /*
+     * The lock screen, which the operating system runs when the calculator is
+     * turned on.
+     *
+     * The name is the mechanism: TI-OS runs a program called ONSCRPT at power
+     * on when the flag at os_Flags[OS_FLAGS_HOOKS1] is set. That is a
+     * documented feature of the operating system rather than anything clever,
+     * and it is the only way a program -- as opposed to a signed Flash
+     * application -- can get control before the homescreen does. See
+     * docs/PROTOCOL.md.
+     */
+    UPDATE_TARGET_LOCK    = 2,   /* ONSCRPT, installed by CSUP */
+
+    UPDATE_TARGET_COUNT   = 3,
 } update_target_t;
 
 #define UPDATE_READER_NAME  "COMICS"
 #define UPDATE_UPDATER_NAME "CSUP"
+#define UPDATE_LOCK_NAME    "ONSCRPT"
+
+/* The program one target names, or NULL if the target is not one. */
+const char *update_target_name(uint8_t target);
 
 typedef struct {
     uint8_t target;      /* update_target_t */
@@ -50,11 +78,22 @@ typedef struct {
     uint32_t crc;
 } update_manifest_t;
 
-/* The appvar holding one chunk: CSU<index>, hex. */
-void update_chunk_name(char *name, uint8_t index);
+/* The appvar holding one chunk: CSU<target><index>, hex. Needs 7 bytes. */
+void update_chunk_name(char *name, uint8_t target, uint8_t index);
 
-/* Delete the manifest and every chunk. Safe to call when there is nothing. */
-void update_discard(void);
+/* The appvar holding one target's manifest: CSUPD<target>. Needs 7 bytes. */
+void update_manifest_name(char *name, uint8_t target);
+
+/* Delete one target's manifest and chunks. Safe when there is nothing. */
+void update_discard(uint8_t target);
+
+/*
+ * The same for every target, plus the names used before targets existed.
+ *
+ * Run once on the way in, so wreckage from an interrupted update -- or from the
+ * version before this one -- does not sit in the archive for ever.
+ */
+void update_sweep(void);
 
 /*
  * CRC every chunk where it lies in flash and compare against the manifest.
@@ -67,8 +106,8 @@ bool update_verify(const update_manifest_t *manifest);
 /* Record a verified update, so it survives until something installs it. */
 bool update_arm(const update_manifest_t *manifest);
 
-/* The armed update, if there is one. */
-bool update_pending(update_manifest_t *manifest);
+/* The armed update for one target, if there is one. */
+bool update_pending(uint8_t target, update_manifest_t *manifest);
 
 /*
  * Replace `program` with the chunks, and archive it.

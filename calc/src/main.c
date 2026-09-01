@@ -86,7 +86,7 @@ int main(void) {
      * as no update at all.
      */
     update_manifest_t update;
-    if (update_pending(&update) && update.target == UPDATE_TARGET_READER) {
+    if (update_pending(UPDATE_TARGET_READER, &update)) {
         char line[40];
         sprintf(line, "Update ready: build %u.", update.build);
         ui_message(line, "Quit and run prgmCSUP.");

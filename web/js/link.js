@@ -19,7 +19,7 @@ import { crc32 } from './crc32.js';
 export const USB_VENDOR_ID = 0x16c0;
 export const USB_PRODUCT_ID = 0x05e1;
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 /*
  * The oldest calculator that checksums what it stores.
@@ -106,11 +106,12 @@ export const WALLPAPER_SLOT = 0xffff;
  * CE program runs in place inside its own variable and cannot overwrite itself,
  * which is the whole reason there are two. See calc/src/update.h.
  */
-export const UPDATE_TARGET = { READER: 0, UPDATER: 1 };
+export const UPDATE_TARGET = { READER: 0, UPDATER: 1, LOCK: 2 };
 
 /* HELLO's flag byte. */
 export const FLAG_UPDATER = 0x01;   /* prgmCSUP is installed */
 export const FLAG_ARMED = 0x02;     /* a reader update is waiting for it */
+export const FLAG_LOCK_ARMED = 0x04; /* a lock screen update is too */
 
 /* One update chunk, matching the calculator's payload buffer exactly. */
 export const UPDATE_CHUNK_SIZE = 16384;
@@ -344,6 +345,14 @@ export class Calculator {
        * offers to send the same build again for ever.
        */
       armedBuild: body.length >= 12 ? body[10] | (body[11] << 8) : 0,
+
+      /*
+       * The same pair for the lock screen, which is a separate image installed
+       * by the same run of prgmCSUP. Both can be armed at once, which is why
+       * they are reported separately rather than sharing one slot.
+       */
+      lockArmed: body.length >= 10 && (body[9] & FLAG_LOCK_ARMED) !== 0,
+      lockBuild: body.length >= 14 ? body[12] | (body[13] << 8) : 0,
     };
   }
 

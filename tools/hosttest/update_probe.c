@@ -61,14 +61,19 @@ static void save_all(const char *directory) {
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        fprintf(stderr, "usage: update_probe <in-dir> <out-dir>\n");
+        fprintf(stderr, "usage: update_probe <in-dir> <out-dir> [target]\n");
         return 2;
     }
+
+    /* Which target to install, defaulting to the reader. prgmCSUP tries every
+     * one; this does the one it is asked about, so a test can watch them
+     * separately. */
+    uint8_t target = argc >= 4 ? (uint8_t)atoi(argv[3]) : UPDATE_TARGET_READER;
 
     load_all(argv[1]);
 
     update_manifest_t manifest;
-    if (!update_pending(&manifest)) {
+    if (!update_pending(target, &manifest)) {
         printf("nothing pending\n");
         save_all(argv[2]);
         return 0;
@@ -78,27 +83,28 @@ int main(int argc, char **argv) {
            manifest.target, manifest.build,
            (unsigned long)manifest.bytes, manifest.chunks);
 
-    if (manifest.target != UPDATE_TARGET_READER) {
-        printf("not for the reader\n");
+    const char *name = update_target_name(target);
+    if (!name) {
+        printf("unknown target\n");
         save_all(argv[2]);
         return 0;
     }
 
     if (!update_verify(&manifest)) {
-        update_discard();
+        update_discard(target);
         printf("damaged\n");
         save_all(argv[2]);
         return 1;
     }
     printf("verified\n");
 
-    if (!update_install(UPDATE_READER_NAME, &manifest)) {
+    if (!update_install(name, &manifest)) {
         printf("install failed\n");
         save_all(argv[2]);
         return 1;
     }
 
-    update_discard();
+    update_discard(target);
     printf("installed\n");
     save_all(argv[2]);
     return 0;

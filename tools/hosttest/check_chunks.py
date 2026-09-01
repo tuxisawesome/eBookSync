@@ -35,13 +35,20 @@ from PIL import Image   # noqa: E402
 
 from csx import format as fmt, image as img, zx0   # noqa: E402
 
-PROTOCOL_VERSION = 4
+PROTOCOL_VERSION = 5
 HEADER = struct.Struct("<BBHI")
 
 CMD_HELLO = 0x01
 CMD_PUT_CHUNK = 0x03
 CMD_VERIFY = 0x0E
 CMD_WALLPAPER = 0x0F
+CMD_UPDATE_BEGIN = 0x0A
+CMD_UPDATE_CHUNK = 0x0B
+CMD_UPDATE_END = 0x0C
+
+TARGET_READER = 0
+TARGET_LOCK = 2
+UPDATE_CHUNK_SIZE = 16384
 CMD_BYE = 0x08
 
 WALLPAPER_SLOT = 0xFFFF
@@ -104,7 +111,32 @@ class Probe:
     def hello(self):
         status, body = self.request(CMD_HELLO, b"\0" * 16)
         assert status == STATUS_OK, status
-        return {"version": body[0], "max_chunks": body[4]}
+        return {
+            "version": body[0],
+            "max_chunks": body[4],
+            "flags": body[9],
+            "armed_build": body[10] | (body[11] << 8),
+            "lock_build": body[12] | (body[13] << 8),
+        }
+
+    def push_update(self, target, build, image):
+        """BEGIN, one CHUNK per 16 KB, then END -- what the page does."""
+        chunks = [image[at:at + UPDATE_CHUNK_SIZE]
+                  for at in range(0, len(image), UPDATE_CHUNK_SIZE)]
+        crc = binascii.crc32(image) & 0xFFFFFFFF
+
+        payload = struct.pack("<HIHI", build, len(image), len(chunks), crc)
+        status = self.request(CMD_UPDATE_BEGIN, payload, target)[0]
+        if status != STATUS_OK:
+            return status
+
+        for index, chunk in enumerate(chunks):
+            status = self.request(CMD_UPDATE_CHUNK, chunk,
+                                  target | (index << 8))[0]
+            if status != STATUS_OK:
+                return status
+
+        return self.request(CMD_UPDATE_END, b"", target)[0]
 
     def put_chunk(self, slot, index, chunk, crc=None):
         if crc is None:
@@ -294,6 +326,41 @@ def main():
         claimed = bool(written.read_bytes()[DEV_WALL_FLAGS] & 1) if written.exists() else False
         check("and leaves no claim behind", claimed, False)
         check("empty-claim session: probe used the link correctly", code, 0)
+
+    # --- two updates can be armed at once ---------------------------------
+    #
+    # The reader and the lock screen are separate images and prgmCSUP installs
+    # both. They used to share one manifest and one set of chunk appvars, so a
+    # sync carrying both would have had the second quietly sweep away the
+    # first -- and the calculator would have reported an update as armed that
+    # was no longer there.
+    reader = bytes((i * 3 + 1) & 0xFF for i in range(600))
+    lockscreen = bytes((i * 11 + 7) & 0xFF for i in range(400))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        probe = Probe(save_dir=tmp)
+        probe.hello()
+
+        check("a reader update is accepted",
+              probe.push_update(TARGET_READER, 41, reader), STATUS_OK)
+        check("and a lock screen update alongside it",
+              probe.push_update(TARGET_LOCK, 42, lockscreen), STATUS_OK)
+
+        hello = probe.hello()
+        check("hello reports the reader armed", hello["armed_build"], 41)
+        check("and the lock screen armed", hello["lock_build"], 42)
+        check("with both flags set", hello["flags"] & 0x06, 0x06)
+        code = probe.close()
+
+        # Separate manifests and separate chunks, or one would have eaten the
+        # other. CSUPD0/CSU0xx is the reader, CSUPD2/CSU2xx the lock screen.
+        for name in ("CSUPD0.bin", "CSU000.bin", "CSUPD2.bin", "CSU200.bin"):
+            check(f"{name} is there", (Path(tmp) / name).exists(), True)
+        check("the reader image is stored whole",
+              (Path(tmp) / "CSU000.bin").read_bytes(), reader)
+        check("and so is the lock screen's",
+              (Path(tmp) / "CSU200.bin").read_bytes(), lockscreen)
+        check("two-target session: probe used the link correctly", code, 0)
 
     print(f"{checks - failures}/{checks} link/reader checks pass")
     return 1 if failures else 0

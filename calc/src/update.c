@@ -35,29 +35,76 @@ static void put32(uint8_t *p, uint32_t value) {
     p[3] = (uint8_t)(value >> 24);
 }
 
-void update_chunk_name(char *name, uint8_t index) {
-    static const char hex[] = "0123456789ABCDEF";
+static const char HEX[] = "0123456789ABCDEF";
+
+const char *update_target_name(uint8_t target) {
+    switch (target) {
+        case UPDATE_TARGET_READER:  return UPDATE_READER_NAME;
+        case UPDATE_TARGET_UPDATER: return UPDATE_UPDATER_NAME;
+        case UPDATE_TARGET_LOCK:    return UPDATE_LOCK_NAME;
+        default:                    return NULL;
+    }
+}
+
+void update_chunk_name(char *name, uint8_t target, uint8_t index) {
     name[0] = 'C';
     name[1] = 'S';
     name[2] = 'U';
-    name[3] = hex[index >> 4];
-    name[4] = hex[index & 0x0F];
-    name[5] = '\0';
+    name[3] = HEX[target & 0x0F];
+    name[4] = HEX[index >> 4];
+    name[5] = HEX[index & 0x0F];
+    name[6] = '\0';
 }
 
-void update_discard(void) {
-    ti_Delete(UPDATE_MANIFEST);
+void update_manifest_name(char *name, uint8_t target) {
+    name[0] = 'C';
+    name[1] = 'S';
+    name[2] = 'U';
+    name[3] = 'P';
+    name[4] = 'D';
+    name[5] = HEX[target & 0x0F];
+    name[6] = '\0';
+}
+
+void update_discard(uint8_t target) {
+    char name[7];
+
+    update_manifest_name(name, target);
+    ti_Delete(name);
+
     for (uint8_t i = 0; i < UPDATE_MAX_CHUNKS; i++) {
-        char name[7];
-        update_chunk_name(name, i);
+        update_chunk_name(name, target, i);
         ti_Delete(name);
     }
 }
 
+/*
+ * Every target, plus the names used before there were targets.
+ *
+ * A calculator updating into this version can be holding a manifest and up to
+ * sixteen chunks under the old names, which nothing will ever look at again.
+ */
+void update_sweep(void) {
+    for (uint8_t target = 0; target < UPDATE_TARGET_COUNT; target++)
+        update_discard(target);
+
+    ti_Delete(UPDATE_MANIFEST_LEGACY);
+    for (uint8_t i = 0; i < UPDATE_MAX_CHUNKS; i++) {
+        char legacy[6];
+        legacy[0] = 'C';
+        legacy[1] = 'S';
+        legacy[2] = 'U';
+        legacy[3] = HEX[i >> 4];
+        legacy[4] = HEX[i & 0x0F];
+        legacy[5] = '\0';
+        ti_Delete(legacy);
+    }
+}
+
 /* Map one chunk and hand back its flash address; NULL if it is not there. */
-static const uint8_t *chunk_data(uint8_t index, uint16_t *size) {
+static const uint8_t *chunk_data(uint8_t target, uint8_t index, uint16_t *size) {
     char name[7];
-    update_chunk_name(name, index);
+    update_chunk_name(name, target, index);
 
     uint8_t handle = ti_Open(name, "r");
     if (!handle)
@@ -78,7 +125,7 @@ bool update_verify(const update_manifest_t *manifest) {
 
     for (uint16_t i = 0; i < manifest->chunks; i++) {
         uint16_t size;
-        const uint8_t *data = chunk_data((uint8_t)i, &size);
+        const uint8_t *data = chunk_data(manifest->target, (uint8_t)i, &size);
         if (!data)
             return false;
 
@@ -106,8 +153,11 @@ bool update_arm(const update_manifest_t *manifest) {
     put16(record + MF_CHUNKS, manifest->chunks);
     put32(record + MF_CRC, manifest->crc);
 
-    ti_Delete(UPDATE_MANIFEST);
-    uint8_t handle = ti_Open(UPDATE_MANIFEST, "w");
+    char name[7];
+    update_manifest_name(name, manifest->target);
+
+    ti_Delete(name);
+    uint8_t handle = ti_Open(name, "w");
     if (!handle)
         return false;
 
@@ -115,12 +165,15 @@ bool update_arm(const update_manifest_t *manifest) {
     ok = ti_SetArchiveStatus(true, handle) && ok;
     ti_Close(handle);
     if (!ok)
-        ti_Delete(UPDATE_MANIFEST);
+        ti_Delete(name);
     return ok;
 }
 
-bool update_pending(update_manifest_t *manifest) {
-    uint8_t handle = ti_Open(UPDATE_MANIFEST, "r");
+bool update_pending(uint8_t target, update_manifest_t *manifest) {
+    char name[7];
+    update_manifest_name(name, target);
+
+    uint8_t handle = ti_Open(name, "r");
     if (!handle)
         return false;
 
@@ -134,6 +187,8 @@ bool update_pending(update_manifest_t *manifest) {
         return false;
 
     manifest->target = data[MF_TARGET];
+    if (manifest->target != target)
+        return false;
     manifest->build = read16(data + MF_BUILD);
     manifest->bytes = read32(data + MF_BYTES);
     manifest->chunks = read16(data + MF_CHUNKS);
@@ -157,7 +212,7 @@ bool update_install(const char *program, const update_manifest_t *manifest) {
     uint32_t left = manifest->bytes;
     for (uint16_t i = 0; i < manifest->chunks && ok; i++) {
         uint16_t size;
-        const uint8_t *data = chunk_data((uint8_t)i, &size);
+        const uint8_t *data = chunk_data(manifest->target, (uint8_t)i, &size);
         uint32_t want = left > UPDATE_CHUNK_SIZE ? UPDATE_CHUNK_SIZE : left;
 
         ok = data && size == want && ti_Write(data, (size_t)want, 1, handle) == 1;

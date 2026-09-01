@@ -137,6 +137,10 @@ static uint8_t cached_flags;
  * just sent from one that is now out of date itself.
  */
 static uint16_t cached_armed_build;
+
+/* The same, for the lock screen. Two targets can be armed at once: they are
+ * installed by the same run of prgmCSUP but they are separate images. */
+static uint16_t cached_lock_build;
 static const uint8_t *cached_index;
 static uint16_t cached_index_size;
 
@@ -252,7 +256,8 @@ static void do_hello(void) {
     put16(reply_small + 7, COMICS_BUILD);
     reply_small[9] = cached_flags;
     put16(reply_small + 10, cached_armed_build);
-    answer(PROTO_OK, reply_small, 12);
+    put16(reply_small + 12, cached_lock_build);
+    answer(PROTO_OK, reply_small, 14);
 }
 
 /* Re-map the index after anything that moved or replaced it. */
@@ -505,7 +510,7 @@ static void do_update_begin(void) {
     incoming.chunks = read16(payload + 6);
     incoming.crc = read32(payload + 8);
 
-    if (incoming.target > UPDATE_TARGET_UPDATER || !incoming.bytes ||
+    if (incoming.target >= UPDATE_TARGET_COUNT || !incoming.bytes ||
         !incoming.chunks || incoming.chunks > UPDATE_MAX_CHUNKS ||
         incoming.bytes > (uint32_t)incoming.chunks * UPDATE_CHUNK_SIZE) {
         receiving_update = false;
@@ -513,9 +518,11 @@ static void do_update_begin(void) {
         return;
     }
 
-    /* Anything already here is a different update, or the wreckage of one that
-     * was interrupted. Either way it is in the way. */
-    update_discard();
+    /* Anything already here for this target is a different update, or the
+     * wreckage of one that was interrupted. Either way it is in the way --
+     * and only this target's, so a reader update and a lock screen update can
+     * both be in flight in one sync. */
+    update_discard(incoming.target);
     receiving_update = true;
     answer(PROTO_OK, NULL, 0);
 }
@@ -533,7 +540,7 @@ static void do_update_chunk(void) {
     }
 
     char name[7];
-    update_chunk_name(name, index);
+    update_chunk_name(name, incoming.target, index);
     answer(store(name, payload_want) ? PROTO_OK : PROTO_NO_ROOM, NULL, 0);
 }
 
@@ -547,7 +554,7 @@ static void do_update_end(void) {
     if (!update_verify(&incoming)) {
         /* Nothing was replaced, so there is nothing to roll back -- just take
          * the damaged image away so it cannot be installed later. */
-        update_discard();
+        update_discard(incoming.target);
         answer(PROTO_TRUNCATED, NULL, 0);
         return;
     }
@@ -560,7 +567,7 @@ static void do_update_end(void) {
      */
     if (incoming.target == UPDATE_TARGET_UPDATER) {
         bool ok = update_install(UPDATE_UPDATER_NAME, &incoming);
-        update_discard();
+        update_discard(incoming.target);
         if (ok)
             cached_flags |= PROTO_FLAG_UPDATER;
         answer(ok ? PROTO_OK : PROTO_WRITE_FAIL, NULL, 0);
@@ -569,8 +576,13 @@ static void do_update_end(void) {
 
     bool ok = update_arm(&incoming);
     if (ok) {
-        cached_flags |= PROTO_FLAG_ARMED;
-        cached_armed_build = incoming.build;
+        if (incoming.target == UPDATE_TARGET_LOCK) {
+            cached_flags |= PROTO_FLAG_LOCK_ARMED;
+            cached_lock_build = incoming.build;
+        } else {
+            cached_flags |= PROTO_FLAG_ARMED;
+            cached_armed_build = incoming.build;
+        }
     }
     answer(ok ? PROTO_OK : PROTO_WRITE_FAIL, NULL, 0);
 }
@@ -922,6 +934,7 @@ static usb_error_t handle_event(usb_event_t event, void *event_data,
 static uint8_t gather_update_flags(void) {
     uint8_t flags = 0;
     cached_armed_build = 0;
+    cached_lock_build = 0;
 
     uint8_t handle = ti_OpenVar(UPDATE_UPDATER_NAME, "r", OS_TYPE_PRGM);
     if (handle) {
@@ -930,9 +943,13 @@ static uint8_t gather_update_flags(void) {
     }
 
     update_manifest_t armed;
-    if (update_pending(&armed) && armed.target == UPDATE_TARGET_READER) {
+    if (update_pending(UPDATE_TARGET_READER, &armed)) {
         flags |= PROTO_FLAG_ARMED;
         cached_armed_build = armed.build;
+    }
+    if (update_pending(UPDATE_TARGET_LOCK, &armed)) {
+        flags |= PROTO_FLAG_LOCK_ARMED;
+        cached_lock_build = armed.build;
     }
 
     return flags;

@@ -18,6 +18,7 @@
 #include "update.h"
 
 #include <fileioc.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <tice.h>
 
@@ -33,52 +34,72 @@ static void wait_for_key(void) {
         ;
 }
 
+/*
+ * Install one target. Returns false if it was armed and could not be done.
+ *
+ * Verified again here, and not only when it arrived. The chunks have been
+ * sitting in the archive since the sync -- through however many garbage
+ * collects and however many other programs -- and this is the last moment at
+ * which finding them damaged costs nothing. A moment later the program they
+ * replace is already gone.
+ */
+static bool install(uint8_t target, uint8_t row) {
+    update_manifest_t manifest;
+    if (!update_pending(target, &manifest))
+        return true;               /* nothing armed for this one */
+
+    const char *name = update_target_name(target);
+    if (!name)
+        return true;
+
+    char line[27];
+    sprintf(line, "%s: build %u...", name, manifest.build);
+    say(row, line);
+
+    if (!update_verify(&manifest)) {
+        update_discard(target);
+        sprintf(line, "%s: damaged, dropped.", name);
+        say(row, line);
+        return false;
+    }
+
+    if (!update_install(name, &manifest)) {
+        sprintf(line, "%s: no room.", name);
+        say(row, line);
+        return false;
+    }
+
+    /* Only now, with the new program safely in place. */
+    update_discard(target);
+    sprintf(line, "%s: build %u done.", name, manifest.build);
+    say(row, line);
+    return true;
+}
+
 int main(void) {
     os_ClrHome();
     say(0, "eBookSync updater");
 
+    /*
+     * The reader and the lock screen are separate images and either may be
+     * waiting, so both are tried. They are installed by the same run because
+     * neither can install itself -- see calc/src/update.h.
+     */
     update_manifest_t manifest;
-    if (!update_pending(&manifest) || manifest.target != UPDATE_TARGET_READER) {
+    bool anything = update_pending(UPDATE_TARGET_READER, &manifest)
+                 || update_pending(UPDATE_TARGET_LOCK, &manifest);
+
+    if (!anything) {
         say(2, "Nothing to install.");
         say(4, "Sync first, then run this.");
         wait_for_key();
         return 0;
     }
 
-    char line[27];
-    sprintf(line, "Installing build %u...", manifest.build);
-    say(2, line);
+    bool ok = install(UPDATE_TARGET_READER, 2);
+    ok = install(UPDATE_TARGET_LOCK, 4) && ok;
 
-    /*
-     * Checked again here, and not only when it arrived. The chunks have been
-     * sitting in the archive since the sync -- through however many garbage
-     * collects and however many other programs -- and this is the last moment
-     * at which finding them damaged costs nothing. A moment later prgmCOMICS is
-     * already gone.
-     */
-    if (!update_verify(&manifest)) {
-        update_discard();
-        say(4, "The update was damaged.");
-        say(5, "It has been discarded.");
-        say(7, "Sync again to retry.");
-        wait_for_key();
-        return 1;
-    }
-
-    if (!update_install(UPDATE_READER_NAME, &manifest)) {
-        say(4, "Could not install it.");
-        say(5, "Free some archive space");
-        say(6, "and run this again.");
-        wait_for_key();
-        return 1;
-    }
-
-    /* Only now, with the new reader safely in place. */
-    update_discard();
-
-    sprintf(line, "Updated to build %u.", manifest.build);
-    say(4, line);
-    say(6, "Run prgmCOMICS.");
+    say(6, ok ? "Run COMICS." : "Sync again to retry.");
     wait_for_key();
-    return 0;
+    return ok ? 0 : 1;
 }
