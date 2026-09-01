@@ -332,8 +332,6 @@ ui_result_t ui_book_menu(uint16_t *selection) {
             *selection = list.selected;
             return UI_CHOSE;
         }
-        if (input_pressed(kb_Key2nd))
-            return UI_SYNC;
         if (input_pressed(kb_KeyMode)) {
             *selection = list.selected;
             return UI_SETUP;
@@ -572,11 +570,11 @@ static void password_screen(void) {
     ui_message("Password set.", "You will be asked on startup.");
 }
 
-void ui_setup_screen(void) {
+ui_result_t ui_setup_screen(void) {
     static const char *const entries[] = {
+        "Sync with a computer",
         "Password",
         "Erase the library",
-        "Link echo test",
         "About",
     };
     const uint8_t count = sizeof entries / sizeof *entries;
@@ -618,21 +616,20 @@ void ui_setup_screen(void) {
             gfx_SetTextBGColor(UI_BG);
             switch (selected) {
                 case 0:
+                    gfx_PrintStringXY("Plug in the cable and press", 10, 140);
+                    gfx_PrintStringXY("Connect on the sync page.", 10, 158);
+                    break;
+                case 1:
                     gfx_PrintStringXY(lib_password_set()
                         ? "Asked for when eBookSync starts."
                         : "No password set.", 10, 140);
                     gfx_PrintStringXY("It keeps people out of your", 10, 158);
                     gfx_PrintStringXY("comics, not a determined one.", 10, 176);
                     break;
-                case 1:
+                case 2:
                     gfx_PrintStringXY("Deletes every comic on this", 10, 140);
                     gfx_PrintStringXY("calculator. The computer keeps", 10, 158);
                     gfx_PrintStringXY("its copies.", 10, 176);
-                    break;
-                case 2:
-                    gfx_PrintStringXY("Echoes bytes straight back to", 10, 140);
-                    gfx_PrintStringXY("the computer. For working out", 10, 158);
-                    gfx_PrintStringXY("why a sync will not start.", 10, 176);
                     break;
                 default:
                     break;
@@ -668,20 +665,22 @@ void ui_setup_screen(void) {
         if (input_pressed(kb_KeyEnter)) {
             switch (selected) {
                 case 0:
+                    /* Handed back to main(): the band cache is the biggest
+                     * thing in RAM and sync needs the room to build variables
+                     * before archiving them. */
+                    return UI_SYNC;
+
+                case 1:
                     password_screen();
                     break;
 
-                case 1:
+                case 2:
                     if (ui_confirm("Erase every comic on this", "calculator?")) {
                         uint16_t removed = lib_reset();
                         char message[40];
                         sprintf(message, "Removed %u strip(s).", removed);
                         ui_message(message, "Sync again to refill it.");
                     }
-                    break;
-
-                case 2:
-                    ui_sync_run(true);
                     break;
 
                 default:
@@ -693,7 +692,7 @@ void ui_setup_screen(void) {
         }
 
         if (input_pressed(kb_KeyClear))
-            return;
+            return UI_BACK;
     }
 }
 
@@ -761,7 +760,6 @@ bool ui_password_gate(void) {
  */
 
 static uint8_t sync_chunks_received;
-static bool sync_echo_mode;
 static char sync_state[32];
 
 /* The homescreen is 26 columns; pad so a shorter line erases the last one. */
@@ -783,7 +781,7 @@ static void sync_line(uint8_t row, const char *text) {
 static void sync_draw(void) {
     char line[40];
 
-    sync_line(0, sync_echo_mode ? "eBookSync - ECHO TEST" : "eBookSync");
+    sync_line(0, "eBookSync");
     sync_line(2, sync_state);
 
     sprintf(line, "%u done, %uK moved", sync_chunks_received,
@@ -871,8 +869,7 @@ static bool sync_progress(const char *state, uint8_t slot, uint8_t chunk,
  * The echo mode is reached with alpha from the book list. It exists to tell a
  * broken protocol apart from a broken link -- see proto_run.
  */
-void ui_sync_run(bool echo_only) {
-    sync_echo_mode = echo_only;
+void ui_sync_run(void) {
     sync_chunks_received = 0;
     snprintf(sync_state, sizeof sync_state, "Starting...");
     input_reset();
@@ -891,7 +888,7 @@ void ui_sync_run(bool echo_only) {
      * continuous mode did not help -- so this matches the example rather than
      * the theory.
      */
-    bool ok = proto_run(sync_progress, echo_only);
+    bool ok = proto_run(sync_progress, false);
 
     os_ClrHome();
     gfx_Begin();

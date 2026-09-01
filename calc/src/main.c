@@ -99,17 +99,18 @@ int main(void) {
         if (result == UI_BACK)
             break;
         if (result == UI_SETUP) {
-            ui_setup_screen();
+            result = ui_setup_screen();
             lib_open();
             book = 0;
-            continue;
+            if (result != UI_SYNC)
+                continue;
         }
 
         if (result == UI_SYNC) {
             /* The band cache is the biggest thing in RAM and sync needs room to
              * build variables before archiving them, so hand it back first. */
             render_free();
-            ui_sync_run(false);
+            ui_sync_run();
             lib_open();
             if (!render_init()) {
                 ui_message("Not enough free memory.", "Archive or delete some files.");

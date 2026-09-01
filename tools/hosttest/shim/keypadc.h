@@ -71,7 +71,20 @@ typedef enum {
  * reader reads it directly for the 2nd+ON lock combination; the test harness
  * needs somewhere to put the answer.
  */
-extern uint8_t shim_kb_on;
-#define kb_On (shim_kb_on & 1)
+/*
+ * On hardware kb_On is a register read and costs nothing. Here it also advances
+ * the scripted keypad by a frame, because input_wait_for_on() polls it in a
+ * loop and never scans -- so without that a test would spin for ever waiting
+ * for a key the script was never given a chance to press.
+ */
+uint8_t shim_kb_on_read(void);
+#define kb_On shim_kb_on_read()
+
+/* The latch has to be enabled before kb_On reports anything, which is a real
+ * property worth modelling: not doing it is why the reader could not see the
+ * key at all. */
+void kb_EnableOnLatch(void);
+void kb_DisableOnLatch(void);
+void kb_ClearOnLatch(void);
 
 #endif

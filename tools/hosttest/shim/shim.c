@@ -295,14 +295,24 @@ void shim_keys_add(kb_lkey_t key, int frames) {
 
 long shim_scan_count(void) { return scans; }
 
+static bool on_latched;
+
+void kb_EnableOnLatch(void) { on_latched = true; }
+void kb_DisableOnLatch(void) { on_latched = false; }
+void kb_ClearOnLatch(void) { shim_kb_on = 0; }
+
+uint8_t shim_kb_on_read(void) {
+    kb_Scan();                 /* time passes; the script gets its turn */
+    return shim_kb_on & 1;
+}
+
 void kb_Scan(void) {
     scans++;
     if (script_position < script_length) {
         memcpy(shim_kb_data, script[script_position++], sizeof shim_kb_data);
-        shim_kb_on = (uint8_t)(shim_kb_data[0] & 1);
+        if (on_latched) shim_kb_on |= (uint8_t)(shim_kb_data[0] & 1);
         return;
     }
-    shim_kb_on = 0;
 
     /* Script exhausted: hold nothing down. If the program is still going round
      * its loop long after that, it is not going to exit on its own -- which for

@@ -126,10 +126,10 @@ is on the calculator removes it from the calculator too, on the next sync.
 
 **4. Connect the calculator.**
 
-Run `COMICS`, unlock it if you have set a password, press `2nd` on the book list to
-reach the Sync screen, plug in the
-cable, and press **Connect calculator** on the page, then pick the calculator's
-serial port from the browser's list.
+Run `COMICS`, unlock it if you have set a password, press `mode` on the book
+list and choose **Sync with a computer**, plug in the cable, and press
+**Connect calculator** on the page, then pick the calculator's serial port from
+the browser's list.
 
 The sync screen is plain text on the homescreen rather than the reader's own
 graphics. That is deliberate: the USB controller and the LCD contend for the
@@ -145,20 +145,20 @@ memory bus, and USB loses whenever graphx has the LCD in its 8bpp mode.
 | `mode` | jump between fit-width and full zoom |
 | `del` | mark read or unread by hand |
 | `clear` | back |
-| `2nd`+`on` | lock the calculator |
+| `2nd` | lock the calculator |
 
 Reaching the last 5% of a strip marks it read on its own.
 
-On the book list: `del` marks a whole book read or unread, `mode` opens
-settings, `2nd` opens the sync screen. On the strip list, `del` marks one strip.
+On the book list: `del` marks a whole book read or unread, `2nd` locks the
+calculator, `mode` opens settings. On the strip list, `del` marks one strip.
 
 Settings (`mode` from the book list) has four entries:
 
+- **Sync with a computer** — the sync screen. Plug in the cable and press
+  **Connect calculator** on the page.
 - **Password** — set, change or remove the lock. See below.
 - **Erase the library** — deletes every comic on the calculator. Your files on
   the computer are untouched, and syncing again refills it.
-- **Link echo test** — echoes bytes straight back to the computer, for working
-  out why a sync will not start. `docs/PROTOCOL.md` explains what it is for.
 - **About** — the text of `about.txt`, scrollable with the arrow keys.
 
 `about.txt` lives at the root of the repository and is baked into the program on
@@ -196,8 +196,7 @@ password do not look alike.
 
 ## Locking it
 
-Press `2nd` and `on` together, anywhere in the reader, and the calculator turns
-off. Press `on` again and it comes back to your wallpaper, with the date and
+Press `2nd` anywhere in the reader and the calculator turns off. Press `on` again and it comes back to your wallpaper, with the date and
 time along the top and the password prompt under them.
 
 It is a real power-off, not an imitation: the reader winds the operating

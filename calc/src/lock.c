@@ -187,14 +187,13 @@ static void sleep_until_on(void) {
     power_down();
 
     /*
-     * Let go, press, let go. Scanning rather than spinning on the ON line: the
-     * scan is what a scripted test advances on, and on hardware it costs
-     * nothing that matters while the calculator is doing precisely nothing
-     * else.
+     * ON, and only ON. Scanning the key matrix would mean kb_Scan() in a tight
+     * loop -- interrupts off and a hardware scan every time round -- which is
+     * not what a calculator that is supposed to be off should be doing. The ON
+     * latch holds the press until it is read, so nothing is missed while this
+     * waits.
      */
-    do { input_scan(); } while (input_on_down());
-    do { input_scan(); } while (!input_on_down());
-    do { input_scan(); } while (input_on_down());
+    input_wait_for_on();
 
     /*
      * Take the timer back before the prompt goes up. It was wound to nothing to

@@ -69,8 +69,13 @@ typedef enum {
     UI_SETUP,     /* the user asked for the settings screen */
 } ui_result_t;
 
-/* Settings: what is stored, resetting the library, and about. */
-void ui_setup_screen(void);
+/*
+ * Settings: syncing, the password, erasing the library, and about.
+ *
+ * Returns UI_SYNC when the user asked to sync, which the caller has to carry
+ * out rather than this screen: the band cache has to be handed back first.
+ */
+ui_result_t ui_setup_screen(void);
 
 /*
  * Ask for the password on the way in. True to let the user through.
@@ -88,8 +93,8 @@ void ui_about_screen(void);
 /* Yes/no, drawn over a blank screen. Returns true for yes. */
 bool ui_confirm(const char *line1, const char *line2);
 
-/* The same screen, but running a bare echo instead of the protocol. */
-void ui_sync_run(bool echo_only);
+/* The sync screen: plain text on the homescreen, with graphx handed back. */
+void ui_sync_run(void);
 
 ui_result_t ui_book_menu(uint16_t *selection);
 ui_result_t ui_strip_menu(uint16_t book_index, uint16_t *selection);

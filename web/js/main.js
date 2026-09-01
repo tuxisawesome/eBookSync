@@ -20,7 +20,7 @@ import * as syncEngine from './sync.js';
 import * as updater from './update.js';
 import { PAGE_BUILD } from './version.js';
 import {
-  Calculator, LIBRARY, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
+  Calculator, LIBRARY, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION, WALLPAPER_SLOT,
   isSupported as linkSupported,
 } from './link.js';
 
@@ -547,6 +547,25 @@ async function loadWallpaper() {
 }
 
 /*
+ * Ask the calculator whether it really still has the wallpaper.
+ *
+ * `meta.wallpaper` is only the page's record of having sent one, and the
+ * calculator can have lost it since: erased, given to a different library, or
+ * its index deleted -- which takes the wallpaper with it by design. Believing
+ * that record over the calculator is why a folder that already had a
+ * wallpaper.jpg would sync without ever sending it.
+ *
+ * The same correction mergeFromCalculator() makes for `onCalc`, for the same
+ * reason: what is on the calculator is a question for the calculator.
+ */
+async function reconcileWallpaper() {
+  if (!state.meta.wallpaper || !state.calculator) return;
+
+  const verdict = await state.calculator.verifyStrip(WALLPAPER_SLOT);
+  if (verdict.checked && !verdict.ok) state.meta.wallpaper = null;
+}
+
+/*
  * What the next sync should do about it.
  *
  * Recomputed rather than remembered, so the answer follows the file on disk
@@ -923,6 +942,7 @@ async function connect() {
     }
 
     metaStore.mergeFromCalculator(state.meta, state.resident);
+    await reconcileWallpaper();
 
     if (hello.library === LIBRARY.DIFFERENT) {
       /*

@@ -98,8 +98,8 @@ check("empty library, several keys in a row do not close the app",
 # --- but the deliberate ways out still work --------------------------------
 check("empty library, clear closes the app", LEAD + press("clear"), CLOSED)
 
-check("empty library, 2nd still reaches the sync screen",
-      LEAD + press("2nd"), RUNNING, expect_output="sync")
+check("empty library, sync is still reachable under mode",
+      LEAD + press("mode") + press("enter"), RUNNING, expect_output="sync")
 
 # --- the key that launched the program is not a press ----------------------
 # enter is held from the very first frame, as it is when the program starts from
@@ -127,8 +127,9 @@ with tempfile.TemporaryDirectory() as tmp:
           LEAD + press("enter") + press("clear") + press("clear"), CLOSED,
           directory=directory)
 
-    check("library, 2nd reaches the sync screen",
-          LEAD + press("2nd"), RUNNING, expect_output="sync", directory=directory)
+    check("library, sync is reachable under mode",
+          LEAD + press("mode") + press("enter"), RUNNING, expect_output="sync",
+          directory=directory)
 
 
 
@@ -187,6 +188,10 @@ with tempfile.TemporaryDirectory() as tmp:
           LEAD + WAKE + press("2nd") + press("2nd"), RUNNING,
           directory=directory)
 
+    check("and neither is the sync screen",
+          LEAD + WAKE + press("mode") + press("enter"), RUNNING,
+          directory=directory)
+
     # Nothing typed before the password is right must reach the menus: the sync
     # screen in particular, since that is a way to move comics off the device.
     status, output = run(LEAD + WAKE + press("2nd") + press("2nd"), directory)
@@ -231,7 +236,7 @@ with tempfile.TemporaryDirectory() as tmp:
           RUNNING, expect_output="apd 1", directory=directory)
 
     check("and nothing else does",
-          unlocked + press("2nd"), RUNNING, expect_output="apd 0",
+          unlocked + press("mode"), RUNNING, expect_output="apd 0",
           directory=directory)
 
     check("the wrong password does not get back in",

@@ -1,7 +1,6 @@
 #include "keyin.h"
 
 #include "input.h"
-#include "lock.h"
 #include "render.h"
 #include "ui.h"
 
@@ -157,12 +156,6 @@ bool keyin_text(const char *prompt, const char *hint, char *out, uint8_t max,
         ui_present(drew);
         drew = false;
         input_scan();
-
-        /* Ahead of the key table: 2nd is the case toggle here. */
-        if (lock_poll()) {
-            dirty = true;
-            continue;
-        }
 
         if (backdrop && ++since_redraw >= 60)
             dirty = true;

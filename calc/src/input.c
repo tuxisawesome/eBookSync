@@ -26,11 +26,14 @@ static unsigned repeat_frames;
  * bits here so that everything above this file can go on treating the keypad as
  * one thing.
  *
- * Read as a level rather than through keypadc's ON latch. The latch would catch
- * presses shorter than a scan, but the header warns it persists between
- * programs and has to be disabled again on the way out -- and nothing here
- * needs it, since every loop that cares about ON is polling far faster than a
- * finger moves.
+ * Read through keypadc's ON latch, which has to be enabled explicitly -- and
+ * not enabling it is why the first version of this never saw the key at all.
+ * The latch also means a press is caught however briefly it is held, which
+ * matters for waking: the calculator is asleep between scans, and a level read
+ * would miss a press that happened in the gap.
+ *
+ * The header warns the latch persists between programs, so input_reset() turns
+ * it on and input_release() turns it off again on the way out.
  */
 static bool on_current;
 static bool on_previous;
@@ -47,6 +50,8 @@ void input_reset(void) {
         current[group] = (uint8_t)kb_Data[group];
     memcpy(previous, current, sizeof previous);
 
+    kb_EnableOnLatch();
+    kb_ClearOnLatch();
     on_current = on_previous = kb_On != 0;
 
     repeat_key = 0;
@@ -72,7 +77,7 @@ bool input_on_pressed(void) {
 }
 
 bool input_lock_combo(void) {
-    return input_down(kb_Key2nd) && input_on_pressed();
+    return input_pressed(kb_Key2nd);
 }
 
 bool input_down(kb_lkey_t key) {
@@ -115,4 +120,17 @@ bool input_idle(void) {
             return false;
     }
     return true;
+}
+
+void input_wait_for_on(void) {
+    /* Start from nothing latched, so a press from before the wait does not end
+     * it the moment it begins. */
+    kb_ClearOnLatch();
+    while (!(kb_On))
+        ;
+    kb_ClearOnLatch();
+}
+
+void input_release(void) {
+    kb_DisableOnLatch();
 }

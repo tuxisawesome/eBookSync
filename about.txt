@@ -11,7 +11,7 @@ KEYS
   Book list
     enter   open a book
     del     mark a book read
-    2nd     sync with a computer
+    2nd     lock the calculator
     mode    settings
     clear   quit
 
@@ -23,13 +23,13 @@ KEYS
     clear   back
 
   Anywhere
-    2nd+on  lock the calculator
+    2nd     lock the calculator
 
 LOCKING
 
-2nd+on turns the screen off. Press on to
-wake it: your wallpaper, the date and
-time, and the password prompt.
+2nd turns the calculator off. Press on
+to wake it: your wallpaper, the date and
+time, then any key for the password.
 
 Three wrong answers turn it off again
 and it comes back still locked. There is

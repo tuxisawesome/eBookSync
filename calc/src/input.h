@@ -41,13 +41,31 @@ bool input_on_down(void);
 bool input_on_pressed(void);
 
 /*
- * 2nd+ON: lock the calculator.
+ * 2nd: lock the calculator.
  *
- * The same gesture the OS uses to turn the calculator off, chosen for that
- * reason -- and ON is used nowhere else in the reader, so nothing has to give
- * anything up for it. True only on the frame ON goes down with 2nd held, so a
- * screen that also acts on 2nd must ask this first.
+ * It was 2nd+ON, to echo the operating system'"'"'s own power gesture. That did not
+ * work: ON is not in the key matrix, and reading it needs a latch this never
+ * enabled, so the chord could never fire. 2nd on its own is what the key is
+ * free for now that the sync screen has moved under Settings -- and a key that
+ * works beats a key that reads well.
+ *
+ * Screens where 2nd already means something -- the password prompt, where it
+ * switches case, and the yes/no screens, where it is yes -- do not ask.
  */
 bool input_lock_combo(void);
+
+/*
+ * Block until ON is pressed, and only ON.
+ *
+ * What the lock screen wakes on. It does not scan the key matrix at all --
+ * kb_Scan() disables interrupts and waits on a hardware scan, roughly a
+ * millisecond, and doing that in a loop is the opposite of asleep. The ON latch
+ * holds the press until it is read, so nothing is missed between polls.
+ */
+void input_wait_for_on(void);
+
+/* Hand the ON latch back. It persists between programs, so this must run on
+ * every way out of the reader. */
+void input_release(void);
 
 #endif /* INPUT_H */
