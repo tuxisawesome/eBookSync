@@ -88,7 +88,10 @@
 
     <div class="field" id="wallpaper-current" hidden>
       <img id="wallpaper-preview" alt="The current wallpaper" width="160" height="120">
-      <button id="wallpaper-clear" type="button">Remove the wallpaper</button>
+      <div class="wallpaper-actions">
+        <button id="wallpaper-recrop" type="button">Adjust the crop…</button>
+        <button id="wallpaper-clear" type="button">Remove the wallpaper</button>
+      </div>
     </div>
 
     <h2>Calculator</h2>
@@ -134,6 +137,24 @@
       <button value="go" class="primary" id="plan-go">Sync</button>
     </menu>
   </form>
+</dialog>
+
+<dialog id="crop-dialog">
+  <h2>Which part of it?</h2>
+  <p class="hint">
+    Drag the picture to move it, and scroll or use the slider to zoom. What you
+    see is the whole of the calculator&rsquo;s 320&times;240 screen.
+  </p>
+  <canvas id="crop-canvas" class="crop-canvas"></canvas>
+  <label class="field">
+    <span>Zoom</span>
+    <input id="crop-zoom" type="range">
+  </label>
+  <menu>
+    <button type="button" id="crop-reset">Fit the whole picture</button>
+    <button type="button" id="crop-cancel">Cancel</button>
+    <button type="button" id="crop-use" class="primary">Use this crop</button>
+  </menu>
 </dialog>
 
 <dialog id="progress-dialog">

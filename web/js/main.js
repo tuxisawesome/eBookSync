@@ -12,6 +12,7 @@
  */
 
 import * as cacheStore from './cache.js';
+import * as crop from './crop.js';
 import * as fs from './fs.js';
 import * as libraryStore from './library.js';
 import * as metaStore from './meta.js';
@@ -46,6 +47,13 @@ const ui = {
   wallpaperCurrent: el('wallpaper-current'),
   wallpaperPreview: el('wallpaper-preview'),
   wallpaperClear: el('wallpaper-clear'),
+  wallpaperRecrop: el('wallpaper-recrop'),
+  cropDialog: el('crop-dialog'),
+  cropCanvas: el('crop-canvas'),
+  cropZoom: el('crop-zoom'),
+  cropReset: el('crop-reset'),
+  cropCancel: el('crop-cancel'),
+  cropUse: el('crop-use'),
   deviceStatus: el('device-status'),
   deviceFree: el('device-free'),
   deviceCount: el('device-count'),
@@ -549,17 +557,63 @@ function wallpaperPlan() {
                                   state.wallpaper && state.wallpaper.hash);
 }
 
+/*
+ * The crop dialog's parts, gathered once.
+ *
+ * crop.js is handed these rather than looking them up, so the geometry module
+ * never has to know the page's ids -- which is what lets its arithmetic be
+ * tested without a browser.
+ */
+function cropElements() {
+  return {
+    dialog: ui.cropDialog,
+    canvas: ui.cropCanvas,
+    zoom: ui.cropZoom,
+    reset: ui.cropReset,
+    use: ui.cropUse,
+    cancel: ui.cropCancel,
+  };
+}
+
+/*
+ * Crop, then save.
+ *
+ * Almost no photograph is 320x240, so something has to decide what to throw
+ * away, and the middle is usually the wrong guess. What lands in the library
+ * folder is the cropped 4:3 image -- `wallpaper.jpg` is what gets sent, so it
+ * should be what you chose to send.
+ */
 async function chooseWallpaper(file) {
   if (!state.root) {
     setStatus('Choose the folder holding your comics first.', 'error');
     return;
   }
 
+  let cropped;
+  try {
+    cropped = await crop.open(file, cropElements());
+  } catch (error) {
+    setStatus(`That image could not be opened: ${error.message}`, 'error');
+    return;
+  }
+  if (!cropped) return;      /* cancelled */
+
   await runOp('Saving the wallpaper…', async () => {
-    await fs.writeFile(state.root, metaStore.WALLPAPER_FILENAME, file);
+    await fs.writeFile(state.root, metaStore.WALLPAPER_FILENAME, cropped);
   });
   await loadWallpaper();
   refreshSelection();
+}
+
+/*
+ * Adjust the crop of the wallpaper already in the folder.
+ *
+ * Only ever tighter -- what is on disk has been cropped once already -- which
+ * is why it is stored at three times the screen rather than at it.
+ */
+async function recropWallpaper() {
+  if (!state.wallpaper) return;
+  await chooseWallpaper(state.wallpaper.file);
 }
 
 async function removeWallpaper() {
@@ -1317,6 +1371,8 @@ function bindSettings() {
   });
 
   ui.wallpaperClear.addEventListener('click', () => { removeWallpaper(); });
+  ui.wallpaperRecrop.addEventListener('click', () => { recropWallpaper(); });
+
 }
 
 /* Dropping on the tree background rather than on a book: only whole folders

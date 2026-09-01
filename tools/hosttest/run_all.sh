@@ -26,6 +26,10 @@ echo "== chunks: over the link, then opened by the reader =="
 python3 "$dir/check_chunks.py"
 
 echo
+echo "== the wallpaper cropper: the image always covers the screen =="
+"$node" "$dir/check_crop.mjs"
+
+echo
 echo "== container: browser encoder -> calculator renderer =="
 python3 "$dir/check_js.py" --node "$node" "$@"
 

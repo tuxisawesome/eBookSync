@@ -12,6 +12,7 @@
 #include <sys/lcd.h>
 #include <sys/power.h>
 #include <sys/rtc.h>
+#include <ti/flags.h>
 #include <tice.h>
 
 /* Three, the same as the gate on the way in. */
@@ -100,16 +101,40 @@ keyin_backdrop_t lock_backdrop(void) {
 /* ------------------------------------------------------------------ sleep */
 
 /*
- * Off, as far as anyone holding it is concerned.
+ * Ask the operating system to turn the calculator off, now.
  *
  * Not boot_TurnOff(): the toolchain's own header says it "is likely to leak
  * memory", and it would end this program -- which is the one thing that must
  * not happen, because the program is the lock. A calculator that came back to
- * the operating system's homescreen would be unlocked.
+ * the homescreen would be unlocked.
  *
- * So the screen goes black, the backlight goes out and the CPU drops to 6 MHz
- * until ON is pressed. From the outside that is 2nd+ON; the difference is that
- * this one is still holding the door shut.
+ * Instead, wind the automatic power-down timer to nothing and let the OS do
+ * what it already knows how to do. It is a suspend, not a kill: the OS puts the
+ * calculator to sleep and resumes this program where it left off when ON is
+ * pressed, which is exactly the behaviour a lock needs. Cesium's power-on
+ * password does the same thing, and it is the calculator's own 2nd+ON path, so
+ * the power-off is real rather than an imitation of one.
+ */
+static void power_down(void) {
+    os_EnableAPD();
+    os_ApdSubTimer = 1;
+    os_ApdTimer = 1;
+    os_Flags[OS_FLAGS_APD] |= 1 << OS_FLAGS_APD_RUNNING;
+}
+
+/*
+ * Off, and not back until ON.
+ *
+ * The screen is blacked before the power-down is armed rather than after, so
+ * there is no moment where the library is readable on a calculator that has
+ * been told to go to sleep.
+ *
+ * The wait afterwards is not redundant. If the power-down fires, this is what
+ * resumes when the OS wakes the program; if it does not -- and whether APD
+ * fires from inside a program with graphx holding the LCD is the one thing here
+ * that only hardware can answer -- this is the whole of the behaviour, a dark
+ * screen at 6 MHz until ON. Either way the calculator is dark and locked, and
+ * the difference is battery rather than correctness.
  */
 static void sleep_until_on(void) {
     uint8_t backlight = lcd_BacklightLevel;
@@ -122,6 +147,7 @@ static void sleep_until_on(void) {
 
     lcd_BacklightLevel = 255;   /* 0 is brightest, 255 darkest */
     boot_Set6MHzMode();
+    power_down();
 
     /*
      * Let go, press, let go. Scanning rather than spinning on the ON line: the
@@ -133,7 +159,23 @@ static void sleep_until_on(void) {
     do { input_scan(); } while (!input_on_down());
     do { input_scan(); } while (input_on_down());
 
+    /*
+     * Take the timer back before the prompt goes up. It was wound to nothing to
+     * force the power-down, and leaving it there would turn the calculator off
+     * again in the middle of somebody typing their password.
+     */
+    os_DisableAPD();
+
     boot_Set48MHzMode();
+
+    /*
+     * A wake from APD hands the LCD back in the operating system's own mode, so
+     * graphx has to be told again. Harmless if the power-down never fired.
+     */
+    gfx_Begin();
+    gfx_SetDrawBuffer();
+    ui_set_chrome_palette();
+
     lcd_BacklightLevel = backlight;
     input_reset();
 }
@@ -199,6 +241,11 @@ void lock_engage(void) {
         /* Out of tries. Back to sleep, still locked: there is no way past this
          * from the keypad, which is the point and also the cost. */
     }
+
+    /* sleep_until_on() took the automatic power-down away so it could not fire
+     * mid-password. Give it back: it is the calculator's normal behaviour and
+     * not ours to switch off. */
+    os_EnableAPD();
 
     for (uint8_t i = 0; i < CSX_PALETTE_SIZE; i++)
         gfx_palette[i] = saved[i];

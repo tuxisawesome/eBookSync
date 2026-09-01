@@ -212,6 +212,17 @@ with tempfile.TemporaryDirectory() as tmp:
           unlocked + press("2nd+on") + press("on") + type_password("1234"),
           RUNNING, directory=directory)
 
+    # Not just a dark screen: the reader hands the power-down to the operating
+    # system's own APD, which on hardware is a real suspend that resumes this
+    # program. "apd 1" is the probe reporting that the flag was set.
+    check("locking really asks the OS to power the calculator down",
+          unlocked + press("2nd+on") + press("on") + type_password("1234"),
+          RUNNING, expect_output="apd 1", directory=directory)
+
+    check("and nothing else does",
+          unlocked + press("2nd"), RUNNING, expect_output="apd 0",
+          directory=directory)
+
     check("the wrong password does not get back in",
           unlocked + press("2nd+on") + press("on") + type_password("9999"),
           RUNNING, directory=directory)

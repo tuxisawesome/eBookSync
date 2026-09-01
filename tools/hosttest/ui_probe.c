@@ -16,6 +16,8 @@
 #include "library.h"
 #include "shim.h"
 
+#include <ti/flags.h>
+
 #include <dirent.h>
 #include <stdlib.h>
 #include <string.h>
@@ -71,6 +73,18 @@ static const struct { const char *name; kb_lkey_t key; } KEYS[] = {
     { "lparen", kb_KeyLParen }, { "rparen", kb_KeyRParen },
     { "mul", kb_KeyMul }, { "div", kb_KeyDiv }, { "power", kb_KeyPower },
 };
+
+/*
+ * Whether the reader ever asked the OS to power the calculator down.
+ *
+ * Only the lock screen does, so this is how a test tells "it locked" from "it
+ * drew something that looked like a lock". Printed from atexit because the
+ * interesting cases are the ones where the reader never returns -- a lock that
+ * holds is a program still running when the script runs out.
+ */
+static void report(void) {
+    printf("apd %d\n", (os_Flags[OS_FLAGS_APD] >> OS_FLAGS_APD_RUNNING) & 1);
+}
 
 static kb_lkey_t lookup(const char *name) {
     for (size_t i = 0; i < sizeof KEYS / sizeof *KEYS; i++) {
@@ -143,6 +157,8 @@ int main(int argc, char **argv) {
         shim_keys_add_many(keys, count, frames);
         if (!colon) shim_keys_add(0, 1);
     }
+
+    atexit(report);
 
     int result = reader_main();
     printf("returned %d after %ld scans\n", result, shim_scan_count());

@@ -196,10 +196,14 @@ password do not look alike.
 
 ## Locking it
 
-Press `2nd` and `on` together, anywhere in the reader, and the screen goes dark
-the same way it does for the operating system's own `2nd`+`on`. Press `on` again
-and it comes back to your wallpaper, with the date and time along the top and
-the password prompt under them.
+Press `2nd` and `on` together, anywhere in the reader, and the calculator turns
+off. Press `on` again and it comes back to your wallpaper, with the date and
+time along the top and the password prompt under them.
+
+It is a real power-off, not an imitation: the reader winds the operating
+system's own automatic power-down timer to nothing and lets the OS do it, which
+is a suspend rather than a kill — the reader is still there, still locked, when
+you turn it back on. Cesium's power-on password uses the same trick.
 
 **This one is a lock, not a speed bump, and it locks you out too.** Three wrong
 answers turn the screen off again and it comes back still locked — there is no
@@ -216,9 +220,16 @@ would strand a strip half-written. Press `clear` first.
 
 ## The wallpaper
 
-Choose an image under **Lock screen wallpaper** in the page. It is copied into
-your library folder as `wallpaper.jpg` and sent on the next sync — cropped to
-fill the 320x240 screen, and reduced to 16 colours like everything else.
+Choose an image under **Lock screen wallpaper** in the page. A cropper opens on
+it: drag the picture to move it, scroll or use the slider to zoom, and what you
+see is the whole of the calculator’s 320×240 screen. Almost no photograph is
+that shape, and cropping to the middle is a guess that is usually wrong, so the
+choice is yours to make where you can see it.
+
+**Use this crop** writes the result into your library folder as `wallpaper.jpg`,
+and the next sync sends it — reduced to 16 colours like everything else. It is
+stored at three times the screen rather than at it, so **Adjust the crop…**
+later starts from something better than an image already thrown away once.
 
 Deleting the library index takes the wallpaper with it. That is deliberate, and
 it is the same deterrent the password already had: the index is the one thing

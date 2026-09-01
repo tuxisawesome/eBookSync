@@ -388,9 +388,22 @@ void zx0_Decompress(void *dst, const void *src) {
 /* ------------------------------------------------------------------ power */
 
 uint8_t shim_backlight;
+uint8_t shim_os_flags[256];
+uint8_t shim_apd_sub_timer;
+uint8_t shim_apd_timer;
 
 void boot_Set6MHzMode(void) { }
 void boot_Set48MHzMode(void) { }
+
+/*
+ * On hardware the power-down is a suspend: the OS sleeps and resumes this
+ * program where it left off. Here the flag byte is simply left set, which is
+ * what ui_probe reports and check_ui.py asserts -- there is no way to intercept
+ * a plain write to os_Flags, and a counter that only saw the enable call would
+ * be measuring the wrong thing.
+ */
+void os_EnableAPD(void) { }
+void os_DisableAPD(void) { }
 
 /* ------------------------------------------------------------------- clock */
 
