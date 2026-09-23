@@ -170,13 +170,9 @@ function setStatus(text, kind = '') {
  * and the splash before anything is connected, opens in it. The <head> of
  * index.html reads it back before the stylesheet paints.
  */
-/* The 3D glass, once it has started; null where it cannot. */
-let glass = null;
-
 function applyTheme(theme) {
   const name = theme === 'light' ? 'light' : 'dark';
   document.documentElement.dataset.theme = name;
-  if (glass) glass.setTheme(name);
   try {
     localStorage.setItem('ebooksync-theme', name);
   } catch { /* private window or blocked storage: it just is not remembered */ }
@@ -195,9 +191,6 @@ function refreshSplash() {
   const open = !state.calculator;
   const wasOpen = !ui.splash.hidden;
   ui.splash.hidden = !open;
-  /* The glass makes the splash see-through, to show the room; this is what
-   * keeps the library itself out of sight behind it. */
-  document.body.classList.toggle('splash-up', open);
 
   for (const part of document.body.children) {
     if (part === ui.splash || part.tagName === 'DIALOG' || part.tagName === 'SCRIPT') continue;
@@ -1707,26 +1700,8 @@ function bindTreeDrop() {
   window.addEventListener('drop', (event) => event.preventDefault());
 }
 
-/*
- * The glass is a nicety, and a heavy one: three.js and WebGL. It is imported
- * on its own so that anything going wrong with it -- no WebGL2, a browser
- * without import maps, a missing file -- leaves the page exactly as it was,
- * flat and purple and working.
- */
-function startGlass() {
-  import('./glass.js')
-    .then((module) => {
-      glass = module.start({
-        theme: document.documentElement.dataset.theme,
-        busy: () => state.busy,
-      });
-    })
-    .catch((error) => console.info(`Flat look: ${error.message}`));
-}
-
 async function start() {
   bindViews();
-  startGlass();
 
   /* The download is a plain link, so it works whatever the browser; only
    * connecting needs Chromium. */

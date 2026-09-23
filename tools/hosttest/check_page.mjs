@@ -205,50 +205,6 @@ function displayRulesFor(css, names) {
   check('and saves it for next time', /localStorage\.setItem\('ebooksync-theme'/.test(main), true);
 }
 
-/* --- the glass is three.js, vendored, and optional ------------------------ */
-/*
- * The glass is rendered by three.js from files next to the page: an import map
- * names them, nothing is fetched from a CDN, and the licence travels with them.
- * It is optional in the strongest sense -- imported on its own and caught -- so
- * a browser that cannot run it gets the flat page, not a broken one.
- */
-{
-  const html = read('web', 'index.html');
-  const main = read('web', 'js', 'main.js');
-  const glassSource = read('web', 'js', 'glass.js');
-
-  const map = JSON.parse(/<script type="importmap">([\s\S]*?)<\/script>/.exec(html)[1]);
-  const three = map.imports.three;
-  check('the import map names a vendored three.js', three.startsWith('./vendor/three/'), true);
-  let present = true;
-  try {
-    const module = read('web', three);
-    /* three.module imports its core by a relative name; that has to be there too. */
-    for (const [, dep] of module.matchAll(/from\s*["'](\.\/[^"']+)["']/g)) {
-      read('web', 'vendor', 'three', dep.slice(2));
-    }
-    for (const [, addon] of glassSource.matchAll(/from 'three\/addons\/([^']+)'/g)) {
-      read('web', 'vendor', 'three', 'addons', addon);
-    }
-  } catch {
-    present = false;
-  }
-  check('and every file it and glass.js import is there', present, true);
-  check('with its licence', /MIT License/.test(read('web', 'vendor', 'three', 'LICENSE')), true);
-  check('the import map comes before any module', html.indexOf('type="importmap"') < html.indexOf('type="module"'), true);
-
-  const pages = ['index.html', 'js/main.js', 'js/glass.js', 'css/app.css'].map((f) => read('web', ...f.split('/')));
-  check('nothing is fetched from a CDN', pages.some((text) => /cdn\.jsdelivr|unpkg\.com|cdnjs/.test(text)), false);
-
-  check('glass.js is imported on its own, and a failure is caught',
-        /import\('\.\/glass\.js'\)[\s\S]*?\.catch\(/.test(main), true);
-  check('and main.js does not import it statically', /^import .*glass\.js/m.test(main), false);
-  check('glass-3d is only set once the glass is running',
-        /classList\.add\('glass-3d'\)/.test(glassSource) && !/glass-3d/.test(html), true);
-  check('the library is hidden, not only covered, behind a see-through splash',
-        /splash-up/.test(main) && /\.glass-3d\.splash-up/.test(read('web', 'css', 'app.css')), true);
-}
-
 /* --- and the guard actually does something -------------------------------- */
 /*
  * A stylesheet that never sets display on a toggled element would pass the

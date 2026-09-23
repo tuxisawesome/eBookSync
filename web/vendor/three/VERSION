@@ -1,9 +1,0 @@
-three.js 0.186.0 (MIT, see LICENSE), from https://cdn.jsdelivr.net/npm/three@0.186.0/
-
-  build/three.module.min.js
-  build/three.core.min.js -> three.core.js (the name the module imports it by)
-  examples/jsm/geometries/RoundedBoxGeometry.js -> addons/
-  examples/jsm/environments/RoomEnvironment.js  -> addons/
-
-Vendored so the page needs no build step and fetches nothing at runtime.
-To update: download the same files for the new version and run the host tests.
