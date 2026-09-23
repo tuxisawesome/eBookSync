@@ -163,6 +163,15 @@ bool lib_wallpaper(uint32_t *crc);
 bool lib_set_wallpaper(const uint32_t *crc);
 
 /*
+ * The colour theme chosen under Settings -- a theme_id_t, 0 being Dark.
+ *
+ * In the device block, so it is the calculator's and survives every sync. An
+ * index that has never recorded one holds 0 there, which is the default.
+ */
+uint8_t lib_theme(void);
+bool lib_set_theme(uint8_t theme);
+
+/*
  * Make sure an index exists, creating an empty one if it does not.
  *
  * Setting a password before the first sync has to have somewhere to put it, and

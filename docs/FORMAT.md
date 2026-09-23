@@ -248,7 +248,8 @@ it again in the reply.
   54  1   wallFlags       0 = no lock screen wallpaper
   55  4   wallCrc         CRC-32 of the wallpaper container, chunk by chunk
   59  2   lastSlot        the strip last read, as slot + 1; 0 for none
-  61  3   reserved
+  61  1   theme           0 = Dark, 1 = Light
+  62  2   reserved
 ```
 
 `lastSlot` is what the book list's Continue row opens. It is written in the same
@@ -256,6 +257,9 @@ index rewrite that saves the strip's position on the way out of the viewer, so
 it costs no extra flash write, and it is kept by slot plus one so that the zeros
 of an index that has never recorded one mean "nothing read yet" rather than
 slot 0. A slot the index no longer lists simply has no Continue row.
+
+`theme` is the Settings choice of colours. Zero is Dark, which is also what an
+index that has never recorded one holds, so the default needs no write.
 
 `wallCrc` is why the wallpaper is in here rather than standing on its own. The
 image itself is an ordinary `.csx` container in slot `0xFFFF` -- a 320x240

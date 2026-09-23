@@ -214,6 +214,72 @@ with tempfile.TemporaryDirectory() as tmp:
           expect_output="M free", directory=directory, env=TEXT)
 
 
+# --- the theme, and the sync screen ----------------------------------------
+def screen_pixel(keys, directory, x, y):
+    """The colour at (x, y) of the last frame shown, via the shim's screenshot."""
+    with tempfile.TemporaryDirectory() as shots:
+        path = Path(shots) / "frame.ppm"
+        run(keys, directory, {"SHIM_SCREEN": str(path)})
+        data = path.read_bytes()
+        # "P6\n320 240\n255\n" then RGB.
+        header = data.index(b"255\n") + 4
+        at = header + (y * 320 + x) * 3
+        return tuple(data[at:at + 3])
+
+
+def themed_library(directory, theme):
+    reading_library(directory, [(False, False)] * 3)
+    index = bytearray(tifile.read((directory / f"{lib.NAME}.8xv").read_bytes())[1])
+    index[lib.DEVICE_OFFSET + 61] = theme
+    (directory / f"{lib.NAME}.8xv").write_bytes(tifile.write(lib.NAME, bytes(index)))
+
+
+def near(colour, want, slack=8):
+    return all(abs(a - b) <= slack for a, b in zip(colour, want))
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    directory = Path(tmp)
+
+    # An empty stretch of the book list, below the last row: the background.
+    DARK_BG, LIGHT_BG = (0x16, 0x12, 0x1f), (0xf8, 0xf6, 0xfc)
+    themed_library(directory, 0)
+    checks += 1
+    got = screen_pixel(LEAD, directory, 160, 190)
+    if not near(got, DARK_BG):
+        failures.append(f"an index with no theme recorded is Dark: background {got}")
+
+    themed_library(directory, 1)
+    checks += 1
+    got = screen_pixel(LEAD, directory, 160, 190)
+    if not near(got, LIGHT_BG):
+        failures.append(f"an index saying Light opens Light: background {got}")
+
+    check("Settings says which theme it is", LEAD + press("mode"), RUNNING,
+          expect_output="Light", directory=directory, env=TEXT)
+
+    themed_library(directory, 0)
+    checks += 1
+    got = screen_pixel(LEAD + press("mode") + press("down") + press("enter"), directory, 160, 225)
+    status, output = run(LEAD + press("mode") + press("down") + press("enter"), directory, TEXT)
+    if "Light" not in output:
+        failures.append("enter on Theme did not switch to Light")
+    if near(got, (0x24, 0x1d, 0x35)):
+        failures.append(f"switching to Light did not repaint in it: footer {got}")
+
+    # The sync screen is drawn, in the reader's own font, not typed on the
+    # homescreen.
+    check("the sync screen is drawn, with its own key hint", LEAD + press("mode") + press("enter"),
+          RUNNING, expect_output="Stop syncing", directory=directory, env=TEXT)
+    check("and says what to do next", LEAD + press("mode") + press("enter"),
+          RUNNING, expect_output="Press Connect calculator on the sync page",
+          directory=directory, env=TEXT)
+    status, output = run(LEAD + press("mode") + press("enter"), directory, TEXT)
+    checks += 1
+    if "Different library" in output or "[clear] stop syncing" in output:
+        failures.append("the sync screen still wrote homescreen text")
+
+
 # --- the lock screen -------------------------------------------------------
 # The password is in the library index (see docs/FORMAT.md), so a locked
 # calculator is one whose index has a device block filled in. Three wrong

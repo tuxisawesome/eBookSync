@@ -59,6 +59,11 @@ int main(void) {
      */
     lib_open();
 
+    /* The theme is in the index, so the chrome can only be coloured once it is
+     * mapped. The palette loaded above was the default, for anything drawn
+     * before now. */
+    ui_set_chrome_palette();
+
     /*
      * A wallpaper the index does not vouch for is wreckage: either somebody
      * deleted CSLIB to get past the prompt, or a sync died between storing the
@@ -120,6 +125,7 @@ int main(void) {
         if (result == UI_SETUP) {
             result = ui_setup_screen();
             lib_open();
+            ui_set_chrome_palette();
             row = 0;
             if (result != UI_SYNC)
                 continue;
@@ -130,7 +136,10 @@ int main(void) {
              * build variables before archiving them, so hand it back first. */
             render_free();
             ui_sync_run();
+            /* A sync rewrites the index, so the theme is read again from where
+             * it now is. */
             lib_open();
+            ui_set_chrome_palette();
             if (!render_init()) {
                 ui_message("Not enough free memory.", "Archive or delete some files.");
                 break;

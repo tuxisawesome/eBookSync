@@ -103,12 +103,26 @@ transfer ever completing and no error ever reported. `srl_echo`, the one
 device-mode program in the toolchain that is known to work, makes no graphx
 calls at all and runs on the homescreen.
 
-So `ui_sync_run()` calls `gfx_End()` before touching USB, draws its status on
-the OS text display, and calls `gfx_Begin()` again afterwards -- and puts the
-menus' garbage-collect handlers back, because `proto_run()` swapped in its own
-for the duration and cleared them on the way out. Forgetting that last part left
-every collect for the rest of the session drawing the OS prompt into 8bpp
-memory, where it cannot be seen and cannot be answered.
+So `ui_sync_run()` calls `gfx_End()` before touching USB and `gfx_Begin()` again
+afterwards -- and puts the menus' garbage-collect handlers back, because
+`proto_run()` swapped in its own for the duration and cleared them on the way
+out. Forgetting that last part left every collect for the rest of the session
+drawing the OS prompt into 8bpp memory, where it cannot be seen and cannot be
+answered.
+
+What that rules out is graphx, not pixels. The sync screen used to be plain text
+on the homescreen; it is now drawn (`syncscreen.c`) by writing straight into the
+LCD's memory in the operating system's own 16bpp mode, which is not a change to
+any LCD parameter, in the reader's own font and theme. This is BlueObject's
+connect screen, adapted. It draws in fields that remember what they last showed,
+so a pass through the link loop that changes nothing touches no pixels.
+
+What is still owed to the operating system is the homescreen. A defragment draws
+the OS's prompt where the OS's cursor is and blocks until it is answered, so
+`proto_set_os_screen()` runs a handler first that whitens the screen and clears
+the homescreen, and `proto_screen_dirty()` reports afterwards that the whole
+screen needs painting again. A collect nobody announced -- the OS may collect on
+a write predicted to fit -- is caught by a slow timed repaint.
 
 ## The keypad, of all things
 

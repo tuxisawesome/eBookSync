@@ -1,20 +1,26 @@
 /*
- * The book and strip lists.
+ * The menus: the book and strip lists, bookmarks, settings, about, messages.
  *
  * Rows are drawn by blitting a title bitmap the sync app rendered on the
  * computer -- the calculator has no CJK font, so it never touches text layout.
- * Only fixed ASCII chrome uses the built-in graphx font.
+ * Everything else is in the reader's own font (font.h), drawn through palette
+ * ramps set from the current theme (theme.h), so it is anti-aliased against
+ * whatever it sits on in either Dark or Light.
+ *
+ * The sync screen is not here: it runs with graphx handed back, and lives in
+ * syncscreen.c.
  */
 
 #include "ui.h"
 
+#include "font.h"
 #include "input.h"
 #include "about.h"
 #include "keyin.h"
 #include "library.h"
 #include "lock.h"
-#include "proto.h"
 #include "render.h"
+#include "theme.h"
 
 #include <fileioc.h>
 #include <graphx.h>
@@ -24,35 +30,56 @@
 #include <time.h>
 #include <tice.h>
 
-#define LIST_X        10
-#define TITLE_INSET   2
+#define W GFX_LCD_WIDTH
 
-static void set_rgb(uint8_t index, uint8_t r, uint8_t g, uint8_t b) {
-    gfx_palette[index] = (uint16_t)(((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3));
+/* ------------------------------------------------------------------ palette */
+
+static void set_colour(uint8_t index, rgb_t colour) {
+    gfx_palette[index] = theme_to_1555(colour);
 }
 
-/* Blend two colours; used to build the four-level ramps the 2bpp titles are
- * drawn through, so text sits correctly on both row backgrounds. */
-static void set_ramp(uint8_t base, uint8_t br, uint8_t bg_, uint8_t bb,
-                     uint8_t fr, uint8_t fg, uint8_t fb) {
-    for (uint8_t level = 0; level < 4; level++) {
-        set_rgb(base + level,
-                (uint8_t)(br + (fr - br) * level / 3),
-                (uint8_t)(bg_ + (fg - bg_) * level / 3),
-                (uint8_t)(bb + (fb - bb) * level / 3));
-    }
+/*
+ * A ramp for anti-aliased text: the background, then a third, two thirds and
+ * all of the way to the text colour. The middle steps lean a little towards
+ * the text, because thin strokes are mostly partial coverage at this size and
+ * an even ramp makes them look faint.
+ */
+static void set_ramp(uint8_t base, rgb_t bg, rgb_t fg) {
+    set_colour(base, bg);
+    set_colour(base + 1, theme_mix(bg, fg, 7));
+    set_colour(base + 2, theme_mix(bg, fg, 12));
+    set_colour(base + 3, fg);
 }
 
 void ui_set_chrome_palette(void) {
-    set_rgb(UI_BG, 248, 248, 248);
-    set_rgb(UI_FG, 24, 24, 24);
-    set_rgb(UI_ACCENT, 40, 90, 200);
-    set_rgb(UI_DIM, 150, 150, 150);
-    set_rgb(UI_SELECT_BG, 198, 218, 255);
+    const theme_t *t = theme_current();
 
-    set_ramp(UI_TEXT_RAMP, 248, 248, 248, 24, 24, 24);
-    set_ramp(UI_TEXT_RAMP_SEL, 198, 218, 255, 16, 24, 48);
+    set_colour(UI_BG, t->bg);
+    set_colour(UI_SURFACE, t->surface);
+    set_colour(UI_FG, t->fg);
+    set_colour(UI_DIM, t->dim);
+    set_colour(UI_ACCENT, t->accent);
+    set_colour(UI_ON_ACCENT, t->on_accent);
+    set_colour(UI_SELECT_BG, t->select);
+    set_colour(UI_WARN, t->warn);
+    set_colour(UI_RULE, theme_mix(t->bg, t->dim, 3));
+    set_colour(UI_ACCENT_SOFT, theme_mix(t->bg, t->accent, 6));
+    gfx_palette[UI_BLACK] = 0;
+
+    set_ramp(RAMP_FG, t->bg, t->fg);
+    set_ramp(RAMP_DIM, t->bg, t->dim);
+    set_ramp(RAMP_ACCENT, t->bg, t->accent);
+    set_ramp(RAMP_FG_SEL, t->select, t->fg);
+    set_ramp(RAMP_DIM_SEL, t->select, t->dim);
+    set_ramp(RAMP_ACCENT_SEL, t->select, t->accent);
+    set_ramp(RAMP_ON_ACCENT, t->accent, t->on_accent);
+    set_ramp(RAMP_FG_SURFACE, t->surface, t->fg);
+    set_ramp(RAMP_DIM_SURFACE, t->surface, t->dim);
+    set_ramp(RAMP_ACCENT_SURFACE, t->surface, t->accent);
+    set_ramp(RAMP_WARN, t->bg, t->warn);
 }
+
+/* ---------------------------------------------------------- garbage collect */
 
 /*
  * The OS defragments the archive when it runs out of room, and it may decide to
@@ -71,8 +98,8 @@ static void gc_before(void) {
 static void gc_after(void) {
     gfx_Begin();
     gfx_SetDrawBuffer();
-    ui_set_chrome_palette();
     lib_open();
+    ui_set_chrome_palette();
 }
 
 void ui_install_gc(void) {
@@ -86,34 +113,106 @@ void ui_present(bool drew) {
         gfx_Blit(gfx_screen);
 }
 
+/* ------------------------------------------------------------ the frame */
+
 void ui_header(const char *text) {
     gfx_SetColor(UI_ACCENT);
-    gfx_FillRectangle_NoClip(0, 0, GFX_LCD_WIDTH, UI_LIST_TOP - 4);
-    gfx_SetTextFGColor(UI_BG);
-    gfx_SetTextBGColor(UI_ACCENT);
-    gfx_PrintStringXY(text, 6, 5);
+    gfx_FillRectangle_NoClip(0, 0, W, UI_HEADER_H);
+    font_draw_fit(&font_bold, text, UI_MARGIN, 5, RAMP_ON_ACCENT, W - 2 * UI_MARGIN);
 }
 
-void ui_footer(const char *text) {
-    gfx_SetColor(UI_DIM);
-    gfx_FillRectangle_NoClip(0, GFX_LCD_HEIGHT - 16, GFX_LCD_WIDTH, 16);
-    gfx_SetTextFGColor(UI_BG);
-    gfx_SetTextBGColor(UI_DIM);
-    gfx_PrintStringXY(text, 6, GFX_LCD_HEIGHT - 12);
+void ui_footer(const char *hints) {
+    gfx_SetColor(UI_SURFACE);
+    gfx_FillRectangle_NoClip(0, UI_FOOTER_Y, W, UI_FOOTER_H);
+
+    /* "key label|key label": the key in the accent, its label beside it, and a
+     * clear gap before the next pair. */
+    int x = UI_MARGIN;
+    int y = UI_FOOTER_Y + 5;
+    char pair[32];
+    while (*hints) {
+        const char *end = strchr(hints, '|');
+        size_t length = end ? (size_t)(end - hints) : strlen(hints);
+        if (length >= sizeof pair)
+            length = sizeof pair - 1;
+        memcpy(pair, hints, length);
+        pair[length] = '\0';
+
+        char *label = strchr(pair, ' ');
+        if (label)
+            *label++ = '\0';
+        x = font_draw(&font_small, pair, x, y, RAMP_ACCENT_SURFACE) + 4;
+        if (label)
+            x = font_draw(&font_small, label, x, y, RAMP_FG_SURFACE);
+        x += 14;
+
+        if (!end)
+            break;
+        hints = end + 1;
+    }
 }
 
-void ui_draw_title(uint16_t title_offset, int x, int y, bool selected) {
+void ui_panel(int x, int y, int w, int h) {
+    gfx_SetColor(UI_SURFACE);
+    gfx_FillRectangle_NoClip(x, y, w, h);
+}
+
+uint8_t ui_wrap(const char *text, int x, int y, int width, uint8_t line_h,
+                uint8_t ramp, uint8_t max_lines) {
+    char line[64];
+    uint8_t lines = 0;
+
+    while (*text && lines < max_lines) {
+        while (*text == ' ')
+            text++;
+
+        /* Take words while they fit. A single word wider than the line is cut
+         * rather than looping for ever. */
+        size_t take = 0, fits = 0;
+        for (;;) {
+            size_t next = take;
+            while (text[next] == ' ')
+                next++;
+            while (text[next] && text[next] != ' ')
+                next++;
+            if (next >= sizeof line)
+                break;
+            memcpy(line, text, next);
+            line[next] = '\0';
+            if (font_width(&font_body, line) > width && fits)
+                break;
+            fits = take = next;
+            if (!text[next])
+                break;
+        }
+        if (!fits)
+            fits = strlen(text) < sizeof line ? strlen(text) : sizeof line - 1;
+
+        memcpy(line, text, fits);
+        line[fits] = '\0';
+        if (lines + 1 == max_lines && text[fits])
+            font_draw_fit(&font_body, line, x, y, ramp, width);
+        else
+            font_draw(&font_body, line, x, y, ramp);
+
+        text += fits;
+        y += line_h;
+        lines++;
+    }
+    return lines;
+}
+
+void ui_draw_title(uint16_t title_offset, int x, int y, uint8_t ramp) {
     uint16_t width;
     uint8_t height;
     const uint8_t *bitmap = lib_title(title_offset, &width, &height);
     if (!bitmap)
         return;
 
-    uint8_t ramp = selected ? UI_TEXT_RAMP_SEL : UI_TEXT_RAMP;
     uint16_t stride = (width + 3) / 4;
 
-    if (x + (int)width > GFX_LCD_WIDTH)
-        width = (uint16_t)(GFX_LCD_WIDTH - x);
+    if (x + (int)width > W)
+        width = (uint16_t)(W - x);
 
     for (uint8_t row = 0; row < height; row++) {
         int dst_y = y + row;
@@ -132,24 +231,52 @@ void ui_draw_title(uint16_t title_offset, int x, int y, bool selected) {
     }
 }
 
-void ui_notice(const char *line1, const char *line2) {
+void ui_draw_bookmark(int x, int y) {
+    gfx_SetColor(UI_ACCENT);
+    gfx_FillRectangle_NoClip(x, y, 7, 10);
+    /* The notch in the tail, in whatever is behind it. */
+    gfx_SetColor(UI_BG);
+    gfx_FillRectangle_NoClip(x + 3, y + 8, 1, 2);
+    gfx_FillRectangle_NoClip(x + 2, y + 9, 3, 1);
+}
+
+void ui_draw_down_arrow(int x, int y) {
+    gfx_SetColor(UI_ACCENT);
+    gfx_FillRectangle_NoClip(x + 3, y, 3, 3);
+    for (int row = 0; row < 4; row++)
+        gfx_FillRectangle_NoClip(x + row, y + 3 + row, 9 - 2 * row, 1);
+}
+
+/* A small right-pointing triangle, for Continue. */
+static void draw_play(int x, int y, uint8_t colour) {
+    gfx_SetColor(colour);
+    for (int col = 0; col < 5; col++)
+        gfx_FillRectangle_NoClip(x + col, y + col, 1, 11 - 2 * col);
+}
+
+/* ----------------------------------------------------------------- messages */
+
+/* One or two lines, centred, the first in the bold face. */
+static void draw_centred(const char *line1, const char *line2) {
     gfx_FillScreen(UI_BG);
-    gfx_SetTextFGColor(UI_FG);
-    gfx_SetTextBGColor(UI_BG);
-    gfx_PrintStringXY(line1, 10, 100);
+    int y = line2 ? 92 : 104;
+    font_draw_fit(&font_bold, line1, (W - font_width(&font_bold, line1)) / 2, y,
+                  RAMP_FG, W - 2 * UI_MARGIN);
     if (line2)
-        gfx_PrintStringXY(line2, 10, 118);
+        font_draw_fit(&font_body, line2, (W - font_width(&font_body, line2)) / 2,
+                      y + 26, RAMP_DIM, W - 2 * UI_MARGIN);
+}
+
+void ui_notice(const char *line1, const char *line2) {
+    draw_centred(line1, line2);
     gfx_SwapDraw();
     gfx_Blit(gfx_screen);
 }
 
 void ui_message(const char *line1, const char *line2) {
-    gfx_FillScreen(UI_BG);
-    gfx_SetTextFGColor(UI_FG);
-    gfx_SetTextBGColor(UI_BG);
-    gfx_PrintStringXY(line1, 10, 100);
-    if (line2)
-        gfx_PrintStringXY(line2, 10, 118);
+    draw_centred(line1, line2);
+    font_draw(&font_small, "Press any key", (W - font_width(&font_small, "Press any key")) / 2,
+              196, RAMP_DIM);
     gfx_SwapDraw();
 
     /* Whatever key got us here may still be held. Wait for it to come up
@@ -175,12 +302,13 @@ bool ui_confirm(const char *line1, const char *line2) {
         if (dirty) {
             gfx_FillScreen(UI_BG);
             ui_header("Are you sure?");
-            gfx_SetTextFGColor(UI_FG);
-            gfx_SetTextBGColor(UI_BG);
-            gfx_PrintStringXY(line1, 10, 90);
+            ui_panel(UI_MARGIN, 76, W - 2 * UI_MARGIN, line2 ? 68 : 48);
+            font_draw_fit(&font_body, line1, UI_MARGIN * 2, 92, RAMP_FG_SURFACE,
+                          W - 4 * UI_MARGIN);
             if (line2)
-                gfx_PrintStringXY(line2, 10, 108);
-            ui_footer("2nd  yes          clear  no");
+                font_draw_fit(&font_body, line2, UI_MARGIN * 2, 114, RAMP_FG_SURFACE,
+                              W - 4 * UI_MARGIN);
+            ui_footer("2nd Yes|clear No");
             dirty = false;
             drew = true;
         }
@@ -201,6 +329,8 @@ bool ui_confirm(const char *line1, const char *line2) {
             return false;
     }
 }
+
+/* ------------------------------------------------------------------- lists */
 
 /* Shared scrolling-list state and movement. */
 typedef struct {
@@ -240,11 +370,30 @@ static bool list_navigate(menu_list_t *list) {
     return true;
 }
 
+static int row_y(uint16_t row) {
+    return UI_LIST_TOP + row * UI_ROW_HEIGHT;
+}
+
+/*
+ * A row's ground: the selection bar with an accent stripe down its left edge,
+ * or a hairline under an ordinary row so a long list reads as rows rather than
+ * as a column of text.
+ */
 static void draw_row_background(const menu_list_t *list, uint16_t row) {
-    bool selected = list->first + row == list->selected;
-    gfx_SetColor(selected ? UI_SELECT_BG : UI_BG);
-    gfx_FillRectangle_NoClip(0, UI_LIST_TOP + row * UI_ROW_HEIGHT,
-                             GFX_LCD_WIDTH, UI_ROW_HEIGHT);
+    int y = row_y(row);
+    if (list->first + row == list->selected) {
+        gfx_SetColor(UI_SELECT_BG);
+        gfx_FillRectangle_NoClip(0, y, W, UI_ROW_HEIGHT);
+        gfx_SetColor(UI_ACCENT);
+        gfx_FillRectangle_NoClip(0, y, 3, UI_ROW_HEIGHT);
+    } else {
+        gfx_SetColor(UI_RULE);
+        gfx_FillRectangle_NoClip(UI_MARGIN, y + UI_ROW_HEIGHT - 1, W - 2 * UI_MARGIN, 1);
+    }
+}
+
+static bool row_selected(const menu_list_t *list, uint16_t row) {
+    return list->first + row == list->selected;
 }
 
 /* Scroll indicator down the right edge, drawn only when the list overflows. */
@@ -255,14 +404,23 @@ static void draw_scrollbar(const menu_list_t *list) {
     int track_top = UI_LIST_TOP;
     int track_height = UI_LIST_ROWS * UI_ROW_HEIGHT;
     int thumb = track_height * UI_LIST_ROWS / list->count;
-    if (thumb < 8)
-        thumb = 8;
+    if (thumb < 12)
+        thumb = 12;
     int span = list->count - UI_LIST_ROWS;
     int offset = span ? (track_height - thumb) * list->first / span : 0;
 
-    gfx_SetColor(UI_DIM);
-    gfx_FillRectangle_NoClip(GFX_LCD_WIDTH - 4, track_top + offset, 3, thumb);
+    gfx_SetColor(UI_ACCENT_SOFT);
+    gfx_FillRectangle_NoClip(W - 4, track_top, 2, track_height);
+    gfx_SetColor(UI_ACCENT);
+    gfx_FillRectangle_NoClip(W - 5, track_top + offset, 4, thumb);
 }
+
+/* Where a title bitmap sits in a row: 16px tall, centred. */
+#define TITLE_INSET ((UI_ROW_HEIGHT - 16) / 2)
+/* And where a line of the body face sits. */
+#define TEXT_INSET  ((UI_ROW_HEIGHT - 15) / 2)
+
+/* -------------------------------------------------------------- status bar */
 
 /*
  * Battery and free space, for the book list's header.
@@ -294,47 +452,30 @@ static void read_status(status_t *status) {
     }
 }
 
-/* Right-aligned in the header bar: free space, then a battery gauge. */
+/* Right-aligned in the header: free space, then a battery gauge. */
 static void draw_status(const status_t *status) {
-    int battery_x = GFX_LCD_WIDTH - 26;
-    int text_x = battery_x - 8 - (int)strlen(status->free_text) * 8;
+    int battery_x = W - UI_MARGIN - 20;
 
-    gfx_SetTextFGColor(UI_BG);
-    gfx_SetTextBGColor(UI_ACCENT);
-    gfx_PrintStringXY(status->free_text, text_x, 5);
+    font_draw_right(&font_small, status->free_text, battery_x - 8, 8, RAMP_ON_ACCENT);
 
-    /* Body, terminal, and one block per level. Dim blocks when it is nearly
-     * flat, so the gauge says "charge me" before the OS has to. */
-    gfx_SetColor(UI_BG);
-    gfx_Rectangle_NoClip(battery_x, 4, 18, 10);
-    gfx_FillRectangle_NoClip(battery_x + 18, 7, 2, 4);
-    gfx_SetColor(status->battery <= 1 && !status->charging ? UI_DIM : UI_BG);
+    /* Body, terminal, and one block per level. A nearly flat battery shows its
+     * last block in the warning colour, so the gauge says "charge me" before
+     * the OS has to. */
+    gfx_SetColor(UI_ON_ACCENT);
+    gfx_Rectangle_NoClip(battery_x, 9, 18, 10);
+    gfx_FillRectangle_NoClip(battery_x + 18, 12, 2, 4);
+    gfx_SetColor(status->battery <= 1 && !status->charging ? UI_WARN : UI_ON_ACCENT);
     for (uint8_t i = 0; i < status->battery; i++)
-        gfx_FillRectangle_NoClip(battery_x + 2 + i * 4, 6, 3, 6);
+        gfx_FillRectangle_NoClip(battery_x + 2 + i * 4, 11, 3, 6);
 
-    /* On charge: a bar under the gauge, the one thing the font cannot say in a
-     * character. */
+    /* On charge: a bar under the gauge. */
     if (status->charging) {
-        gfx_SetColor(UI_BG);
-        gfx_FillRectangle_NoClip(battery_x, 15, 18, 1);
+        gfx_SetColor(UI_ON_ACCENT);
+        gfx_FillRectangle_NoClip(battery_x, 21, 18, 1);
     }
 }
 
-void ui_draw_bookmark(int x, int y) {
-    gfx_SetColor(UI_ACCENT);
-    gfx_FillRectangle_NoClip(x, y, 7, 10);
-    /* The notch in the tail. */
-    gfx_SetColor(UI_BG);
-    gfx_FillRectangle_NoClip(x + 3, y + 8, 1, 2);
-    gfx_FillRectangle_NoClip(x + 2, y + 9, 3, 1);
-}
-
-void ui_draw_down_arrow(int x, int y) {
-    gfx_SetColor(UI_ACCENT);
-    gfx_FillRectangle_NoClip(x + 3, y, 3, 3);
-    for (int row = 0; row < 4; row++)
-        gfx_FillRectangle_NoClip(x + row, y + 3 + row, 9 - 2 * row, 1);
-}
+/* ---------------------------------------------------------------- the books */
 
 /* Pinned rows above the books, in the order they are drawn. */
 typedef struct {
@@ -358,20 +499,20 @@ static bool row_is_bookmarks(const pinned_t *pinned, uint16_t row) {
 }
 
 static void draw_pinned_row(const pinned_t *pinned, uint16_t row, int y, bool selected) {
-    gfx_SetTextFGColor(UI_ACCENT);
-    gfx_SetTextBGColor(selected ? UI_SELECT_BG : UI_BG);
+    uint8_t accent = selected ? RAMP_ACCENT_SEL : RAMP_ACCENT;
 
     if (row_is_continue(pinned, row)) {
-        gfx_PrintStringXY(">", LIST_X - 6, y + 6);
-        gfx_PrintStringXY("Continue", LIST_X + 4, y + 6);
+        draw_play(UI_MARGIN, y + 7, UI_ACCENT);
+        int x = font_draw(&font_bold, "Continue", UI_MARGIN + 14, y + TEXT_INSET - 1, accent);
         lib_strip_t strip;
         lib_get_strip(pinned->last, &strip);
-        ui_draw_title(strip.title, LIST_X + 80, y + TITLE_INSET, selected);
+        ui_draw_title(strip.title, x + 10, y + TITLE_INSET,
+                      selected ? RAMP_FG_SEL : RAMP_FG);
     } else {
         char line[24];
-        ui_draw_bookmark(LIST_X - 6, y + 5);
+        ui_draw_bookmark(UI_MARGIN, y + 8);
         sprintf(line, "Bookmarks (%u)", pinned->bookmarks);
-        gfx_PrintStringXY(line, LIST_X + 4, y + 6);
+        font_draw(&font_bold, line, UI_MARGIN + 14, y + TEXT_INSET - 1, accent);
     }
 }
 
@@ -391,14 +532,14 @@ ui_result_t ui_book_menu(uint16_t *row, uint16_t *chosen) {
     for (;;) {
         if (dirty) {
             gfx_FillScreen(UI_BG);
-            ui_header("Books");
+            ui_header("Library");
             draw_status(&status);
 
             if (!lib_book_count()) {
-                gfx_SetTextFGColor(UI_DIM);
-                gfx_SetTextBGColor(UI_BG);
-                gfx_PrintStringXY("No comics yet.", 10, 90);
-                gfx_PrintStringXY("Press mode, then Sync, to fill it.", 10, 108);
+                const char *empty = "No comics yet";
+                const char *hint = "Press mode, then Sync, to fill it.";
+                font_draw(&font_bold, empty, (W - font_width(&font_bold, empty)) / 2, 100, RAMP_FG);
+                font_draw(&font_body, hint, (W - font_width(&font_body, hint)) / 2, 124, RAMP_DIM);
             }
 
             for (uint16_t screen_row = 0; screen_row < UI_LIST_ROWS; screen_row++) {
@@ -407,33 +548,37 @@ ui_result_t ui_book_menu(uint16_t *row, uint16_t *chosen) {
                     break;
 
                 draw_row_background(&list, screen_row);
-                int y = UI_LIST_TOP + screen_row * UI_ROW_HEIGHT;
-                bool selected = index == list.selected;
+                int y = row_y(screen_row);
+                bool selected = row_selected(&list, screen_row);
 
                 if (index < pinned.count) {
                     draw_pinned_row(&pinned, index, y, selected);
-                    /* A rule under the last pinned row, so they read as
+                    /* A firmer rule under the last pinned row, so they read as
                      * shortcuts rather than as two more books. */
-                    if (index + 1 == pinned.count) {
-                        gfx_SetColor(UI_DIM);
-                        gfx_FillRectangle_NoClip(0, y + UI_ROW_HEIGHT - 1, GFX_LCD_WIDTH, 1);
+                    if (index + 1 == pinned.count && !selected) {
+                        gfx_SetColor(UI_ACCENT_SOFT);
+                        gfx_FillRectangle_NoClip(UI_MARGIN, y + UI_ROW_HEIGHT - 1,
+                                                 W - 2 * UI_MARGIN, 1);
                     }
                     continue;
                 }
 
                 lib_book_t book;
                 lib_get_book(index - pinned.count, &book);
-                ui_draw_title(book.title, LIST_X, y + TITLE_INSET, selected);
+                ui_draw_title(book.title, UI_MARGIN, y + TITLE_INSET,
+                              selected ? RAMP_FG_SEL : RAMP_FG);
 
-                sprintf(line, "%u/%u", lib_book_read_count(&book), book.strip_count);
-                gfx_SetTextFGColor(UI_DIM);
-                gfx_SetTextBGColor(selected ? UI_SELECT_BG : UI_BG);
-                gfx_PrintStringXY(line, GFX_LCD_WIDTH - 8 - (int)strlen(line) * 8,
-                                  y + 6);
+                /* How far through: the count, in the accent once finished. */
+                uint16_t read = lib_book_read_count(&book);
+                sprintf(line, "%u/%u", read, book.strip_count);
+                uint8_t ramp = read == book.strip_count && read
+                    ? (selected ? RAMP_ACCENT_SEL : RAMP_ACCENT)
+                    : (selected ? RAMP_DIM_SEL : RAMP_DIM);
+                font_draw_right(&font_small, line, W - UI_MARGIN, y + 7, ramp);
             }
 
             draw_scrollbar(&list);
-            ui_footer("enter open  2nd lock  del read  mode set");
+            ui_footer("enter Open|del Mark read|mode Settings");
             dirty = false;
             drew = true;
         }
@@ -484,32 +629,34 @@ ui_result_t ui_book_menu(uint16_t *row, uint16_t *chosen) {
     }
 }
 
-/* One strip's row: read marker, title, bookmark ribbon and size. Shared by a
+/* One strip's row: read mark, title, bookmark ribbon and size. Shared by a
  * book's list and the bookmarks list. */
 static void draw_strip_row(uint16_t strip_index, int y, bool selected) {
     lib_strip_t strip;
     lib_get_strip(strip_index, &strip);
 
-    char line[12];
-    gfx_SetTextBGColor(selected ? UI_SELECT_BG : UI_BG);
+    /* Read: a small filled dot in the accent, where an unread strip has none. */
     if (strip.flags & LIB_FLAG_READ) {
-        gfx_SetTextFGColor(UI_ACCENT);
-        gfx_PrintStringXY("*", 2, y + 6);
+        gfx_SetColor(UI_ACCENT);
+        gfx_FillRectangle_NoClip(UI_MARGIN, y + 11, 5, 5);
+        gfx_FillRectangle_NoClip(UI_MARGIN + 1, y + 10, 3, 7);
+        gfx_FillRectangle_NoClip(UI_MARGIN - 1, y + 12, 7, 3);
     }
 
-    ui_draw_title(strip.title, LIST_X + 8, y + TITLE_INSET, selected);
+    ui_draw_title(strip.title, UI_MARGIN + 14, y + TITLE_INSET,
+                  selected ? RAMP_FG_SEL : RAMP_FG);
 
+    char line[12];
     sprintf(line, "%uK", (unsigned)(strip.bytes / 1024));
-    int size_x = GFX_LCD_WIDTH - 8 - (int)strlen(line) * 8;
+    int size_x = W - UI_MARGIN - font_width(&font_small, line);
     if (strip.flags & LIB_FLAG_BOOKMARK) {
         /* Over the end of a long title: the title is ellipsised well short of
          * the size column anyway, but the ribbon must not be lost under it. */
         gfx_SetColor(selected ? UI_SELECT_BG : UI_BG);
-        gfx_FillRectangle_NoClip(size_x - 16, y + 1, 14, UI_ROW_HEIGHT - 2);
-        ui_draw_bookmark(size_x - 12, y + 5);
+        gfx_FillRectangle_NoClip(size_x - 18, y + 1, 16, UI_ROW_HEIGHT - 2);
+        ui_draw_bookmark(size_x - 14, y + 8);
     }
-    gfx_SetTextFGColor(UI_DIM);
-    gfx_PrintStringXY(line, size_x, y + 6);
+    font_draw(&font_small, line, size_x, y + 7, selected ? RAMP_DIM_SEL : RAMP_DIM);
 }
 
 static void toggle_bookmark(uint16_t strip_index) {
@@ -533,7 +680,10 @@ ui_result_t ui_strip_menu(uint16_t book_index, uint16_t *selection) {
     for (;;) {
         if (dirty) {
             gfx_FillScreen(UI_BG);
-            ui_header("Strips");
+            /* The book's own title across the top, rather than a word. */
+            gfx_SetColor(UI_ACCENT);
+            gfx_FillRectangle_NoClip(0, 0, W, UI_HEADER_H);
+            ui_draw_title(book.title, UI_MARGIN, (UI_HEADER_H - 16) / 2, RAMP_ON_ACCENT);
 
             for (uint16_t row = 0; row < UI_LIST_ROWS; row++) {
                 uint16_t index = list.first + row;
@@ -541,12 +691,11 @@ ui_result_t ui_strip_menu(uint16_t book_index, uint16_t *selection) {
                     break;
 
                 draw_row_background(&list, row);
-                draw_strip_row(book.strip_first + index,
-                               UI_LIST_TOP + row * UI_ROW_HEIGHT, index == list.selected);
+                draw_strip_row(book.strip_first + index, row_y(row), row_selected(&list, row));
             }
 
             draw_scrollbar(&list);
-            ui_footer("enter read  del read  alpha bookmark");
+            ui_footer("enter Read|del Mark read|alpha Bookmark");
             dirty = false;
             drew = true;
         }
@@ -555,11 +704,6 @@ ui_result_t ui_strip_menu(uint16_t book_index, uint16_t *selection) {
         drew = false;
         input_scan();
 
-        /*
-         * Before anything else looks at those keys. The combination holds 2nd,
-         * and 2nd on the book list opens the sync screen -- so a screen that
-         * checked its own keys first would go there instead of locking.
-         */
         if (lock_poll()) {
             dirty = true;
             continue;
@@ -619,12 +763,11 @@ ui_result_t ui_bookmark_menu(uint16_t *selection) {
                     break;
 
                 draw_row_background(&list, row);
-                draw_strip_row(lib_bookmark_at(index),
-                               UI_LIST_TOP + row * UI_ROW_HEIGHT, index == list.selected);
+                draw_strip_row(lib_bookmark_at(index), row_y(row), row_selected(&list, row));
             }
 
             draw_scrollbar(&list);
-            ui_footer("enter read  alpha unmark  clear back");
+            ui_footer("enter Read|alpha Remove|clear Back");
             dirty = false;
             drew = true;
         }
@@ -654,15 +797,71 @@ ui_result_t ui_bookmark_menu(uint16_t *selection) {
     }
 }
 
+/* ------------------------------------------------------------------- about */
+
 /*
- * Scrollable text, drawn with the built-in font.
+ * One line of about.txt.
+ *
+ * The file is laid out for a fixed-width font, and this one is proportional,
+ * so the layout is read rather than reproduced: leading spaces become an
+ * indent, a run of two or more spaces after some text is a column break -- the
+ * key tables line up on it -- and a line in capitals is a heading.
+ */
+#define ABOUT_LINE_H  16
+#define ABOUT_KEY_COL 64
+
+static void draw_about_line(const char *line, int y) {
+    int indent = 0;
+    while (line[indent] == ' ')
+        indent++;
+    const char *text = line + indent;
+    if (!*text)
+        return;
+
+    bool heading = false;
+    for (const char *p = text; *p; p++) {
+        if (*p >= 'a' && *p <= 'z') {
+            heading = false;
+            break;
+        }
+        if (*p >= 'A' && *p <= 'Z')
+            heading = true;
+    }
+    if (heading) {
+        font_draw(&font_bold, text, UI_MARGIN, y, RAMP_ACCENT);
+        return;
+    }
+
+    int x = UI_MARGIN + indent * 4;
+    const char *gap = strstr(text, "  ");
+    if (!gap) {
+        font_draw_fit(&font_body, text, x, y, RAMP_FG, W - x - UI_MARGIN);
+        return;
+    }
+
+    char key[24];
+    size_t length = (size_t)(gap - text);
+    if (length >= sizeof key)
+        length = sizeof key - 1;
+    memcpy(key, text, length);
+    key[length] = '\0';
+    while (*gap == ' ')
+        gap++;
+
+    font_draw(&font_body, key, x, y, RAMP_ACCENT);
+    font_draw_fit(&font_body, gap, x + ABOUT_KEY_COL, y, RAMP_FG, W - x - ABOUT_KEY_COL - UI_MARGIN);
+}
+
+/*
+ * Scrollable text, in the reader's own font.
  *
  * The content comes from about.txt in the repository; tools/make_about.sh bakes
- * it into about.h on every build, because the calculator has no way to read the
- * repository for itself.
+ * it into about.h on every build, because the calculator has no way to read
+ * the repository for itself.
  */
 void ui_about_screen(void) {
-    const int rows = 11;              /* lines that fit between the bars */
+    const int top = UI_HEADER_H + 8;
+    const int rows = (UI_FOOTER_Y - top - 4) / ABOUT_LINE_H;
     int first = 0;
     bool dirty = true;
     bool drew = false;
@@ -673,28 +872,26 @@ void ui_about_screen(void) {
             gfx_FillScreen(UI_BG);
             ui_header("About");
 
-            gfx_SetTextFGColor(UI_FG);
-            gfx_SetTextBGColor(UI_BG);
             for (int row = 0; row < rows; row++) {
                 int line = first + row;
                 if (line >= (int)ABOUT_LINES)
                     break;
-                gfx_PrintStringXY(about_text[line], 8, UI_LIST_TOP + row * 18);
+                draw_about_line(about_text[line], top + row * ABOUT_LINE_H);
             }
 
             if ((int)ABOUT_LINES > rows) {
-                int track = rows * 18;
+                int track = rows * ABOUT_LINE_H;
                 int thumb = track * rows / (int)ABOUT_LINES;
-                if (thumb < 8)
-                    thumb = 8;
+                if (thumb < 12)
+                    thumb = 12;
                 int span = (int)ABOUT_LINES - rows;
-                gfx_SetColor(UI_DIM);
-                gfx_FillRectangle_NoClip(GFX_LCD_WIDTH - 4,
-                                         UI_LIST_TOP + (track - thumb) * first / span,
-                                         3, thumb);
+                gfx_SetColor(UI_ACCENT_SOFT);
+                gfx_FillRectangle_NoClip(W - 4, top, 2, track);
+                gfx_SetColor(UI_ACCENT);
+                gfx_FillRectangle_NoClip(W - 5, top + (track - thumb) * first / span, 4, thumb);
             }
 
-            ui_footer("up/down  scroll        clear  back");
+            ui_footer("arrows Scroll|clear Back");
             dirty = false;
             drew = true;
         }
@@ -703,11 +900,6 @@ void ui_about_screen(void) {
         drew = false;
         input_scan();
 
-        /*
-         * Before anything else looks at those keys. The combination holds 2nd,
-         * and 2nd on the book list opens the sync screen -- so a screen that
-         * checked its own keys first would go there instead of locking.
-         */
         if (lock_poll()) {
             dirty = true;
             continue;
@@ -736,6 +928,8 @@ void ui_about_screen(void) {
     }
 }
 
+/* ---------------------------------------------------------------- settings */
+
 /*
  * Set, change or remove the password.
  *
@@ -757,7 +951,7 @@ static void password_screen(void) {
             return;
         }
 
-        if (ui_confirm("Remove the password?", "2nd removes, clear changes it")) {
+        if (ui_confirm("Remove the password?", "2nd removes it, clear changes it.")) {
             ui_message(lib_password_store(NULL) ? "Password removed."
                                                 : "Could not save that.", NULL);
             return;
@@ -791,16 +985,44 @@ static void password_screen(void) {
     ui_message("Password set.", "You will be asked on startup.");
 }
 
-ui_result_t ui_setup_screen(void) {
-    static const char *const entries[] = {
-        "Sync with a computer",
-        "Password",
-        "Erase the library",
-        "About",
-    };
-    const uint8_t count = sizeof entries / sizeof *entries;
+enum { SET_SYNC, SET_THEME, SET_PASSWORD, SET_ERASE, SET_ABOUT, SET_COUNT };
 
-    uint8_t selected = 0;
+static const char *const SETTING_NAMES[SET_COUNT] = {
+    "Sync with a computer",
+    "Theme",
+    "Password",
+    "Erase the library",
+    "About",
+};
+
+static const char *setting_detail(uint8_t which) {
+    switch (which) {
+        case SET_SYNC:
+            return "Plug in the cable, then press Connect calculator on the sync page.";
+        case SET_THEME:
+            return "Purple, dark or light. Left and right, or enter, to change it.";
+        case SET_PASSWORD:
+            return lib_password_set()
+                ? "Asked for when eBookSync starts. It keeps people out of your "
+                  "comics, not a determined one."
+                : "No password set. One keeps people out of your comics, not a "
+                  "determined one.";
+        case SET_ERASE:
+            return "Deletes every comic on this calculator. The computer keeps its copies.";
+        default:
+            return "Keys, locking, and where this came from.";
+    }
+}
+
+/* Flip between the themes, save it, and repaint in it straight away. */
+static void next_theme(void) {
+    uint8_t theme = (uint8_t)((lib_theme() + 1) % THEME_COUNT);
+    lib_set_theme(theme);
+    ui_set_chrome_palette();
+}
+
+ui_result_t ui_setup_screen(void) {
+    menu_list_t list = { SET_COUNT, 0, 0 };
     bool dirty = true;
     bool drew = false;
     char line[40];
@@ -811,9 +1033,6 @@ ui_result_t ui_setup_screen(void) {
             gfx_FillScreen(UI_BG);
             ui_header("Settings");
 
-            gfx_SetTextFGColor(UI_DIM);
-            gfx_SetTextBGColor(UI_BG);
-
             uint16_t read = 0;
             for (uint16_t i = 0; i < lib_book_count(); i++) {
                 lib_book_t book;
@@ -822,41 +1041,29 @@ ui_result_t ui_setup_screen(void) {
             }
             sprintf(line, "%u books, %u strips, %u read",
                     lib_book_count(), lib_strip_count(), read);
-            gfx_PrintStringXY(line, 10, 30);
+            font_draw_right(&font_small, line, W - UI_MARGIN, 8, RAMP_ON_ACCENT);
 
-            for (uint8_t i = 0; i < count; i++) {
-                int y = 70 + i * UI_ROW_HEIGHT;
-                gfx_SetColor(i == selected ? UI_SELECT_BG : UI_BG);
-                gfx_FillRectangle_NoClip(0, y - 4, GFX_LCD_WIDTH, UI_ROW_HEIGHT);
-                gfx_SetTextFGColor(UI_FG);
-                gfx_SetTextBGColor(i == selected ? UI_SELECT_BG : UI_BG);
-                gfx_PrintStringXY(entries[i], 16, y);
+            for (uint8_t i = 0; i < SET_COUNT; i++) {
+                draw_row_background(&list, i);
+                int y = row_y(i);
+                bool selected = row_selected(&list, i);
+                font_draw(&font_body, SETTING_NAMES[i], UI_MARGIN, y + TEXT_INSET,
+                          selected ? RAMP_FG_SEL : RAMP_FG);
+
+                if (i == SET_THEME) {
+                    const char *name = theme_current()->name;
+                    font_draw_right(&font_body, name, W - UI_MARGIN, y + TEXT_INSET,
+                                    selected ? RAMP_ACCENT_SEL : RAMP_ACCENT);
+                }
             }
 
-            gfx_SetTextFGColor(UI_DIM);
-            gfx_SetTextBGColor(UI_BG);
-            switch (selected) {
-                case 0:
-                    gfx_PrintStringXY("Plug in the cable and press", 10, 140);
-                    gfx_PrintStringXY("Connect on the sync page.", 10, 158);
-                    break;
-                case 1:
-                    gfx_PrintStringXY(lib_password_set()
-                        ? "Asked for when eBookSync starts."
-                        : "No password set.", 10, 140);
-                    gfx_PrintStringXY("It keeps people out of your", 10, 158);
-                    gfx_PrintStringXY("comics, not a determined one.", 10, 176);
-                    break;
-                case 2:
-                    gfx_PrintStringXY("Deletes every comic on this", 10, 140);
-                    gfx_PrintStringXY("calculator. The computer keeps", 10, 158);
-                    gfx_PrintStringXY("its copies.", 10, 176);
-                    break;
-                default:
-                    break;
-            }
+            /* What the highlighted entry does, in a panel under the list. */
+            int panel_y = row_y(SET_COUNT) + 6;
+            ui_panel(UI_MARGIN, panel_y, W - 2 * UI_MARGIN, UI_FOOTER_Y - panel_y - 6);
+            ui_wrap(setting_detail((uint8_t)list.selected), UI_MARGIN + 10, panel_y + 5,
+                    W - 2 * UI_MARGIN - 20, 16, RAMP_FG_SURFACE, 2);
 
-            ui_footer("enter  choose          clear  back");
+            ui_footer("enter Choose|clear Back");
             dirty = false;
             drew = true;
         }
@@ -865,37 +1072,37 @@ ui_result_t ui_setup_screen(void) {
         drew = false;
         input_scan();
 
-        /*
-         * Before anything else looks at those keys. The combination holds 2nd,
-         * and 2nd on the book list opens the sync screen -- so a screen that
-         * checked its own keys first would go there instead of locking.
-         */
         if (lock_poll()) {
             dirty = true;
             continue;
         }
 
-        if (input_repeat(kb_KeyUp) && selected) {
-            selected--;
+        if (input_repeat(kb_KeyUp) || input_repeat(kb_KeyDown)) {
+            list_move(&list, input_down(kb_KeyUp) ? -1 : 1);
             dirty = true;
-        } else if (input_repeat(kb_KeyDown) && selected + 1 < count) {
-            selected++;
+        } else if (list.selected == SET_THEME
+                   && (input_pressed(kb_KeyLeft) || input_pressed(kb_KeyRight))) {
+            next_theme();
             dirty = true;
         }
 
         if (input_pressed(kb_KeyEnter)) {
-            switch (selected) {
-                case 0:
+            switch (list.selected) {
+                case SET_SYNC:
                     /* Handed back to main(): the band cache is the biggest
                      * thing in RAM and sync needs the room to build variables
                      * before archiving them. */
                     return UI_SYNC;
 
-                case 1:
+                case SET_THEME:
+                    next_theme();
+                    break;
+
+                case SET_PASSWORD:
                     password_screen();
                     break;
 
-                case 2:
+                case SET_ERASE:
                     if (ui_confirm("Erase every comic on this", "calculator?")) {
                         uint16_t removed = lib_reset();
                         char message[40];
@@ -964,164 +1171,4 @@ bool ui_password_gate(void) {
     }
 
     return false;
-}
-
-/* ------------------------------------------------------------- sync screen */
-
-/*
- * The sync screen runs on the OS text display, with graphx shut down.
- *
- * That is not a style choice. usbdrvce notes that transfers fail when
- * "non-default cpu speed or lcd parameters are in effect", and gfx_Begin() puts
- * the LCD into 8bpp palettised mode -- exactly such a parameter change. The one
- * device-mode program in the toolchain that is known to work, srl_echo, makes
- * no graphx calls at all and runs on the homescreen. With graphx running, this
- * loop froze inside usb_HandleEvents(); handing the LCD back for the duration
- * is the difference between the two.
- */
-
-static uint8_t sync_chunks_received;
-static char sync_state[32];
-
-/* The homescreen is 26 columns; pad so a shorter line erases the last one. */
-static void sync_line(uint8_t row, const char *text) {
-    char padded[27];
-    unsigned i = 0;
-    while (i < 26 && text[i]) {
-        padded[i] = text[i];
-        i++;
-    }
-    while (i < 26)
-        padded[i++] = ' ';
-    padded[26] = '\0';
-
-    os_SetCursorPos(row, 0);
-    os_PutStrFull(padded);
-}
-
-static void sync_draw(void) {
-    char line[40];
-
-    sync_line(0, "eBookSync");
-    sync_line(2, sync_state);
-
-    sprintf(line, "%u done, %uK moved", sync_chunks_received,
-            (unsigned)(proto_bytes() / 1024));
-    sync_line(3, line);
-
-    sprintf(line, "req %u cmd %u err %u", proto_requests(), proto_last_command(),
-            proto_errors());
-    sync_line(5, line);
-
-    sprintf(line, "open %u loops %u", proto_open_error(), (unsigned)proto_loops());
-    sync_line(6, line);
-
-    if (proto_collections()) {
-        sprintf(line, "defragmented %u time(s)", proto_collections());
-        sync_line(4, line);
-    }
-
-    if (proto_library_state() == PROTO_LIBRARY_DIFFERENT) {
-        sync_line(7, "Different library! del=erase");
-    } else {
-        sync_line(7, "");
-    }
-
-    sync_line(8, "[clear] stop syncing");
-}
-
-/*
- * Called from the protocol loop every turn, so it has to be cheap.
- *
- * It used to scan the keypad and compare status strings on every single turn.
- * kb_Scan() disables interrupts and waits for a hardware scan -- around a
- * millisecond -- and the loop's turn rate is exactly what drains srldrvce's
- * ring buffer, so paying that every turn throttled the whole transfer. The
- * keypad is polled often enough to feel instant and no more.
- */
-#define POLL_EVERY  32      /* turns between keypad scans */
-#define REDRAW_EVERY 4096   /* turns between status redraws while busy */
-
-static bool sync_progress(const char *state, uint8_t slot, uint8_t chunk,
-                          uint8_t chunk_count) {
-    (void)slot;
-    (void)chunk;
-    (void)chunk_count;
-
-    static uint8_t poll;
-    static uint24_t drawn_at;
-    static uint16_t drawn_requests;
-
-    /* Redraw when a command completes, or occasionally while one is in flight
-     * so the byte counter moves. Each redraw is several OS text calls. */
-    bool changed = false;
-    if (proto_requests() != drawn_requests) {
-        drawn_requests = proto_requests();
-        sync_chunks_received = drawn_requests;
-        changed = true;
-    }
-    if (proto_loops() - drawn_at >= REDRAW_EVERY) {
-        drawn_at = proto_loops();
-        changed = true;
-    }
-    if (changed) {
-        snprintf(sync_state, sizeof sync_state, "%s", state);
-        sync_draw();
-    }
-
-    if (++poll < POLL_EVERY)
-        return true;
-    poll = 0;
-
-    input_scan();
-
-    /* Erasing is offered here too, because this is where the mismatch shows. */
-    if (input_pressed(kb_KeyDel)
-        && proto_library_state() == PROTO_LIBRARY_DIFFERENT) {
-        lib_reset();
-        snprintf(sync_state, sizeof sync_state, "Erased -- sync again");
-        sync_draw();
-    }
-
-    return !input_pressed(kb_KeyClear);
-}
-
-/*
- * The echo mode is reached with alpha from the book list. It exists to tell a
- * broken protocol apart from a broken link -- see proto_run.
- */
-void ui_sync_run(void) {
-    sync_chunks_received = 0;
-    snprintf(sync_state, sizeof sync_state, "Starting...");
-    input_reset();
-
-    /* Hand the LCD back to the OS before touching USB; see the note above. */
-    gfx_End();
-    os_ClrHome();
-    sync_draw();
-
-    /*
-     * Plain kb_Scan(), as srl_echo uses.
-     *
-     * kb_Scan() disables interrupts, which looked like a hazard next to an
-     * interrupt-driven USB driver, so this used to put the keypad in continuous
-     * mode instead. But srl_echo calls kb_Scan() in its loop and works, and
-     * continuous mode did not help -- so this matches the example rather than
-     * the theory.
-     */
-    bool ok = proto_run(sync_progress, false);
-
-    os_ClrHome();
-    gfx_Begin();
-    gfx_SetDrawBuffer();
-    ui_set_chrome_palette();
-
-    /* proto_run() installs its own garbage-collect handlers and clears them on
-     * the way out, so the menus' pair has to go back. Without this every
-     * collect for the rest of the session draws the OS prompt into 8bpp
-     * memory, where nobody can see it and nobody can answer it. */
-    ui_install_gc();
-
-    if (!ok)
-        ui_message("Could not take over USB.", "Unplug the cable and retry.");
 }

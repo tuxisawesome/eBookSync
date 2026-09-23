@@ -1,5 +1,7 @@
 #include "lock.h"
 
+#include "font.h"
+
 #include "input.h"
 #include "keyin.h"
 #include "library.h"
@@ -20,9 +22,9 @@
 #define LOCK_TRIES  3
 
 /* Black, for the blanked screen. Artwork owns 0-15 and the chrome 240-252. */
-#define LOCK_BLACK  253
+#define LOCK_BLACK  UI_BLACK
 
-#define BAR_HEIGHT  18
+#define BAR_HEIGHT  26
 
 /* ------------------------------------------------------------------ clock */
 
@@ -63,10 +65,12 @@ static void draw_bar(void) {
     boot_GetDate(&day, &month, &year);
     boot_GetTime(&seconds, &minutes, &hours);
 
+    /* A band across the top of the wallpaper, in the theme's background with
+     * an accent hairline, so the clock reads over any picture. */
     gfx_SetColor(UI_BG);
     gfx_FillRectangle_NoClip(0, 0, GFX_LCD_WIDTH, BAR_HEIGHT);
-    gfx_SetTextFGColor(UI_FG);
-    gfx_SetTextBGColor(UI_BG);
+    gfx_SetColor(UI_ACCENT);
+    gfx_FillRectangle_NoClip(0, BAR_HEIGHT, GFX_LCD_WIDTH, 2);
 
     char line[32];
     if (month >= 1 && month <= 12) {
@@ -77,10 +81,10 @@ static void draw_bar(void) {
          * something that looks like a date and is not. */
         sprintf(line, "Clock not set");
     }
-    gfx_PrintStringXY(line, 6, 5);
+    font_draw(&font_body, line, UI_MARGIN, 6, RAMP_FG);
 
     sprintf(line, "%02u:%02u", hours, minutes);
-    gfx_PrintStringXY(line, GFX_LCD_WIDTH - 6 - 5 * 8, 5);
+    font_draw_right(&font_bold, line, GFX_LCD_WIDTH - UI_MARGIN, 5, RAMP_FG);
 }
 
 /* --------------------------------------------------------------- backdrop */

@@ -38,6 +38,10 @@ echo "== library index: browser builder -> calculator parser =="
 "$node" "$dir/check_js_library.mjs"
 
 echo
+echo "== the reader's font: complete, and what the generator makes =="
+python3 "$dir/check_font.py"
+
+echo
 echo "== reader menus: which keys do what =="
 python3 "$dir/check_ui.py"
 

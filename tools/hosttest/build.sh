@@ -9,6 +9,8 @@ sh "$root/tools/make_about.sh" "$root/about.txt" "$root/calc/src/about.h"
 sh "$root/tools/make_build.sh" "$root/calc/BUILD" "$root/calc/src/build.h"
 
 common="$dir/shim/shim.c $dir/appvar.c"
+# The reader's font and colours, which every screen draws with.
+look="$root/calc/src/font.c $root/calc/src/fontdata.c $root/calc/src/theme.c"
 flags="-O1 -g -Wall -Wextra -std=c11 -I$dir/shim -I$root/calc/src -include $dir/shim/shim.h"
 
 ${CC:-cc} $flags -o "$dir/render_probe" \
@@ -22,7 +24,7 @@ ${CC:-cc} $flags -o "$dir/lib_probe" \
 # compile of its own so the define cannot leak into the probe.
 ${CC:-cc} $flags -Dmain=reader_main -c -o "$dir/reader_main.o" "$root/calc/src/main.c"
 ${CC:-cc} $flags -o "$dir/ui_probe" \
-    "$dir/ui_probe.c" $common \
+    "$dir/ui_probe.c" $common $look "$root/calc/src/syncscreen.c" \
     "$root/calc/src/ui.c" "$root/calc/src/input.c" "$root/calc/src/library.c" \
     "$root/calc/src/render.c" "$root/calc/src/csx.c" "$root/calc/src/keyin.c" \
     "$root/calc/src/lock.c" "$root/calc/src/wall.c" "$root/calc/src/scratch.c" \
@@ -32,7 +34,7 @@ rm -f "$dir/reader_main.o"
 
 # The strip viewer, over real strips: paging, images, bookmarks, what it saves.
 ${CC:-cc} $flags -o "$dir/viewer_probe" \
-    "$dir/viewer_probe.c" $common \
+    "$dir/viewer_probe.c" $common $look \
     "$root/calc/src/viewer.c" "$root/calc/src/ui.c" "$root/calc/src/input.c" \
     "$root/calc/src/library.c" "$root/calc/src/render.c" "$root/calc/src/csx.c" \
     "$root/calc/src/keyin.c" "$root/calc/src/lock.c" "$root/calc/src/wall.c" \

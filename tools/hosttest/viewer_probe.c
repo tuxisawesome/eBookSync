@@ -40,6 +40,9 @@ uint24_t proto_loops(void) { return 0; }
 uint24_t proto_bytes(void) { return 0; }
 uint8_t proto_library_state(void) { return 0; }
 uint8_t proto_collections(void) { return 0; }
+bool proto_connected(void) { return false; }
+void proto_set_os_screen(void (*handler)(void)) { (void)handler; }
+bool proto_screen_dirty(void) { return false; }
 
 static const struct { const char *name; kb_lkey_t key; } KEYS[] = {
     { "up", kb_KeyUp }, { "down", kb_KeyDown }, { "left", kb_KeyLeft },

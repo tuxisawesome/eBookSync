@@ -4,6 +4,7 @@
 #include "graphx.h"
 #include "keypadc.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -247,7 +248,17 @@ void gfx_FillRectangle_NoClip(uint24_t x, uint24_t y, uint24_t w, uint24_t h) {
 }
 
 void gfx_Rectangle_NoClip(uint24_t x, uint24_t y, uint24_t w, uint24_t h) {
-    (void)x; (void)y; (void)w; (void)h;
+    if (!w || !h)
+        return;
+    gfx_FillRectangle_NoClip(x, y, w, 1);
+    gfx_FillRectangle_NoClip(x, y + h - 1, w, 1);
+    gfx_FillRectangle_NoClip(x, y, 1, h);
+    gfx_FillRectangle_NoClip(x + w - 1, y, 1, h);
+}
+
+/* What font.c draws, reported the same way as gfx_PrintStringXY. */
+void shim_text_log(const char *s, int x, int y) {
+    gfx_PrintStringXY(s, x, y);
 }
 
 uint8_t gfx_SetTextFGColor(uint8_t color) { (void)color; return 0; }
@@ -265,10 +276,53 @@ void gfx_PrintStringXY(const char *s, int x, int y) {
     if (log_text)
         printf("text %d,%d %s\n", x, y, s);
 }
-void gfx_SwapDraw(void) {}
+/*
+ * Screenshots, for looking at what a screen actually looks like.
+ *
+ * SHIM_SCREEN=path writes the 8bpp frame, through the palette, as a PPM on
+ * every swap -- so the file holds the last frame shown. SHIM_LCD=path does the
+ * same for the 16bpp LCD memory the sync screen draws into, when graphx takes
+ * the LCD back afterwards.
+ */
+uint16_t shim_lcd_ram[320 * 240];
+
+static void write_ppm(const char *path, int from_lcd) {
+    FILE *out = fopen(path, "wb");
+    if (!out)
+        return;
+    fprintf(out, "P6\n%d %d\n255\n", GFX_LCD_WIDTH, GFX_LCD_HEIGHT);
+    for (int y = 0; y < GFX_LCD_HEIGHT; y++) {
+        for (int x = 0; x < GFX_LCD_WIDTH; x++) {
+            unsigned r, g, b;
+            if (from_lcd) {
+                /* 5-6-5 with blue in the top bits, as the OS mode has it. */
+                uint16_t c = shim_lcd_ram[y * GFX_LCD_WIDTH + x];
+                b = (c >> 11) & 31; g = (c >> 5) & 63; r = c & 31;
+                r = (r << 3) | (r >> 2); g = (g << 2) | (g >> 4); b = (b << 3) | (b >> 2);
+            } else {
+                /* gfx_RGBTo1555: 0RRRRRGGGGGBBBBB. */
+                uint16_t c = shim_palette[shim_vbuffer[y][x]];
+                r = (c >> 10) & 31; g = (c >> 5) & 31; b = c & 31;
+                r = (r << 3) | (r >> 2); g = (g << 3) | (g >> 2); b = (b << 3) | (b >> 2);
+            }
+            fputc((int)r, out); fputc((int)g, out); fputc((int)b, out);
+        }
+    }
+    fclose(out);
+}
+
+void gfx_SwapDraw(void) {
+    const char *path = getenv("SHIM_SCREEN");
+    if (path)
+        write_ppm(path, 0);
+}
 void gfx_Wait(void) {}
 void gfx_Blit(uint8_t src) { (void)src; }
-void gfx_Begin(void) {}
+void gfx_Begin(void) {
+    const char *path = getenv("SHIM_LCD");
+    if (path)
+        write_ppm(path, 1);
+}
 void gfx_End(void) {}
 void gfx_SetDraw(uint8_t location) { (void)location; }
 

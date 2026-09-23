@@ -1,5 +1,7 @@
 #include "keyin.h"
 
+#include "font.h"
+
 #include "input.h"
 #include "render.h"
 #include "ui.h"
@@ -68,13 +70,12 @@ static const keyin_key_t KEYS[] = {
 
 #define KEY_COUNT (sizeof KEYS / sizeof *KEYS)
 
-/* Where the typed text sits, and how much of it fits on a line. */
-#define BOX_X       12
-#define BOX_Y       96
+/* Where the typed text sits. */
+#define BOX_X       UI_MARGIN
+#define BOX_Y       84
 #define BOX_W       (GFX_LCD_WIDTH - BOX_X * 2)
-#define BOX_H       26
-#define GLYPH_W     8
-#define VISIBLE     ((BOX_W - 10) / GLYPH_W)
+#define BOX_H       34
+#define TEXT_PAD    12
 
 static void draw(const char *prompt, const char *hint, const char *text,
                  uint8_t length, keyin_style_t style, bool alpha, bool lower,
@@ -85,39 +86,41 @@ static void draw(const char *prompt, const char *hint, const char *text,
         gfx_FillScreen(UI_BG);
     ui_header(prompt);
 
-    gfx_SetTextFGColor(UI_DIM);
-    gfx_SetTextBGColor(UI_BG);
     if (hint)
-        gfx_PrintStringXY(hint, BOX_X, 56);
+        font_draw_fit(&font_body, hint, BOX_X, 52, RAMP_DIM, BOX_W);
 
-    gfx_SetColor(UI_SELECT_BG);
-    gfx_FillRectangle_NoClip(BOX_X, BOX_Y, BOX_W, BOX_H);
+    /* The field: a panel with an accent underline, like an input on a page. */
+    ui_panel(BOX_X, BOX_Y, BOX_W, BOX_H);
     gfx_SetColor(UI_ACCENT);
-    gfx_Rectangle_NoClip(BOX_X, BOX_Y, BOX_W, BOX_H);
+    gfx_FillRectangle_NoClip(BOX_X, BOX_Y + BOX_H - 2, BOX_W, 2);
 
     /* Scroll with the cursor rather than clipping the front: what someone is
-     * typing right now is the part they need to see. */
-    uint8_t first = length > VISIBLE ? length - VISIBLE : 0;
+     * typing right now is the part they need to see. The font is proportional,
+     * so how much fits is measured rather than counted. */
+    char shown[KEYIN_MAX + 2];
+    uint8_t first = 0;
+    for (;;) {
+        uint8_t at = 0;
+        for (uint8_t i = first; i < length; i++)
+            shown[at++] = style == KEYIN_MASKED ? '*' : text[i];
+        shown[at++] = '_';
+        shown[at] = '\0';
+        if (first >= length || font_width(&font_body, shown) <= BOX_W - 2 * TEXT_PAD)
+            break;
+        first++;
+    }
+    font_draw(&font_body, shown, BOX_X + TEXT_PAD, BOX_Y + 9, RAMP_FG_SURFACE);
 
-    char shown[VISIBLE + 2];
-    uint8_t at = 0;
-    for (uint8_t i = first; i < length && at < VISIBLE; i++)
-        shown[at++] = style == KEYIN_MASKED ? '*' : text[i];
-    shown[at++] = '_';
-    shown[at] = '\0';
+    /* Which keys are typing what: a pill for the mode, and how to change it. */
+    const char *mode = alpha ? (lower ? "abc" : "ABC") : "123";
+    int mode_w = font_width(&font_bold, mode) + 16;
+    gfx_SetColor(UI_ACCENT);
+    gfx_FillRectangle_NoClip(BOX_X, BOX_Y + BOX_H + 12, mode_w, 20);
+    font_draw(&font_bold, mode, BOX_X + 8, BOX_Y + BOX_H + 14, RAMP_ON_ACCENT);
+    font_draw(&font_body, "alpha letters, 2nd case, del erases",
+              BOX_X + mode_w + 10, BOX_Y + BOX_H + 15, RAMP_DIM);
 
-    gfx_SetTextFGColor(UI_FG);
-    gfx_SetTextBGColor(UI_SELECT_BG);
-    gfx_PrintStringXY(shown, BOX_X + 5, BOX_Y + 9);
-
-    gfx_SetTextFGColor(UI_ACCENT);
-    gfx_SetTextBGColor(UI_BG);
-    gfx_PrintStringXY(alpha ? (lower ? "abc" : "ABC") : "123", BOX_X, BOX_Y + BOX_H + 8);
-
-    gfx_SetTextFGColor(UI_DIM);
-    gfx_PrintStringXY("alpha  letters   2nd  case", BOX_X + 40, BOX_Y + BOX_H + 8);
-
-    ui_footer("enter  done            clear  back");
+    ui_footer("enter Done|clear Back");
 }
 
 bool keyin_text(const char *prompt, const char *hint, char *out, uint8_t max,

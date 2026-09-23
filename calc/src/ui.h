@@ -4,9 +4,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define UI_ROW_HEIGHT  20
-#define UI_LIST_TOP    22
-#define UI_LIST_ROWS   10
+/* The frame every screen shares. Rows are tall enough that a 16px title has
+ * air above and below it, which is most of what "not cramped" means. */
+#define UI_HEADER_H    28
+#define UI_FOOTER_H    24
+#define UI_FOOTER_Y    (240 - UI_FOOTER_H)
+#define UI_MARGIN      12
+#define UI_ROW_HEIGHT  26
+#define UI_LIST_TOP    (UI_HEADER_H + 4)
+#define UI_LIST_ROWS   7
 
 /* Load the reader's own colours into the palette entries above the artwork.
  * Call after any change to the strip palette. */
@@ -43,11 +49,28 @@ void ui_install_gc(void);
  */
 void ui_present(bool drew);
 
+/* The accent bar across the top, with a title in the bold face. */
 void ui_header(const char *text);
-void ui_footer(const char *text);
 
-/* Blit a pre-rendered 2bpp title through the normal or selected ramp. */
-void ui_draw_title(uint16_t title_offset, int x, int y, bool selected);
+/*
+ * The bar along the bottom: key hints, "key label" pairs separated by '|' --
+ * "enter Open|mode Settings" -- the key in the accent and the label beside it.
+ * Three at most, so they have room.
+ */
+void ui_footer(const char *hints);
+
+/* A panel: the surface colour, for grouping something on the background. */
+void ui_panel(int x, int y, int w, int h);
+
+/*
+ * Draw text wrapped at word boundaries to `width`, `line_h` apart, at most
+ * `max_lines` lines. Returns the lines used.
+ */
+uint8_t ui_wrap(const char *text, int x, int y, int width, uint8_t line_h,
+                uint8_t ramp, uint8_t max_lines);
+
+/* Blit a pre-rendered 2bpp title through a palette ramp (render.h). */
+void ui_draw_title(uint16_t title_offset, int x, int y, uint8_t ramp);
 
 /* A small ribbon, 7x10, marking a bookmarked strip. The font has no glyph for
  * one, and a letter would read as part of the title beside it. */

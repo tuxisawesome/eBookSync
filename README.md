@@ -175,10 +175,11 @@ list and choose **Sync with a computer**, plug in the cable, and press
 **Connect calculator** on the page, then pick the calculator's serial port from
 the browser's list.
 
-The sync screen is plain text on the homescreen rather than the reader's own
-graphics. That is deliberate: the USB controller and the LCD contend for the
-memory bus, and USB loses whenever graphx has the LCD in its 8bpp mode.
-`docs/PROTOCOL.md` has the details.
+The sync screen shows whether the page has connected, what has arrived, and a
+bar that keeps moving for as long as the link is alive. It is drawn in the
+operating system's own screen mode rather than the reader's: the USB controller
+and the LCD contend for the memory bus, and USB loses whenever graphx has the
+LCD in its 8bpp mode. `docs/PROTOCOL.md` has the details.
 
 ## Reading
 
@@ -215,10 +216,12 @@ A bookmark also keeps a strip on the calculator: **Remove read strips** never
 clears a bookmarked one, and it does not use up one of the "keep the most
 recent" places either. Unticking it on the page still removes it.
 
-Settings (`mode` from the book list) has four entries:
+Settings (`mode` from the book list) has five entries:
 
 - **Sync with a computer** — the sync screen. Plug in the cable and press
   **Connect calculator** on the page.
+- **Theme** — purple, **Dark** (the default) or **Light**. Left, right or enter
+  switches it, and it is kept on the calculator through every sync.
 - **Password** — set, change or remove the lock. See below.
 - **Erase the library** — deletes every comic on the calculator. Your files on
   the computer are untouched, and syncing again refills it.
@@ -227,8 +230,14 @@ Settings (`mode` from the book list) has four entries:
 `about.txt` lives at the root of the repository and is baked into the program on
 every build by `tools/make_about.sh`, since the calculator has no way to read
 the repository for itself. Edit the file and rebuild; there is nothing to
-regenerate by hand. It is drawn with the built-in font, so it is ASCII only and
-lines longer than 40 characters run off the side.
+regenerate by hand. It is ASCII only. A run of two or more spaces after some
+text lines up as a column, which is how the key tables stay aligned in a
+proportional font, and a line in capitals is a heading.
+
+The reader's font is DejaVu Sans, rendered at three sizes into
+`calc/src/fontdata.c` by `tools/make_font.py`. That file is committed, so
+building the reader does not need the fonts; rerun the script only if you change
+it.
 
 ## The password
 

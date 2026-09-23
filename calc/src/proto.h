@@ -201,4 +201,23 @@ uint8_t proto_library_state(void);  /* proto_library_t, as of the last HELLO */
 uint8_t proto_collections(void);    /* archive defragments during this session */
 
 
+/*
+ * For a sync screen drawn in pixels rather than typed on the homescreen.
+ *
+ * proto_connected(): whether the computer has the serial port open, for the
+ * lamp on the screen.
+ *
+ * proto_set_os_screen(): a handler run just before the operating system
+ * defragments the archive. The OS draws its own prompt on the homescreen, in
+ * its own font and colours, and blocks until it is answered -- so the screen
+ * has to be handed back to it first, or the prompt lands on top of whatever
+ * was drawn there.
+ *
+ * proto_screen_dirty(): true once after such a collect, when whatever the OS
+ * left on the screen has to be painted over. Reading it clears it.
+ */
+bool proto_connected(void);
+void proto_set_os_screen(void (*handler)(void));
+bool proto_screen_dirty(void);
+
 #endif /* PROTO_H */

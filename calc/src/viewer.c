@@ -20,6 +20,7 @@
 #include "viewer.h"
 
 #include "csx.h"
+#include "font.h"
 #include "input.h"
 #include "library.h"
 #include "lock.h"
@@ -179,15 +180,16 @@ static void draw_overlay(const view_t *view, bool marked_read, bool bookmarked) 
     const csx_layer_t *layer = &view->strip->layer[view->layer];
     uint24_t span = max_scroll(layer->height, GFX_LCD_HEIGHT);
 
+    /* Where in the strip: a slim track down the right edge. */
     int track = GFX_LCD_HEIGHT;
     int thumb = span ? (int)((uint32_t)GFX_LCD_HEIGHT * GFX_LCD_HEIGHT / layer->height) : track;
-    if (thumb < 10)
-        thumb = 10;
+    if (thumb < 12)
+        thumb = 12;
     uint24_t vy = view->vy > span ? span : view->vy;
     int offset = span ? (int)((uint32_t)(track - thumb) * vy / span) : 0;
 
-    gfx_SetColor(UI_DIM);
-    gfx_FillRectangle_NoClip(GFX_LCD_WIDTH - 4, 0, 4, GFX_LCD_HEIGHT);
+    gfx_SetColor(UI_ACCENT_SOFT);
+    gfx_FillRectangle_NoClip(GFX_LCD_WIDTH - 3, 0, 3, GFX_LCD_HEIGHT);
     gfx_SetColor(UI_ACCENT);
     gfx_FillRectangle_NoClip(GFX_LCD_WIDTH - 4, offset, 4, thumb);
 
@@ -198,18 +200,20 @@ static void draw_overlay(const view_t *view, bool marked_read, bool bookmarked) 
     char line[32];
     char part[12] = "";
     if (view->strip->part_count > 1)
-        sprintf(part, " p%u/%u", view->part + 1, view->strip->part_count);
-    sprintf(line, "%u.%ux %u%%%s%s", zoom / 10, zoom % 10,
-            progress_percent(view), part, marked_read ? " read" : "");
+        sprintf(part, "  p%u/%u", view->part + 1, view->strip->part_count);
+    sprintf(line, "%u.%ux  %u%%%s%s", zoom / 10, zoom % 10,
+            progress_percent(view), part, marked_read ? "  read" : "");
 
-    int width = (int)strlen(line) * 8 + 8;
-    gfx_SetColor(UI_BG);
-    gfx_FillRectangle_NoClip(0, 0, width + (bookmarked ? 12 : 0), 14);
-    gfx_SetTextFGColor(UI_FG);
-    gfx_SetTextBGColor(UI_BG);
-    gfx_PrintStringXY(line, 4, 3);
+    /* A pill in the top corner, padded, with the ribbon inside it when the
+     * strip is bookmarked. */
+    int text_w = font_width(&font_small, line);
+    int pill_w = text_w + 16 + (bookmarked ? 14 : 0);
+    ui_panel(6, 6, pill_w, 20);
+    gfx_SetColor(UI_ACCENT);
+    gfx_FillRectangle_NoClip(6, 6, 2, 20);
+    font_draw(&font_small, line, 14, 9, RAMP_FG_SURFACE);
     if (bookmarked)
-        ui_draw_bookmark(width, 2);
+        ui_draw_bookmark(14 + text_w + 6, 11);
 }
 
 /*
@@ -219,29 +223,26 @@ static void draw_overlay(const view_t *view, bool marked_read, bool bookmarked) 
 static void draw_prompt(const view_t *view, uint16_t next_strip) {
     int y = GFX_LCD_HEIGHT - PROMPT_HEIGHT;
 
-    gfx_SetColor(UI_BG);
+    gfx_SetColor(UI_SURFACE);
     gfx_FillRectangle_NoClip(0, y, GFX_LCD_WIDTH, PROMPT_HEIGHT);
     gfx_SetColor(UI_ACCENT);
     gfx_FillRectangle_NoClip(0, y, GFX_LCD_WIDTH, 2);
-    ui_draw_down_arrow(8, y + 6);
-
-    gfx_SetTextFGColor(UI_FG);
-    gfx_SetTextBGColor(UI_BG);
+    ui_draw_down_arrow(UI_MARGIN, y + 7);
 
     char line[32];
+    int x = UI_MARGIN + 18;
     if (view->part + 1 < view->strip->part_count) {
         sprintf(line, "Part %u of %u", view->part + 2, view->strip->part_count);
-        gfx_PrintStringXY(line, 24, y + 7);
-        gfx_SetTextFGColor(UI_DIM);
-        gfx_PrintStringXY("press down", GFX_LCD_WIDTH - 88, y + 7);
+        font_draw(&font_body, line, x, y + 3, RAMP_FG_SURFACE);
+        font_draw_right(&font_small, "press down", GFX_LCD_WIDTH - UI_MARGIN, y + 5,
+                        RAMP_DIM_SURFACE);
     } else if (next_strip != LIB_NONE) {
-        gfx_PrintStringXY("Next:", 24, y + 7);
+        x = font_draw(&font_body, "Next:", x, y + 3, RAMP_ACCENT_SURFACE);
         lib_strip_t next;
         lib_get_strip(next_strip, &next);
-        ui_draw_title(next.title, 72, y + 3, false);
+        ui_draw_title(next.title, x + 6, y + 2, RAMP_FG_SURFACE);
     } else {
-        gfx_SetTextFGColor(UI_DIM);
-        gfx_PrintStringXY("End of book", 24, y + 7);
+        font_draw(&font_body, "End of book", x, y + 3, RAMP_DIM_SURFACE);
     }
 }
 

@@ -6,7 +6,7 @@ import sys
 SCREEN_W, SCREEN_H = 320, 240
 
 # What render.h clears the screen to before drawing a viewport.
-UI_BG = 248
+UI_BG = 200
 
 
 def viewports_for(layers):

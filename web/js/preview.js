@@ -28,13 +28,15 @@ const BAND_SIZE = 5;
 const BAND_HEIGHT = 32;
 const COL_WIDTH = 320;
 
-/* The reader's chrome, as ui_set_chrome_palette() sets it. */
-export const UI_BG = 248;
+/* The reader's chrome in its default theme, purple Dark, as calc/src/theme.c
+ * has it and ui_set_chrome_palette() loads it. */
+export const UI_BG = 200;
 const CHROME = {
-  248: [248, 248, 248],   /* UI_BG */
-  249: [24, 24, 24],      /* UI_FG */
-  250: [40, 90, 200],     /* UI_ACCENT */
-  251: [150, 150, 150],   /* UI_DIM */
+  200: [0x16, 0x12, 0x1f],   /* UI_BG */
+  201: [0x24, 0x1d, 0x35],   /* UI_SURFACE */
+  202: [0xec, 0xe8, 0xf6],   /* UI_FG */
+  203: [0x9a, 0x90, 0xb4],   /* UI_DIM */
+  204: [0x8b, 0x5c, 0xf6],   /* UI_ACCENT */
 };
 
 /* The viewer's constants, from calc/src/viewer.c. */
@@ -355,9 +357,9 @@ export class Preview {
     const { ctx } = this;
     const y = SCREEN_H - PROMPT_HEIGHT;
     const rgb = (index) => `rgb(${CHROME[index].join(',')})`;
-    ctx.fillStyle = rgb(248);
+    ctx.fillStyle = rgb(201);
     ctx.fillRect(0, y, SCREEN_W, PROMPT_HEIGHT);
-    ctx.fillStyle = rgb(250);
+    ctx.fillStyle = rgb(204);
     ctx.fillRect(0, y, SCREEN_W, 2);
     ctx.fillRect(11, y + 6, 3, 3);
     for (let row = 0; row < 4; row++) ctx.fillRect(8 + row, y + 9 + row, 9 - 2 * row, 1);
@@ -366,24 +368,24 @@ export class Preview {
     ctx.textBaseline = 'top';
     const parts = this.decoder.container.parts.length;
     if (this.state.part + 1 < parts) {
-      ctx.fillStyle = rgb(249);
+      ctx.fillStyle = rgb(202);
       ctx.fillText(`Part ${this.state.part + 2} of ${parts}`, 24, y + 7);
-      ctx.fillStyle = rgb(251);
+      ctx.fillStyle = rgb(203);
       ctx.fillText('press down', SCREEN_W - 88, y + 7);
     } else if (this.nextTitle) {
-      ctx.fillStyle = rgb(249);
+      ctx.fillStyle = rgb(202);
       ctx.fillText(`Next: ${this.nextTitle}`, 24, y + 7);
     } else {
-      ctx.fillStyle = rgb(251);
+      ctx.fillStyle = rgb(203);
       ctx.fillText('End of book', 24, y + 7);
     }
   }
 
   #message(text) {
     const { ctx } = this;
-    ctx.fillStyle = `rgb(${CHROME[248].join(',')})`;
+    ctx.fillStyle = `rgb(${CHROME[200].join(',')})`;
     ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
-    ctx.fillStyle = `rgb(${CHROME[251].join(',')})`;
+    ctx.fillStyle = `rgb(${CHROME[203].join(',')})`;
     ctx.font = '10px monospace';
     ctx.textBaseline = 'top';
     ctx.fillText(text, 10, 110);

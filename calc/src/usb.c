@@ -815,8 +815,18 @@ static void pump(void) {
  */
 
 static uint8_t gc_count;
+static void (*os_screen)(void);
+static bool screen_dirty;
 
 uint8_t proto_collections(void) { return gc_count; }
+bool proto_connected(void) { return serial_open; }
+void proto_set_os_screen(void (*handler)(void)) { os_screen = handler; }
+
+bool proto_screen_dirty(void) {
+    bool was = screen_dirty;
+    screen_dirty = false;
+    return was;
+}
 
 /*
  * Push a few bytes out with a hard cap on effort, since this runs at a moment
@@ -861,6 +871,10 @@ static void send_now(const uint8_t *bytes, size_t length) {
 static void gc_before(void) {
     gc_count++;
 
+    /* The OS is about to draw its prompt; give it the screen first. */
+    if (os_screen)
+        os_screen();
+
     if (!serial_open)
         return;
 
@@ -875,6 +889,9 @@ static void gc_before(void) {
 }
 
 static void gc_after(void) {
+    /* Whatever the prompt left is still on the screen. */
+    screen_dirty = true;
+
     /*
      * Every pointer from ti_GetDataPtr is meaningless now -- the collect moved
      * the variables it was pointing into. Fetch them again.
@@ -995,6 +1012,7 @@ bool proto_run(proto_progress_t progress, bool echo_only) {
 
     gather_state();
     gc_count = 0;
+    screen_dirty = false;
     ti_SetGCBehavior(gc_before, gc_after);
 
     /* Shared with the lock screen, which cannot be up while this is. */

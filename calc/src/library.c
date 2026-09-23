@@ -125,6 +125,7 @@ bool lib_ensure(void) {
 #define DEV_WALL_FLAGS    54
 #define DEV_WALL_CRC      55
 #define DEV_LAST_SLOT     59
+#define DEV_THEME         61
 
 #define DEV_WALL_SET      0x01
 
@@ -294,6 +295,21 @@ bool lib_set_wallpaper(const uint32_t *crc) {
     block[DEV_WALL_CRC + 1] = (uint8_t)(*crc >> 8);
     block[DEV_WALL_CRC + 2] = (uint8_t)(*crc >> 16);
     block[DEV_WALL_CRC + 3] = (uint8_t)(*crc >> 24);
+    return lib_set_device(block);
+}
+
+uint8_t lib_theme(void) {
+    const uint8_t *device = lib_device();
+    return device ? device[DEV_THEME] : 0;
+}
+
+bool lib_set_theme(uint8_t theme) {
+    if (lib_theme() == theme && lib_device())
+        return true;   /* an index rewrite is a flash write */
+
+    uint8_t block[LIB_DEVICE_SIZE];
+    device_copy(block);
+    block[DEV_THEME] = theme;
     return lib_set_device(block);
 }
 

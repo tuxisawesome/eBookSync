@@ -25,7 +25,7 @@ KEYS
 
   Reading
     arrows  pan, hold to speed up
-    2 enter page down
+    2, enter  page down
     8       page up
     + -     zoom
     mode    fit width / full zoom
