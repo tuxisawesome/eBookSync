@@ -132,6 +132,7 @@ async function session(libraryDir, body, extra = [], { handshake = true } = {}) 
   check('hello: compatible with this page', result.hello.compatible, true);
   check('hello: chunk size', result.hello.chunkSize, 16384);
   check('hello: reports free archive', result.hello.freeArchive > 0, true);
+  check('hello: a calculator with no theme recorded is dark', result.hello.theme, 'dark');
   check('list: empty calculator', result.list, []);
   check('index: empty calculator', result.index.length, 0);
   check('space: reports free archive', result.space > 0, true);
@@ -145,6 +146,23 @@ async function session(libraryDir, body, extra = [], { handshake = true } = {}) 
    * attached, and nothing else here could have caught it.
    */
   check('hello/list/index/space make no OS calls', osCalls(stderr), 0);
+}
+
+/* --- the calculator's theme reaches the page ------------------------------- */
+/*
+ * The page follows the Settings theme on the calculator. It is kept in the
+ * device block, which INDEX_GET blanks, so HELLO is the only way it can travel.
+ */
+{
+  const directory = mkdtempSync(join(tmpdir(), 'ebooksync-theme-'));
+  const index = lib.buildIndex([{ title: 'book', strips: [] }], { render: fakeRender });
+  index[lib.DEVICE_OFFSET + 61] = 1;   /* Light */
+  writeFileSync(join(directory, `${lib.NAME}.8xv`), writeAppvar(lib.NAME, index));
+
+  const { result } = await session(directory, async (calculator) => ({
+    hello: await calculator.hello(),
+  }));
+  check('hello: a calculator set to Light says so', result.hello.theme, 'light');
 }
 
 /* --- a library round-trips through LIST ----------------------------------- */

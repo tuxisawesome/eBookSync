@@ -129,7 +129,11 @@ build or serve.
 The page opens on a splash screen with the latest `COMICS.8xp` to download, the
 steps to get the calculator onto its sync screen, and a **Connect calculator**
 button. The library stays behind it until a calculator is connected, and the
-splash comes back if the connection is lost. Once connected, choose your comics
+splash comes back if the connection is lost.
+
+The page wears the calculator's colours: purple, Dark or Light as set under
+**Theme** on the calculator. It is Dark until a calculator has connected, then
+follows whatever the last one reported, and remembers it for next time. Once connected, choose your comics
 folder, tick what you want, and press Sync.
 
 The page has two tabs. **Library** is your strips, with the calculator's status

@@ -254,7 +254,10 @@ static void do_hello(void) {
     put16(reply_small + 7, COMICS_BUILD);
     reply_small[9] = cached_flags;
     put16(reply_small + 10, cached_armed_build);
-    answer(PROTO_OK, reply_small, 12);
+    /* The Settings theme, so the page can wear it too. It lives in the device
+     * block, which INDEX_GET blanks, so this is the only way it can learn it. */
+    reply_small[12] = lib_theme();
+    answer(PROTO_OK, reply_small, 13);
 }
 
 /* Re-map the index after anything that moved or replaced it. */

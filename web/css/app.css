@@ -1,32 +1,60 @@
+/*
+ * The sync page, in the calculator's purple.
+ *
+ * The colours are calc/src/theme.c's, so the page and the reader look like one
+ * thing. Which of the two themes the page wears is the calculator's choice, not
+ * the computer's: Dark until a calculator has been seen, then whatever the last
+ * one reported in HELLO (main.js, applyTheme). The <head> of index.html sets it
+ * from the last visit before this stylesheet paints, so it never flashes.
+ */
+
 :root {
-  --bg: #f7f7f8;
-  --panel: #ffffff;
-  --ink: #1a1a1c;
-  --muted: #6b6b74;
-  --line: #d9d9de;
-  --accent: #2f5bd0;
+  /* theme.c, Dark */
+  --bg: #16121f;
+  --surface: #241d35;
+  --ink: #ece8f6;
+  --muted: #9a90b4;
+  --accent: #8b5cf6;
   --accent-ink: #ffffff;
-  --ok: #1d7a4c;
-  --warn: #a2601a;
-  --error: #b4272c;
-  --chip: #eceef3;
-  --radius: 8px;
+  --select: #3b2a6b;
+  --warn: #f59e0b;
+
+  /* The page's own, chosen to sit with those. */
+  --panel: #1c1729;
+  --line: #342b4a;
+  --chip: #2a2140;
+  --tint: rgb(139 92 246 / 0.12);
+  --accent-2: #c084fc;
+  --ok: #4ade80;
+  --error: #f87171;
+  --shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 8px 24px rgb(0 0 0 / 0.25);
+  --glow: 0 6px 18px rgb(139 92 246 / 0.35);
+  --radius: 12px;
+  --radius-sm: 8px;
+  color-scheme: dark;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #16171a;
-    --panel: #1e2024;
-    --ink: #eceef2;
-    --muted: #9a9aa4;
-    --line: #33353b;
-    --accent: #6d94ec;
-    --accent-ink: #10121a;
-    --ok: #63c48d;
-    --warn: #d8a457;
-    --error: #ef7c80;
-    --chip: #2a2d33;
-  }
+:root[data-theme="light"] {
+  /* theme.c, Light */
+  --bg: #f8f6fc;
+  --surface: #ece6f8;
+  --ink: #1c1628;
+  --muted: #7c7492;
+  --accent: #6d28d9;
+  --accent-ink: #ffffff;
+  --select: #ddd0fb;
+  --warn: #b45309;
+
+  --panel: #ffffff;
+  --line: #e2daf3;
+  --chip: #f1ecfb;
+  --tint: rgb(109 40 217 / 0.08);
+  --accent-2: #a855f7;
+  --ok: #15803d;
+  --error: #b91c1c;
+  --shadow: 0 1px 2px rgb(60 30 110 / 0.06), 0 8px 24px rgb(60 30 110 / 0.07);
+  --glow: 0 6px 18px rgb(109 40 217 / 0.28);
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -48,7 +76,6 @@
   display: none !important;
 }
 
-
 /*
  * The page is exactly the window and never scrolls as a whole. The header,
  * notices and footer take what they need and the view in between gets the
@@ -64,13 +91,42 @@ body {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  scrollbar-color: var(--select) transparent;
+  accent-color: var(--accent);
 }
 body > * { flex: none; }
 
-h1 { font-size: 1.05rem; margin: 0; }
-h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em;
-     color: var(--muted); margin: 1.4rem 0 0.6rem; }
+::selection { background: var(--select); }
+
+h1 { font-size: 1.05rem; margin: 0; display: flex; align-items: center; gap: 0.55rem; }
+h2 { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.08em;
+     color: var(--accent); margin: 1.4rem 0 0.6rem; font-weight: 700; }
 h2:first-child { margin-top: 0; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* The mark: a rounded square in the accent, with an open book in it. */
+.brand-mark {
+  position: relative;
+  display: inline-block;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: var(--glow);
+  flex: none;
+}
+.brand-mark::before, .brand-mark::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  width: 7px;
+  height: 12px;
+  background: #fff;
+  opacity: 0.95;
+}
+.brand-mark::before { left: 5px; border-radius: 2px 0 0 2px; transform: skewY(8deg); }
+.brand-mark::after { right: 5px; border-radius: 0 2px 2px 0; transform: skewY(-8deg); }
 
 .bar {
   display: flex;
@@ -79,33 +135,63 @@ h2:first-child { margin-top: 0; }
   padding: 0.7rem 1rem;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
+  position: relative;
+}
+/* A thin run of the accent along the header's lower edge. */
+.bar:not(.footer)::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2) 40%, transparent);
+  opacity: 0.8;
 }
 .bar-actions { margin-left: auto; display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
-.tabs { display: flex; gap: 0.25rem; }
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  border-radius: 999px;
+  background: var(--chip);
+}
 .tabs button {
   border: none;
-  border-radius: 0;
+  border-radius: 999px;
   background: none;
   color: var(--muted);
-  padding: 0.3rem 0.7rem;
-  border-bottom: 2px solid transparent;
+  padding: 0.25rem 0.9rem;
+  font-weight: 500;
 }
-.tabs button:hover { color: var(--ink); }
-.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.tabs button:hover:not(:disabled) { color: var(--ink); background: none; }
+.tabs button[aria-selected="true"] { color: var(--accent-ink); background: var(--accent); box-shadow: var(--glow); }
 
 button, select, input[type="search"], input[type="number"] {
   font: inherit;
   color: var(--ink);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 0.4rem 0.7rem;
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.75rem;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 button { cursor: pointer; }
-button:hover:not(:disabled) { border-color: var(--accent); }
+button:hover:not(:disabled) { border-color: var(--accent); background: var(--tint); }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
-button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: var(--accent-ink);
+  border-color: transparent;
+  font-weight: 600;
+}
+button.primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: var(--glow);
+  transform: translateY(-1px);
+}
+input[type="search"]::placeholder { color: var(--muted); }
 
 .notice {
   margin: 0;
@@ -136,7 +222,7 @@ main {
 
 /* Only a safety net for a very short window; at any normal size it all fits. */
 #calculator-panel { overflow: auto; min-height: 0; }
-.sync-button { width: 100%; margin-top: 1rem; padding: 0.6rem; font-weight: 600; }
+.sync-button { width: 100%; margin-top: 1rem; padding: 0.65rem; font-weight: 700; }
 #reset-calculator { width: 100%; margin-top: 0.5rem; }
 
 /* Settings: cards side by side, so nothing needs scrolling to reach. */
@@ -161,7 +247,8 @@ main {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 1rem;
+  padding: 1.1rem;
+  box-shadow: var(--shadow);
 }
 .panel-head { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.6rem; }
 .panel-head h2 { margin: 0; }
@@ -172,7 +259,7 @@ main {
 
 /* --- library tree --- */
 
-.tree { display: flex; flex-direction: column; border-radius: var(--radius); }
+.tree { display: flex; flex-direction: column; border-radius: var(--radius-sm); }
 /* Rows keep their height in a tree that scrolls; flex would squash them. */
 .tree > * { flex: none; }
 .tree .empty { color: var(--muted); padding: 2rem 0; text-align: center; }
@@ -195,69 +282,78 @@ main {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.3rem 0.4rem;
-  border-radius: var(--radius);
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s;
 }
-.row:hover { background: var(--chip); }
+.row:hover { background: var(--tint); }
 .row.dragging { opacity: 0.4; }
 
 /* Reorder targets: a line where the row would land, a ring when a strip is
    being dropped into a different book. */
 .row.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
 .row.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
-.row.drop-into { outline: 2px dashed var(--accent); outline-offset: -2px; }
+.row.drop-into { outline: 2px dashed var(--accent); outline-offset: -2px; background: var(--tint); }
 
-.actions { display: flex; gap: 0.15rem; flex-shrink: 0; opacity: 0; }
+.actions { display: flex; gap: 0.15rem; flex-shrink: 0; opacity: 0; transition: opacity 0.12s; }
 .row:hover .actions, .row:focus-within .actions { opacity: 1; }
 .actions .action {
   border: none;
   background: none;
   color: var(--muted);
-  padding: 0.1rem 0.3rem;
+  padding: 0.15rem 0.35rem;
   line-height: 1;
-  border-radius: 4px;
+  border-radius: 6px;
 }
-.actions .action:hover { background: var(--panel); color: var(--ink); }
+.actions .action:hover:not(:disabled) { background: var(--select); color: var(--ink); }
 .row label { display: flex; align-items: center; gap: 0.6rem; flex: 1; min-width: 0; cursor: pointer; }
 .row .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.book > .row .title { font-weight: 600; }
+.book > .row .title { font-weight: 650; }
 .strip-row { padding-left: 1.8rem; }
 
 .twisty {
   border: none;
   background: none;
-  color: var(--muted);
+  color: var(--accent);
   padding: 0 0.2rem;
   width: 1.4rem;
 }
+.twisty:hover:not(:disabled) { background: none; color: var(--accent-2); }
 
-.chips { display: flex; gap: 0.35rem; margin-left: auto; flex-shrink: 0; }
+.chips { display: flex; align-items: center; gap: 0.35rem; margin-left: auto; flex-shrink: 0; }
 .chip {
   font-size: 0.72rem;
-  padding: 0.1rem 0.45rem;
+  padding: 0.1rem 0.5rem;
   border-radius: 999px;
   background: var(--chip);
   color: var(--muted);
   white-space: nowrap;
 }
-.chip.on-calc { color: var(--ok); }
+.chip.on-calc { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
 .chip.read { color: var(--muted); }
-.chip.queued { color: var(--accent); }
+.chip.queued { color: var(--accent); background: var(--tint); }
 .chip.busy { color: var(--warn); }
-.chip.bookmark { color: var(--accent); }
-.chip.reading { color: var(--accent); }
+.chip.bookmark { color: var(--accent-ink); background: var(--accent); }
+.chip.reading { color: var(--accent); background: var(--tint); }
+.chip.images { color: var(--accent-2); }
 
 /* How far through a book, and the library: a slim bar and a count. */
 .progress { display: inline-flex; align-items: center; gap: 0.4rem; }
 .progress-track {
   display: inline-block;
   width: 64px;
-  height: 5px;
+  height: 6px;
   border-radius: 999px;
   background: var(--chip);
   overflow: hidden;
 }
-.progress-fill { display: block; height: 100%; width: 0; background: var(--ok); }
+.progress-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
 .progress-text { font-size: 0.72rem; color: var(--muted); white-space: nowrap;
                  font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: right; }
 
@@ -267,7 +363,7 @@ main {
 .library-progress:has(#library-progress:empty) { display: none; }
 
 /* A book's own detail level, small enough to sit among the chips. */
-.book-detail { font-size: 0.72rem; padding: 0.05rem 0.3rem; border-radius: 999px;
+.book-detail { font-size: 0.72rem; padding: 0.05rem 0.4rem; border-radius: 999px;
                background: var(--chip); color: var(--muted); border-color: transparent; }
 .book-detail:hover { border-color: var(--accent); }
 
@@ -279,14 +375,24 @@ main {
 .field small { color: var(--muted); }
 .field.checkbox { display: flex; align-items: center; gap: 0.5rem; }
 .field.checkbox > span { margin: 0; color: var(--ink); }
-.field input[type="file"] { width: 100%; font-size: 0.85rem; }
+.field input[type="file"] { width: 100%; font-size: 0.85rem; color: var(--muted); }
+.field input[type="file"]::file-selector-button {
+  font: inherit;
+  margin-right: 0.6rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--chip);
+  color: var(--ink);
+  cursor: pointer;
+}
 
 /* The wallpaper thumbnail is the calculator screen's shape, so what is shown
  * here is what will be shown there -- the converter crops to fill it. */
 #wallpaper-current { display: flex; align-items: flex-start; gap: 0.6rem; }
 #wallpaper-preview {
   width: 160px; height: 120px; object-fit: cover;
-  border: 1px solid var(--line); border-radius: 3px; background: var(--line);
+  border: 1px solid var(--line); border-radius: 6px; background: var(--chip);
 }
 .wallpaper-actions { display: flex; flex-direction: column; gap: 0.4rem; }
 
@@ -295,17 +401,17 @@ main {
  * the dialog out from under it. */
 .crop-canvas {
   display: block; width: 100%; max-width: 480px; aspect-ratio: 4 / 3;
-  margin: 0 auto; border: 1px solid var(--line); border-radius: 3px;
+  margin: 0 auto; border: 1px solid var(--line); border-radius: 6px;
   background: #000; cursor: grab; touch-action: none;
 }
 .crop-canvas:active { cursor: grabbing; }
 
-.stats { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 0.8rem; margin: 0; }
+.stats { display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 0.8rem; margin: 0; }
 .stats dt { color: var(--muted); font-size: 0.85rem; }
-.stats dd { margin: 0; font-size: 0.85rem; text-align: right; }
+.stats dd { margin: 0; font-size: 0.85rem; text-align: right; font-variant-numeric: tabular-nums; }
 
 .help { margin-top: 1.2rem; font-size: 0.85rem; color: var(--muted); }
-.help summary { cursor: pointer; }
+.help summary { cursor: pointer; color: var(--accent); }
 .help ol { padding-left: 1.2rem; }
 
 /* --- footer meter --- */
@@ -320,7 +426,13 @@ main {
   overflow: hidden;
   margin-left: auto;
 }
-.meter-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+.meter-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width 0.2s;
+}
 .meter-fill.over { background: var(--error); }
 
 /* --- the splash --- */
@@ -339,57 +451,106 @@ main {
   justify-content: center;
   padding: 1rem;
   overflow: auto;
-  background: var(--bg);
+  background:
+    radial-gradient(60rem 36rem at 50% -10%, rgb(139 92 246 / 0.28), transparent 70%),
+    radial-gradient(40rem 30rem at 110% 110%, rgb(192 132 252 / 0.14), transparent 70%),
+    var(--bg);
 }
 .splash-card {
   width: 100%;
-  max-width: 560px;
+  max-width: 580px;
   margin: auto;
-  padding: 1.6rem 1.8rem;
+  padding: 2rem 2.1rem 1.6rem;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 18px;
+  box-shadow: var(--shadow), 0 30px 80px rgb(40 10 90 / 0.25);
 }
-.splash-card h1 { font-size: 1.6rem; }
-.splash-lede { margin: 0.2rem 0 1.2rem; color: var(--muted); }
-.splash-steps { margin: 0; padding-left: 1.3rem; }
-.splash-steps li { margin-bottom: 1.2rem; }
-.splash-steps li::marker { color: var(--muted); font-weight: 600; }
-.splash-steps h2 { margin: 0 0 0.3rem; color: var(--ink); }
+.splash-card h1 { font-size: 1.7rem; letter-spacing: -0.01em; gap: 0.7rem; }
+.splash-card h1 .brand-mark { width: 36px; height: 36px; border-radius: 10px; }
+.splash-card h1 .brand-mark::before, .splash-card h1 .brand-mark::after { top: 10px; width: 10px; height: 16px; }
+.splash-card h1 .brand-mark::before { left: 7px; }
+.splash-card h1 .brand-mark::after { right: 7px; }
+.splash-lede { margin: 0.3rem 0 1.4rem; color: var(--muted); }
+.splash-steps { margin: 0; padding: 0; list-style: none; counter-reset: step; }
+.splash-steps li {
+  position: relative;
+  counter-increment: step;
+  padding: 0 0 1.1rem 2.6rem;
+  margin-bottom: 0.1rem;
+}
+/* Numbered circles joined by a thin line, down the side of the steps. */
+.splash-steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: -0.1rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent-ink);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: var(--glow);
+}
+.splash-steps li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: calc(0.875rem - 1px);
+  top: 1.85rem;
+  bottom: 0.2rem;
+  width: 2px;
+  background: var(--line);
+}
+.splash-steps h2 { margin: 0 0 0.3rem; color: var(--ink); letter-spacing: 0.06em; }
 .splash-steps p { margin: 0.3rem 0; }
 .splash-actions { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
 .splash-note { font-size: 0.82rem; color: var(--muted); }
-.splash-warning { color: var(--error); font-size: 0.9rem; margin: 0 0 1rem; }
+.splash-warning {
+  color: var(--error);
+  font-size: 0.9rem;
+  margin: 0 0 1.2rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+}
 .splash-status { font-size: 0.9rem; color: var(--muted); min-height: 1.5em; }
 .splash-status.error { color: var(--error); }
 .splash-status.busy { color: var(--accent); }
 .splash a { color: var(--accent); }
+.splash-actions .primary, .splash-actions a.button { padding: 0.55rem 1.1rem; }
 
 /* A link that is the step's action, so it looks like the buttons beside it. */
 a.button {
   display: inline-block;
   padding: 0.45rem 0.9rem;
-  border-radius: var(--radius);
-  background: var(--accent);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
   color: var(--accent-ink);
   text-decoration: none;
   font-weight: 600;
+  transition: box-shadow 0.15s, transform 0.15s;
 }
-a.button:hover { filter: brightness(1.08); }
+.splash a.button { color: var(--accent-ink); }
+a.button:hover { box-shadow: var(--glow); transform: translateY(-1px); }
 
 /* --- dialogs --- */
 
 dialog {
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 16px;
   background: var(--panel);
   color: var(--ink);
   max-width: 560px;
   width: calc(100% - 2rem);
-  padding: 1.2rem;
+  padding: 1.4rem;
+  box-shadow: var(--shadow), 0 30px 80px rgb(20 5 50 / 0.35);
 }
-dialog::backdrop { background: rgb(0 0 0 / 0.45); }
-dialog menu { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0; margin: 1rem 0 0; }
+dialog::backdrop { background: rgb(22 18 31 / 0.55); backdrop-filter: blur(3px); }
+dialog menu { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0; margin: 1.1rem 0 0; }
 
 /* The preview is the calculator's screen, pixel for pixel, at twice the size:
  * scaled without smoothing, so every one of its 16 colours stays a hard-edged
@@ -398,14 +559,14 @@ dialog menu { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0;
 .preview-canvas {
   display: block; width: 640px; max-width: 100%; aspect-ratio: 4 / 3;
   margin: 0 auto; image-rendering: pixelated; border: 1px solid var(--line);
-  border-radius: 3px; background: #16121f;
+  border-radius: 8px; background: var(--bg);
 }
 .preview-canvas:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
 .preview-dialog menu { align-items: center; flex-wrap: wrap; }
 .preview-detail { margin-right: auto; font-size: 0.85rem; color: var(--muted);
                   display: flex; align-items: center; gap: 0.4rem; }
-kbd { font: 0.8em ui-monospace, monospace; padding: 0 0.3em; border: 1px solid var(--line);
-      border-radius: 3px; background: var(--bg); }
+kbd { font: 0.8em ui-monospace, monospace; padding: 0.05em 0.35em; border: 1px solid var(--line);
+      border-bottom-width: 2px; border-radius: 4px; background: var(--chip); }
 
 .plan-body ul { margin: 0.3rem 0 1rem; padding-left: 1.2rem; }
 .plan-body li { margin: 0.15rem 0; }
@@ -416,7 +577,7 @@ kbd { font: 0.8em ui-monospace, monospace; padding: 0 0.3em; border: 1px solid v
   overflow: auto;
   background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   padding: 0.6rem;
   font-size: 0.8rem;
   white-space: pre-wrap;
@@ -432,4 +593,6 @@ kbd { font: 0.8em ui-monospace, monospace; padding: 0 0.3em; border: 1px solid v
 #update-notice {
   margin-top: 0.75rem;
   font-size: 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
 }

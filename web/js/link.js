@@ -336,6 +336,11 @@ export class Calculator {
       hasUpdater: body.length >= 10 && (body[9] & FLAG_UPDATER) !== 0,
       updateArmed: body.length >= 10 && (body[9] & FLAG_ARMED) !== 0,
       /*
+       * The calculator's Settings theme, which the page follows. Null from a
+       * reader too old to say, which leaves the page on whatever it last saw.
+       */
+      theme: body.length >= 13 ? (body[12] === 1 ? 'light' : 'dark') : null,
+      /*
        * Which build is waiting for prgmCSUP, or 0.
        *
        * `build` above is what is *running*, and a reader update does not change

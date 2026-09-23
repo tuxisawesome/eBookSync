@@ -146,7 +146,7 @@ dropped" is the entire diagnosis, and there is nowhere else to see it.
 
 | cmd | name | payload | reply |
 |-----|------|---------|-------|
-| 0x01 | `HELLO` | the 16-byte library id | `u8 protocol, u24 freeArchive, u8 maxChunks, u8 chunkSize/256, u8 library, u16 build, u8 flags, u16 armedBuild` |
+| 0x01 | `HELLO` | the 16-byte library id | `u8 protocol, u24 freeArchive, u8 maxChunks, u8 chunkSize/256, u8 library, u16 build, u8 flags, u16 armedBuild, u8 theme` |
 | 0x02 | `LIST` | - | `u16 count`, then `count` x 15-byte strip records |
 | 0x03 | `PUT_CHUNK` | `u8 chunkIndex`, `u32 crc32`, then the chunk; `arg` = slot | status only |
 | 0x04 | `DEL` | none; `arg` = slot | `u8 chunksRemoved` |

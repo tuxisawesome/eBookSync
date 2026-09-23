@@ -28,16 +28,35 @@ const BAND_SIZE = 5;
 const BAND_HEIGHT = 32;
 const COL_WIDTH = 320;
 
-/* The reader's chrome in its default theme, purple Dark, as calc/src/theme.c
- * has it and ui_set_chrome_palette() loads it. */
+/*
+ * The reader's chrome, as calc/src/theme.c has it and ui_set_chrome_palette()
+ * loads it -- in whichever theme the page is wearing, which is the one the
+ * calculator last reported. So the margin round a strip and the bar at the end
+ * of an image are the colours that calculator will draw them in.
+ */
 export const UI_BG = 200;
-const CHROME = {
-  200: [0x16, 0x12, 0x1f],   /* UI_BG */
-  201: [0x24, 0x1d, 0x35],   /* UI_SURFACE */
-  202: [0xec, 0xe8, 0xf6],   /* UI_FG */
-  203: [0x9a, 0x90, 0xb4],   /* UI_DIM */
-  204: [0x8b, 0x5c, 0xf6],   /* UI_ACCENT */
+const THEMES = {
+  dark: {
+    200: [0x16, 0x12, 0x1f],   /* UI_BG */
+    201: [0x24, 0x1d, 0x35],   /* UI_SURFACE */
+    202: [0xec, 0xe8, 0xf6],   /* UI_FG */
+    203: [0x9a, 0x90, 0xb4],   /* UI_DIM */
+    204: [0x8b, 0x5c, 0xf6],   /* UI_ACCENT */
+  },
+  light: {
+    200: [0xf8, 0xf6, 0xfc],
+    201: [0xec, 0xe6, 0xf8],
+    202: [0x1c, 0x16, 0x28],
+    203: [0x7c, 0x74, 0x92],
+    204: [0x6d, 0x28, 0xd9],
+  },
 };
+let CHROME = THEMES.dark;
+
+function pickTheme() {
+  const name = typeof document !== 'undefined' && document.documentElement.dataset.theme;
+  CHROME = THEMES[name] || THEMES.dark;
+}
 
 /* The viewer's constants, from calc/src/viewer.c. */
 const PAGE_STEP = SCREEN_H - 32;
@@ -204,6 +223,7 @@ export class Preview {
   }
 
   async open({ title, nextTitle, detail, load, maxBytes }) {
+    pickTheme();
     this.title = title;
     this.nextTitle = nextTitle;
     this.load = load;

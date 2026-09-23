@@ -4,6 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>eBookSync</title>
+<script>
+  /* The calculator's theme, as the last one connected reported it -- set before
+   * the stylesheet paints, so the page never flashes the other one. Dark until
+   * a calculator has said otherwise. See applyTheme() in main.js. */
+  try {
+    document.documentElement.dataset.theme =
+      localStorage.getItem('ebooksync-theme') === 'light' ? 'light' : 'dark';
+  } catch {
+    document.documentElement.dataset.theme = 'dark';
+  }
+</script>
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -19,7 +30,7 @@
 -->
 <div id="splash" class="splash" role="dialog" aria-modal="true" aria-labelledby="splash-title">
   <div class="splash-card">
-    <h1 id="splash-title">eBookSync</h1>
+    <h1 id="splash-title"><span class="brand-mark" aria-hidden="true"></span>eBookSync</h1>
     <p class="splash-lede">Read your comics on a TI-84 Plus CE.</p>
 
     <p id="splash-unsupported" class="splash-warning" hidden>
@@ -69,7 +80,7 @@
 </div>
 
 <header class="bar" inert>
-  <h1>eBookSync <span id="page-build" class="chip" title="The build this page was served from"></span></h1>
+  <h1><span class="brand-mark" aria-hidden="true"></span>eBookSync <span id="page-build" class="chip" title="The build this page was served from"></span></h1>
   <nav class="tabs" role="tablist" aria-label="Pages">
     <button id="tab-library" type="button" role="tab" aria-controls="view-library"
             aria-selected="true">Library</button>

@@ -181,6 +181,30 @@ function displayRulesFor(css, names) {
   check('and connect() is called from the splash alone', callers, 1);
 }
 
+/* --- the page wears the calculator's theme ------------------------------- */
+/*
+ * Purple Dark and Light, the calculator's own colours, chosen by what the
+ * calculator reports in HELLO -- not by the computer's setting -- and applied
+ * before the stylesheet paints so the page never flashes the other theme.
+ */
+{
+  const html = read('web', 'index.html');
+  const css = withoutComments(read('web', 'css', 'app.css'));
+  const main = read('web', 'js', 'main.js');
+  const theme = read('calc', 'src', 'theme.c');
+
+  check('there is a dark theme, on :root', /:root\s*\{[^}]*--accent:\s*#8b5cf6/.test(css), true);
+  check('and a light one', /:root\[data-theme="light"\]\s*\{[^}]*--accent:\s*#6d28d9/.test(css), true);
+  check('with the calculator\'s accents', /0x8b, 0x5c, 0xf6/.test(theme) && /0x6d, 0x28, 0xd9/.test(theme), true);
+  check('the computer\'s setting no longer decides', /prefers-color-scheme/.test(css), false);
+
+  const script = html.indexOf("localStorage.getItem('ebooksync-theme')");
+  const sheet = html.indexOf('css/app.css');
+  check('the saved theme is applied before the stylesheet', script > 0 && script < sheet, true);
+  check('connecting takes the calculator\'s theme', /if \(hello\.theme\) applyTheme\(hello\.theme\);/.test(main), true);
+  check('and saves it for next time', /localStorage\.setItem\('ebooksync-theme'/.test(main), true);
+}
+
 /* --- and the guard actually does something -------------------------------- */
 /*
  * A stylesheet that never sets display on a toggled element would pass the

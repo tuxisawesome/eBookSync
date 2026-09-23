@@ -163,6 +163,22 @@ function setStatus(text, kind = '') {
 }
 
 /*
+ * Wear the calculator's theme.
+ *
+ * The page follows the reader's Settings choice rather than the computer's, so
+ * the two look like one thing. HELLO carries it; it is saved so the next visit,
+ * and the splash before anything is connected, opens in it. The <head> of
+ * index.html reads it back before the stylesheet paints.
+ */
+function applyTheme(theme) {
+  const name = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = name;
+  try {
+    localStorage.setItem('ebooksync-theme', name);
+  } catch { /* private window or blocked storage: it just is not remembered */ }
+}
+
+/*
  * The splash, which is up exactly while no calculator is connected.
  *
  * Covering the page is not enough on its own: Tab would still walk into the
@@ -1091,6 +1107,7 @@ async function connect() {
       : new Uint8Array(16);
 
     const hello = await calculator.hello(libraryId);
+    if (hello.theme) applyTheme(hello.theme);
     state.calculator = calculator;
     state.hello = hello;
     state.library = hello.library;
