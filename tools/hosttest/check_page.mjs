@@ -172,6 +172,13 @@ function displayRulesFor(css, names) {
         /function refreshDevice\(\) \{[^}]*refreshSplash\(\);/.test(main), true);
   check('its connect button connects',
         /splashConnect\.addEventListener\('click', connectFromSplash\)/.test(main), true);
+
+  /* And it is the only way in. A second Connect button in the header raced the
+   * splash: two ways to start the same connection, one of them unreachable
+   * half the time. */
+  check('there is no other connect button', /id="connect"/.test(html), false);
+  const callers = [...main.matchAll(/(?<!function )(?<![\w.])connect\(\)/g)].length;
+  check('and connect() is called from the splash alone', callers, 1);
 }
 
 /* --- and the guard actually does something -------------------------------- */

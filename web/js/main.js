@@ -38,7 +38,6 @@ const ui = {
   chooseFolder: el('choose-folder'),
   newBook: el('new-book'),
   reset: el('reset-calculator'),
-  connect: el('connect'),
   sync: el('sync'),
   tree: el('tree'),
   filter: el('filter'),
@@ -1726,7 +1725,6 @@ async function start() {
   ui.newBook.addEventListener('click', opNewBook);
   ui.update.addEventListener('click', runUpdate);
   ui.reset.addEventListener('click', resetCalculator);
-  ui.connect.addEventListener('click', connect);
   ui.sync.addEventListener('click', runSync);
   ui.progressClose.addEventListener('click', () => ui.progressDialog.close());
 
