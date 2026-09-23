@@ -49,6 +49,12 @@
 }
 
 
+/*
+ * The page is exactly the window and never scrolls as a whole. The header,
+ * notices and footer take what they need and the view in between gets the
+ * rest -- so on the strips page it is only the tree that scrolls, and every
+ * button stays where it is.
+ */
 body {
   margin: 0;
   font: 15px/1.5 system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
@@ -56,8 +62,10 @@ body {
   background: var(--bg);
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
+body > * { flex: none; }
 
 h1 { font-size: 1.05rem; margin: 0; }
 h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em;
@@ -73,6 +81,18 @@ h2:first-child { margin-top: 0; }
   border-bottom: 1px solid var(--line);
 }
 .bar-actions { margin-left: auto; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+.tabs { display: flex; gap: 0.25rem; }
+.tabs button {
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--muted);
+  padding: 0.3rem 0.7rem;
+  border-bottom: 2px solid transparent;
+}
+.tabs button:hover { color: var(--ink); }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
 
 button, select, input[type="search"], input[type="number"] {
   font: inherit;
@@ -97,15 +117,45 @@ button.primary { background: var(--accent); color: var(--accent-ink); border-col
 .notice.error { color: var(--error); }
 .notice.busy { color: var(--accent); }
 
+/* --- the two pages --- */
+
 main {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 1rem;
   padding: 1rem;
-  align-items: start;
 }
-@media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+/* Strips: the tree beside the calculator. Both columns are the full height of
+ * the view; the tree scrolls inside its panel, the sidebar does not move. */
+.library-view { grid-template-columns: minmax(0, 1fr) 320px; }
+
+#library-panel { display: flex; flex-direction: column; min-height: 0; }
+#library-panel .tree { flex: 1 1 auto; min-height: 0; overflow: auto; }
+
+/* Only a safety net for a very short window; at any normal size it all fits. */
+#calculator-panel { overflow: auto; min-height: 0; }
+.sync-button { width: 100%; margin-top: 1rem; padding: 0.6rem; font-weight: 600; }
+#reset-calculator { width: 100%; margin-top: 0.5rem; }
+
+/* Settings: cards side by side, so nothing needs scrolling to reach. */
+.settings-view {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 420px));
+  align-content: start;
+  overflow: auto;
+}
+
+/* On a narrow window the columns stack, and there is not the height for
+ * everything to stay put -- so the page scrolls again, with the tree kept to a
+ * sensible height of its own. */
+@media (max-width: 900px) {
+  body { height: auto; min-height: 100vh; overflow: visible; }
+  .library-view { grid-template-columns: 1fr; }
+  #calculator-panel { order: -1; }
+  #library-panel .tree { max-height: 70vh; }
+  .footer { position: sticky; bottom: 0; }
+}
 
 .panel {
   background: var(--panel);
@@ -123,6 +173,8 @@ main {
 /* --- library tree --- */
 
 .tree { display: flex; flex-direction: column; border-radius: var(--radius); }
+/* Rows keep their height in a tree that scrolls; flex would squash them. */
+.tree > * { flex: none; }
 .tree .empty { color: var(--muted); padding: 2rem 0; text-align: center; }
 .tree.busy { opacity: 0.55; pointer-events: none; }
 .tree.drop-into { outline: 2px dashed var(--accent); outline-offset: 4px; }

@@ -34,9 +34,12 @@ export const LEGACY_META_FILENAME = 'ebooksync.json';
 /* 3 MB of archive, minus room for the OS's own housekeeping and the index. */
 export const DEFAULT_DEVICE_BUDGET = 2_900_000;
 
-/* The largest slot a strip can be given. See nextSlot(). */
 /*
- * The highest slot a strip may be given.
+ * The highest slot a strip on the calculator may occupy.
+ *
+ * A slot names a strip's appvars -- "CS" plus four hex digits of slot plus two
+ * of chunk is the eight characters a name has -- so this bounds what can be on
+ * the calculator at once, never the library. See slotAllocator().
  *
  * One short of 0xffff, which is reserved for the lock screen wallpaper -- it is
  * stored as an ordinary container in a slot of its own. See WALLPAPER_SLOT in
@@ -223,38 +226,18 @@ export function stripNames(meta, bookName) {
 /**
  * Fold a fresh directory scan into the metadata.
  *
- * New strips get a slot and land at the end of their book rather than wherever
+ * New strips land at the end of their book rather than wherever
  * their filename happens to sort -- dropping episode 15 into a library should
  * put it after 14, not somewhere in the middle. Strips whose file has vanished
  * are dropped, along with books that end up empty of both files and metadata.
- * Slots are stable identities -- they name the appvars on the calculator -- so
- * an existing one is never reassigned.
+ *
+ * No slot is handed out here. A strip's identity in the library is its book and
+ * filename; a slot is where it sits on the calculator, and it is only held
+ * while it is there -- execute() takes one when a strip is sent, and it goes
+ * back when the strip comes off. That is what leaves the library unbounded: the
+ * only thing a slot can run out of is room on the calculator.
  */
 export function reconcile(meta, books) {
-  const used = new Set();
-  for (const book of Object.values(meta.books)) {
-    for (const strip of Object.values(book.strips || {})) {
-      if (Number.isInteger(strip.id)) used.add(strip.id);
-    }
-  }
-
-  /*
-   * A slot names the appvars a strip lives in, and it is kept for the life of
-   * the strip -- so this bounds the *library*, not what fits on a calculator.
-   * The ceiling is the appvar name: "CS" plus four hex digits of slot plus two
-   * of chunk is eight characters, which is all a name has.
-   */
-  const nextSlot = () => {
-    for (let slot = 0; slot <= MAX_SLOT; slot++) {
-      if (!used.has(slot)) {
-        used.add(slot);
-        return slot;
-      }
-    }
-    throw new Error(`all ${MAX_SLOT + 1} strip slots are in use; `
-      + 'remove some strips from the library');
-  };
-
   const merged = {};
   const previousBooks = Object.values(meta.books);
   let bookOrder = nextOrder(previousBooks);
@@ -267,7 +250,7 @@ export function reconcile(meta, books) {
     for (const strip of book.strips) {
       const before = (previous.strips || {})[strip.name] || {};
       strips[strip.name] = {
-        id: Number.isInteger(before.id) ? before.id : nextSlot(),
+        id: Number.isInteger(before.id) ? before.id : null,
         order: hasOrder(before) ? before.order : stripOrder++,
         selected: before.selected === true,
         read: before.read === true,
@@ -433,16 +416,24 @@ export function flatten(meta, books) {
  * The calculator wins on `read`, `readAt`, `pos` and `layer`: those changed
  * because somebody read the comic. Everything else stays as the computer has
  * it. `onCalc` is rebuilt from what the calculator actually reports rather than
- * what we believe, so an interrupted sync self-corrects.
+ * what we believe, so an interrupted sync self-corrects -- and a strip that is
+ * not there gives its slot back.
+ *
+ * `resident` has to be the whole of a LIST: anything missing from it loses its
+ * slot, and a resident strip that lost its slot would be reclaimed as an orphan
+ * and sent again.
  */
 export function mergeFromCalculator(meta, resident) {
   const bySlot = new Map(resident.map((strip) => [strip.slot, strip]));
 
   for (const book of Object.values(meta.books)) {
     for (const state of Object.values(book.strips)) {
-      const live = bySlot.get(state.id);
+      const live = Number.isInteger(state.id) ? bySlot.get(state.id) : undefined;
       if (!live) {
+        /* Not there, so it holds no slot: the number is free for the next
+         * strip that is sent. */
         state.onCalc = false;
+        state.id = null;
         continue;
       }
       state.onCalc = true;
@@ -467,6 +458,31 @@ export function mergeFromCalculator(meta, resident) {
     }
   }
   return meta;
+}
+
+/**
+ * Hands out calculator slots for strips being sent.
+ *
+ * Lowest free first, skipping every slot the metadata still gives a strip and
+ * every slot the calculator reports -- the second matters for orphans, which
+ * the library has no record of but which are still sitting in that slot.
+ * Returns a function; each call claims the next free slot.
+ */
+export function slotAllocator(meta, resident = []) {
+  const used = new Set(resident.map((strip) => strip.slot));
+  for (const book of Object.values(meta.books)) {
+    for (const strip of Object.values(book.strips || {})) {
+      if (Number.isInteger(strip.id)) used.add(strip.id);
+    }
+  }
+
+  let next = 0;
+  return () => {
+    while (next <= MAX_SLOT && used.has(next)) next++;
+    if (next > MAX_SLOT) throw new Error('the calculator has no free slots left');
+    used.add(next);
+    return next++;
+  };
 }
 
 /** Read strips, most recently read first; ties fall back to library order. */

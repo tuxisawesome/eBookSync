@@ -86,9 +86,17 @@ chunks, each stored as its own appvar named `CS<slot><chunk>` -- the slot in
 four hex digits and the chunk in two, which is the whole eight characters an
 appvar name has -- so `CS000003` is chunk 3 of strip slot 0.
 
-That name is what caps a slot at 65535. A slot is kept for the life of a strip,
-so it bounds the *library* rather than the calculator: at one byte it stopped a
-collection of comics at 256, however few of them were resident at a time.
+That name is what caps a slot at 65535. A slot belongs to the calculator, not
+the library: a strip is given one when it is sent and gives it back when it is
+removed, so the slot range bounds only what is resident at once, and the library
+has no limit at all. (Slots used to be assigned when a strip joined the library
+and kept for good, which capped a library at 256 strips, then at 65535.)
+
+What actually bounds the calculator is the index. `INDEX_PUT` takes at most
+16 392 bytes, and every resident strip costs a 17-byte row plus its compressed
+title -- a few hundred strips in practice, and never more than 958 even with
+empty titles. `LIST` has room for 1092. The page plans against both and leaves
+anything past them on the computer.
 
 16 KB keeps the create-then-archive step comfortably inside free RAM.
 
@@ -332,9 +340,11 @@ have had anyway.
 }
 ```
 
-`id` is a stable slot from 0 to 65534, assigned once and never reassigned; it is
-what names the `CS<slot><chunk>` appvars. 65535 is not handed out: it belongs to
-the lock screen wallpaper.
+`id` is the slot the strip occupies on the calculator, from 0 to 65534, or `null`
+when it is not there. It is what names the `CS<slot><chunk>` appvars: it is taken
+(lowest free first) when the strip is sent and cleared when the strip is removed
+or a connection finds it gone, so a slot may be reused by a different strip
+later. 65535 is not handed out: it belongs to the lock screen wallpaper.
 
 `wallpaper` is `{ "srcHash": "...", "sentAt": "..." }` once one has been sent, or
 absent. The hash is of `wallpaper.jpg` at the root of the library folder, and a

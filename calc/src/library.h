@@ -31,9 +31,9 @@
  *
  * A slot names the appvars a strip lives in, and an appvar name is eight
  * characters: "CS" plus four hex digits of slot plus two of chunk. So the
- * naming is what caps this, and this spends all of it. It used to be one byte,
- * which capped a *library* -- not a calculator -- at 256 strips, because a slot
- * is assigned once and kept even for strips that are not resident.
+ * naming is what caps this, and this spends all of it. The computer hands slots
+ * out only to strips it sends and takes them back when they come off, so this
+ * bounds what is resident at once -- never the library.
  *
  * One short of 0xFFFF, which belongs to the lock screen wallpaper. See
  * CSX_WALLPAPER_SLOT.

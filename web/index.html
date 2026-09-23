@@ -10,11 +10,15 @@
 
 <header class="bar">
   <h1>eBookSync <span id="page-build" class="chip" title="The build this page was served from"></span></h1>
+  <nav class="tabs" role="tablist" aria-label="Pages">
+    <button id="tab-library" type="button" role="tab" aria-controls="view-library"
+            aria-selected="true">Library</button>
+    <button id="tab-settings" type="button" role="tab" aria-controls="view-settings"
+            aria-selected="false">Settings</button>
+  </nav>
   <div class="bar-actions">
     <button id="choose-folder" type="button">Choose library folder…</button>
     <button id="connect" type="button">Connect calculator</button>
-    <button id="reset-calculator" type="button" hidden>Erase calculator</button>
-    <button id="sync" type="button" class="primary" disabled>Sync…</button>
   </div>
 </header>
 
@@ -26,7 +30,11 @@
 <p id="status" class="notice" role="status">Choose the folder holding your comics to begin.</p>
 
 
-<main>
+<!--
+  Two pages, one of them shown at a time. The strips page never scrolls as a
+  whole: the tree does, and the header, sidebar and footer stay where they are.
+-->
+<main id="view-library" class="view library-view" role="tabpanel" aria-labelledby="tab-library">
   <section class="panel" id="library-panel">
     <div class="panel-head">
       <h2>Library</h2>
@@ -40,8 +48,43 @@
     <div id="tree" class="tree" role="tree" aria-label="Books and strips"></div>
   </section>
 
-  <aside class="panel" id="settings-panel">
-    <h2>Settings</h2>
+  <aside class="panel" id="calculator-panel">
+    <h2>Calculator</h2>
+    <dl class="stats">
+      <dt>Status</dt><dd id="device-status">Not connected</dd>
+      <dt>Free archive</dt><dd id="device-free">—</dd>
+      <dt>Strips on device</dt><dd id="device-count">—</dd>
+      <dt>Last sync</dt><dd id="last-sync">Never</dd>
+      <dt>Library</dt><dd id="device-library">—</dd>
+      <dt>Reader build</dt><dd id="device-build">—</dd>
+    </dl>
+
+    <button id="sync" type="button" class="primary sync-button" disabled>Sync…</button>
+
+    <p id="update-notice" class="notice" hidden></p>
+    <button id="update" type="button" hidden>Update the calculator…</button>
+    <button id="reset-calculator" type="button" hidden>Erase calculator</button>
+
+    <details class="help">
+      <summary>How to connect</summary>
+      <ol>
+        <li>Run <strong>COMICS</strong> on the calculator.</li>
+        <li>Press <strong>mode</strong> and choose <strong>Sync with a computer</strong>.</li>
+        <li>Plug the calculator in and press <strong>Connect calculator</strong>.</li>
+        <li>Pick the calculator's serial port from the browser's list.</li>
+      </ol>
+      <p>
+        On OS 5.5 and later the calculator needs the arTIfiCE jailbreak before it
+        will run native programs at all.
+      </p>
+    </details>
+  </aside>
+</main>
+
+<main id="view-settings" class="view settings-view" role="tabpanel"
+      aria-labelledby="tab-settings" hidden>
+  <section class="panel">
+    <h2>Strips</h2>
 
     <label class="field">
       <span>Detail</span>
@@ -75,9 +118,13 @@
       <input id="budget" type="number" min="100" step="100">
       <small>KB. The calculator has about 3000 KB of archive in total.</small>
     </label>
+  </section>
+
+  <section class="panel">
+    <h2>Lock screen</h2>
 
     <label class="field">
-      <span>Lock screen wallpaper</span>
+      <span>Wallpaper</span>
       <input id="wallpaper-file" type="file" accept="image/jpeg,image/png">
       <small>
         Saved as <code>wallpaper.jpg</code> in your library folder and sent on
@@ -92,34 +139,7 @@
         <button id="wallpaper-clear" type="button">Remove the wallpaper</button>
       </div>
     </div>
-
-    <h2>Calculator</h2>
-    <dl class="stats">
-      <dt>Status</dt><dd id="device-status">Not connected</dd>
-      <dt>Free archive</dt><dd id="device-free">—</dd>
-      <dt>Strips on device</dt><dd id="device-count">—</dd>
-      <dt>Last sync</dt><dd id="last-sync">Never</dd>
-      <dt>Library</dt><dd id="device-library">—</dd>
-      <dt>Reader build</dt><dd id="device-build">—</dd>
-    </dl>
-
-    <p id="update-notice" class="notice" hidden></p>
-    <button id="update" type="button" hidden>Update the calculator…</button>
-
-    <details class="help">
-      <summary>How to connect</summary>
-      <ol>
-        <li>Run <strong>COMICS</strong> on the calculator.</li>
-        <li>Press <strong>mode</strong> and choose <strong>Sync with a computer</strong>.</li>
-        <li>Plug the calculator in and press <strong>Connect calculator</strong>.</li>
-        <li>Pick the calculator's serial port from the browser's list.</li>
-      </ol>
-      <p>
-        On OS 5.5 and later the calculator needs the arTIfiCE jailbreak before it
-        will run native programs at all.
-      </p>
-    </details>
-  </aside>
+  </section>
 </main>
 
 <footer class="bar footer">

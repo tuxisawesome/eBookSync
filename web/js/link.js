@@ -417,7 +417,7 @@ export class Calculator {
    * One chunk of a strip.
    *
    * The slot takes the whole of `arg`, so the chunk index goes at the front of
-   * the payload. A library may hold more than 256 strips and a slot is 16 bits;
+   * the payload. A slot is 16 bits, so a calculator may hold more than 256 strips;
    * there is no room left in the header for both. See docs/PROTOCOL.md.
    *
    * From protocol 4 the chunk's CRC-32 rides in front of it too, and the

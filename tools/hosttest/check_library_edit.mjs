@@ -17,10 +17,10 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  MAX_SLOT, VERSION, addBookKey, adoptLibraryId, bookNames, defaultMeta, flatten,
+  VERSION, addBookKey, adoptLibraryId, bookNames, defaultMeta, flatten,
   libraryIdHex, mergeFromCalculator, moveStripKey, serialisable,
   reconcile, removeStripKey, renameBookKey, renameStripKey, reorderBook, reorderStrip,
-  stripNames,
+  slotAllocator, stripNames,
 } from '../../web/js/meta.js';
 import * as lib from '../../web/js/library.js';
 import { buildIndexFor } from '../../web/js/sync.js';
@@ -54,6 +54,14 @@ const LIBRARY = {
   'Book B': ['01.jpg', '02.jpg'],
   '第三本书': ['第一话.jpg'],
 };
+
+/* Put a strip on the calculator, as far as the metadata is concerned: it takes
+ * a slot the way execute() gives it one. */
+function claim(meta, book, file) {
+  const strip = meta.books[book].strips[file];
+  if (!Number.isInteger(strip.id)) strip.id = slotAllocator(meta)();
+  return strip.id;
+}
 
 function setup() {
   const books = scan(LIBRARY);
@@ -95,7 +103,7 @@ function setup() {
   const { meta } = setup();
   reorderStrip(meta, 'Book A', '003.jpg', 0);
   reorderBook(meta, 'Book B', 0);
-  const slot = meta.books['Book A'].strips['003.jpg'].id;
+  const slot = claim(meta, 'Book A', '003.jpg');
   meta.books['Book A'].strips['003.jpg'].read = true;
 
   /* 004 appears on disk, and the scan hands it back in natural order. */
@@ -107,14 +115,14 @@ function setup() {
         stripNames(meta, 'Book A'), ['003.jpg', '001.jpg', '002.jpg', '004.jpg']);
   check('rescan keeps the slot', meta.books['Book A'].strips['003.jpg'].id, slot);
   check('rescan keeps read state', meta.books['Book A'].strips['003.jpg'].read, true);
-  check('the new strip got its own slot',
-        meta.books['Book A'].strips['004.jpg'].id !== slot, true);
+  check('the new strip has no slot until it is sent',
+        meta.books['Book A'].strips['004.jpg'].id, null);
 }
 
 /* --- renaming keeps identity, so a rename is not a re-sync --------------- */
 {
   const { meta } = setup();
-  const slot = meta.books['Book A'].strips['002.jpg'].id;
+  const slot = claim(meta, 'Book A', '002.jpg');
   meta.books['Book A'].strips['002.jpg'].read = true;
   meta.books['Book A'].strips['002.jpg'].onCalc = true;
 
@@ -139,7 +147,7 @@ function setup() {
 /* --- moving a strip between books --------------------------------------- */
 {
   const { meta } = setup();
-  const slot = meta.books['Book A'].strips['002.jpg'].id;
+  const slot = claim(meta, 'Book A', '002.jpg');
   moveStripKey(meta, 'Book A', 'Book B', '002.jpg');
 
   check('moved out of the source', stripNames(meta, 'Book A'), ['001.jpg', '003.jpg']);
@@ -218,6 +226,7 @@ function readBack(meta, books) {
   /* Everything is resident, so all of it lands in the index. */
   for (const name of bookNames(meta)) {
     for (const file of stripNames(meta, name)) {
+      claim(meta, name, file);
       Object.assign(meta.books[name].strips[file],
                     { onCalc: true, chunkCount: 9, deviceBytes: 140_000 });
     }
@@ -267,6 +276,7 @@ function readBack(meta, books) {
 {
   const { meta, books } = setup();
   const names = bookNames(meta);
+  claim(meta, names[0], '001.jpg');
   meta.books[names[0]].strips['001.jpg'].onCalc = true;
   meta.books[names[0]].strips['001.jpg'].chunkCount = 9;
 
@@ -278,7 +288,7 @@ function readBack(meta, books) {
 /* --- the calculator's read state survives a merge ------------------------ */
 {
   const { meta } = setup();
-  const slot = meta.books['Book A'].strips['001.jpg'].id;
+  const slot = claim(meta, 'Book A', '001.jpg');
   mergeFromCalculator(meta, [{
     slot, chunkCount: 9, bytes: 140_000, read: true, readAt: 1_756_000_000, pos: 512, layer: 1,
   }]);
@@ -361,17 +371,19 @@ function readBack(meta, books) {
 }
 
 
-/* --- a library may hold more than 256 strips ------------------------------ */
+/* --- a library has no size limit ------------------------------------------ */
 /*
- * A slot is assigned once and kept for the life of a strip, so it bounds the
- * library and not the calculator: a collection of 300 comics used to run out of
- * slots at 256, even though only about twenty are ever resident at once.
+ * A slot names a strip's appvars on the calculator, so it bounds what can be
+ * there at once -- and nothing else. It used to be assigned when a strip joined
+ * the library and kept for good, which capped a library at 256 strips and then
+ * at 65 535. Now it is taken when a strip is sent and given back when it comes
+ * off, and a library is as big as the folder it lives in.
  */
 {
   const meta = defaultMeta();
   const books = [{
     name: 'Big',
-    strips: Array.from({ length: 300 }, (_, i) => ({ name: `${i}.jpg`, size: 1000 })),
+    strips: Array.from({ length: 70_000 }, (_, i) => ({ name: `${i}.jpg`, size: 1000 })),
   }];
 
   let failed = null;
@@ -381,30 +393,24 @@ function readBack(meta, books) {
     failed = error.message;
   }
 
-  check('300 strips is no longer a failure', failed, null);
+  check('70 000 strips is not a failure', failed, null);
+  check('every one of them is in the library', Object.keys(meta.books.Big.strips).length, 70_000);
+  check('and none of them holds a slot',
+        Object.values(meta.books.Big.strips).every((strip) => strip.id === null), true);
 
-  const slots = Object.values(meta.books.Big.strips).map((strip) => strip.id);
-  check('every strip got a slot', slots.length, 300);
-  check('and they are all distinct', new Set(slots).size, 300);
-  check('reaching past the old ceiling', Math.max(...slots) > 255, true);
-  check('while staying inside the appvar name', Math.max(...slots) <= MAX_SLOT, true);
+  /* The ones that do go to the calculator get distinct slots, and survive a
+   * trip through the index, which is the part the calculator reads. */
+  const sent = ['0.jpg', '1.jpg', '69999.jpg'];
+  for (const file of sent) {
+    claim(meta, 'Big', file);
+    Object.assign(meta.books.Big.strips[file], { onCalc: true, chunkCount: 1 });
+  }
+  const slots = sent.map((file) => meta.books.Big.strips[file].id);
+  check('sent strips get distinct slots', slots, [0, 1, 2]);
 
-  /* Slots are kept across a rescan, which is what makes them safe to name
-   * appvars with. */
-  const before = { ...Object.fromEntries(
-    Object.entries(meta.books.Big.strips).map(([k, v]) => [k, v.id])) };
-  reconcile(meta, books);
-  const after = Object.fromEntries(
-    Object.entries(meta.books.Big.strips).map(([k, v]) => [k, v.id]));
-  check('and are stable across a rescan', after, before);
-
-  /* An index of them round-trips, which is the part the calculator reads. */
-  for (const strip of Object.values(meta.books.Big.strips)) strip.onCalc = true;
   const index = buildIndexFor(meta, books, { render: fakeRender });
   const parsed = lib.parseIndex(index);
-  check('and survive a trip through the index',
-        parsed.strips.map((s) => s.slot).sort((a, b) => a - b),
-        slots.slice().sort((a, b) => a - b));
+  check('and only they are in the index', parsed.strips.map((s) => s.slot), slots);
 }
 
 console.log(`${checks - failures}/${checks} library editing checks pass`);

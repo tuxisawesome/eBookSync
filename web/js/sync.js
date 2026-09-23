@@ -10,7 +10,8 @@ import * as cache from './cache.js';
 import * as library from './library.js';
 import { CHUNK_SIZE } from './convert.js';
 import { ProtocolError, STATUS_BAD_CRC, WALLPAPER_SLOT } from './link.js';
-import { flatten, libraryIdBytes, readOrder } from './meta.js';
+import { flatten, libraryIdBytes, readOrder, slotAllocator } from './meta.js';
+import { BOOK_WIDTH, STRIP_WIDTH } from './titles.js';
 import { hashFile } from './fs.js';
 
 /*
@@ -35,6 +36,13 @@ export const MAX_CHUNKS = 64;
  * Everything else -- no room, no such slot -- fails the same way twice.
  */
 const CHUNK_ATTEMPTS = 3;
+
+/*
+ * What a title is guessed to cost in the index when the caller cannot render
+ * one. A real title is a 16-pixel line of text compressed, a hundred-odd bytes;
+ * this errs high so the guess stops short of the ceiling rather than past it.
+ */
+const TITLE_BYTES_GUESS = 256;
 
 /**
  * Runs conversions in workers, one per core.
@@ -108,13 +116,23 @@ export class ConversionPool {
  * `indexStale` says the order or titles have changed since the calculator was
  * last written, which is a reason to sync even when no bytes need moving.
  * The caller works it out, because doing so needs a canvas to render titles.
+ *
+ * The library has no size limit; the calculator does. Past MAX_RESIDENT
+ * strips it cannot list what it holds, and past MAX_INDEX_BYTES it will not
+ * take the index -- so what would cross either goes in `full` and stays on
+ * the computer. `titleBytes(text, width)` is what a title costs in the index;
+ * the page passes the real measure, and without one a generous guess is used.
  */
 export function plan(meta, books, resident,
                      { freeArchive = null, indexStale = false,
-                       maxChunks = MAX_CHUNKS, wallpaper = null } = {}) {
+                       maxChunks = MAX_CHUNKS, wallpaper = null,
+                       titleBytes = () => TITLE_BYTES_GUESS } = {}) {
   const strips = flatten(meta, books);
   const bySlot = new Map(resident.map((strip) => [strip.slot, strip]));
   const { autoDelete, keepRead, selection, maxDeviceBytes } = meta.settings;
+
+  /* A strip that is not on the calculator holds no slot at all. */
+  const onCalc = (strip) => Number.isInteger(strip.state.id) && bySlot.has(strip.state.id);
 
   /* Read strips are dropped oldest-read first, keeping the most recent few so
    * you can still flip back to what you just finished. */
@@ -135,7 +153,7 @@ export function plan(meta, books, resident,
    */
   if (selection === 'manual') {
     for (const strip of strips) {
-      if (bySlot.has(strip.state.id) && !strip.state.selected) {
+      if (onCalc(strip) && !strip.state.selected) {
         deletes.push(strip);
         dropped.add(strip.state.id);
       }
@@ -144,7 +162,7 @@ export function plan(meta, books, resident,
 
   if (autoDelete) {
     for (const strip of strips) {
-      if (strip.state.read && bySlot.has(strip.state.id)
+      if (strip.state.read && onCalc(strip)
           && !keep.has(strip.state.id) && !dropped.has(strip.state.id)) {
         deletes.push(strip);
       }
@@ -153,7 +171,8 @@ export function plan(meta, books, resident,
 
   /* Slots on the calculator the library no longer knows about: leftovers from a
    * removed file or an interrupted sync. They are always safe to reclaim. */
-  const known = new Set(strips.map((strip) => strip.state.id));
+  const known = new Set(strips.map((strip) => strip.state.id)
+    .filter((id) => Number.isInteger(id)));
   const orphans = resident.filter((strip) => !known.has(strip.slot));
 
   const wanted = selection === 'auto'
@@ -162,7 +181,7 @@ export function plan(meta, books, resident,
 
   const deleting = new Set(deletes.map((strip) => strip.state.id));
   const candidates = wanted.filter(
-    (strip) => !bySlot.has(strip.state.id) && !deleting.has(strip.state.id),
+    (strip) => !onCalc(strip) && !deleting.has(strip.state.id),
   );
 
   /* Budget against what will actually be free once the deletes have happened. */
@@ -179,6 +198,32 @@ export function plan(meta, books, resident,
   const pushes = [];
   const skipped = [];
   const oversize = [];
+  const full = [];
+
+  /*
+   * What the calculator will be holding once the deletes are done, as a count
+   * and as the size of its index. Every strip sent adds a row and its title,
+   * and the first strip of a book adds the book's row and title too.
+   */
+  let residentCount = resident.length - deleting.size - orphans.length;
+  let indexBytes = library.HEADER_SIZE;
+  const seenBooks = new Set();
+  const seenTitles = new Set();
+  const titleCost = (text, width) => (
+    seenTitles.has(`${width} ${text}`) ? 0 : titleBytes(text, width));
+  const indexCost = (strip) => library.STRIP_SIZE + titleCost(strip.title, STRIP_WIDTH)
+    + (seenBooks.has(strip.book) ? 0 : library.BOOK_SIZE + titleCost(strip.book, BOOK_WIDTH));
+  const addToIndex = (strip, bytes) => {
+    indexBytes += bytes;
+    seenBooks.add(strip.book);
+    seenTitles.add(`${STRIP_WIDTH} ${strip.title}`);
+    seenTitles.add(`${BOOK_WIDTH} ${strip.book}`);
+  };
+  for (const strip of strips) {
+    if (onCalc(strip) && !deleting.has(strip.state.id)) {
+      addToIndex(strip, indexCost(strip));
+    }
+  }
 
   for (const strip of candidates) {
     /* Before conversion the size is a guess from the last time this strip was
@@ -193,16 +238,26 @@ export function plan(meta, books, resident,
      */
     if (strip.state.deviceBytes > ceiling) oversize.push({ strip, ceiling });
 
+    const cost = indexCost(strip);
+    if (residentCount + 1 > library.MAX_RESIDENT
+        || indexBytes + cost > library.MAX_INDEX_BYTES) {
+      full.push(strip);
+      continue;
+    }
+
     if (residentBytes + estimate > budget) {
       skipped.push({ strip, estimate });
       continue;
     }
     residentBytes += estimate;
+    residentCount++;
+    addToIndex(strip, cost);
     pushes.push(strip);
   }
 
   return {
-    strips, deletes, orphans, pushes, skipped, oversize, indexStale, wallpaper,
+    strips, resident, deletes, orphans, pushes, skipped, oversize, full,
+    indexStale, wallpaper,
     projectedBytes: residentBytes,
     budget,
     empty: !pushes.length && !deletes.length && !orphans.length && !indexStale
@@ -251,6 +306,7 @@ export async function execute(calculator, meta, books, currentPlan, {
   onProgress = () => {},
   signal = null,
   maxChunks = MAX_CHUNKS,
+  render = undefined,
 } = {}) {
   const aborted = () => signal && signal.aborted;
 
@@ -264,10 +320,18 @@ export async function execute(calculator, meta, books, currentPlan, {
    */
   const failures = [];
 
+  /* Slots this sync empties, and so may fill again. Noted now, because a
+   * delete forgets the slot it had. */
+  const reclaimed = new Set([
+    ...currentPlan.deletes.map((strip) => strip.state.id),
+    ...currentPlan.orphans.map((orphan) => orphan.slot),
+  ]);
+
   for (const strip of currentPlan.deletes) {
     if (aborted()) return { aborted: true, failures };
     onStatus(`Removing ${strip.title}`);
     await calculator.deleteStrip(strip.state.id);
+    strip.state.id = null;              /* the slot is free again */
     strip.state.onCalc = false;
     strip.state.selected = false;      /* so cleanup does not bounce it back */
     strip.state.chunkCount = 0;
@@ -280,6 +344,15 @@ export async function execute(calculator, meta, books, currentPlan, {
     await calculator.deleteStrip(orphan.slot);
   }
 
+  /*
+   * Slots are taken as strips are sent, lowest free first. What was just
+   * deleted is free already; what is still on the calculator is not.
+   */
+  const nextSlot = slotAllocator(
+    meta, (currentPlan.resident || []).filter((strip) => !reclaimed.has(strip.slot)),
+  );
+
+  const sentNow = [];
   let index = 0;
   for (const strip of currentPlan.pushes) {
     if (aborted()) return { aborted: true, failures };
@@ -314,6 +387,12 @@ export async function execute(calculator, meta, books, currentPlan, {
       });
       continue;
     }
+
+    if (!Number.isInteger(strip.state.id)) strip.state.id = nextSlot();
+
+    /* A slot is reused once its strip comes off, and a sync that was stopped
+     * part way can leave chunks behind in one. Start from nothing. */
+    await calculator.deleteStrip(strip.state.id).catch(() => {});
 
     onStatus(`Sending ${strip.title} (${index}/${currentPlan.pushes.length})`);
     const started = Date.now();
@@ -367,6 +446,7 @@ export async function execute(calculator, meta, books, currentPlan, {
       /* Take the wreckage away, so the next sync starts from nothing rather
        * than from a half-written strip. */
       await calculator.deleteStrip(strip.state.id).catch(() => {});
+      strip.state.id = null;
       strip.state.onCalc = false;
       strip.state.chunkCount = 0;
       strip.state.deviceBytes = 0;
@@ -377,6 +457,7 @@ export async function execute(calculator, meta, books, currentPlan, {
     strip.state.onCalc = true;
     strip.state.chunkCount = container.chunks.length;
     strip.state.deviceBytes = container.totalBytes;
+    sentNow.push(strip);
   }
 
   /*
@@ -392,8 +473,27 @@ export async function execute(calculator, meta, books, currentPlan, {
     if (trouble) failures.push({ strip: null, reason: trouble });
   }
 
+  /*
+   * The planner kept the index inside what the calculator will take, but only
+   * from a measure of the titles. If it is over all the same, take strips back
+   * off -- newest first -- rather than end on an index the calculator refuses,
+   * with everything sent and nothing listed.
+   */
+  let built = buildIndexFor(meta, books, { render });
+  while (built.length > library.MAX_INDEX_BYTES && sentNow.length) {
+    const strip = sentNow.pop();
+    await calculator.deleteStrip(strip.state.id).catch(() => {});
+    strip.state.id = null;
+    strip.state.onCalc = false;
+    strip.state.chunkCount = 0;
+    strip.state.deviceBytes = 0;
+    failures.push({ strip, reason: `${strip.title} would not fit in the calculator's `
+      + 'list of strips, so it was taken back off.' });
+    built = buildIndexFor(meta, books, { render });
+  }
+
   onStatus('Updating the index');
-  await calculator.putIndex(buildIndexFor(meta, books));
+  await calculator.putIndex(built);
   meta.lastSync = new Date().toISOString();
 
   return { aborted: false, failures };

@@ -75,6 +75,10 @@ const ui = {
   progressLog: el('progress-log'),
   progressStop: el('progress-stop'),
   progressClose: el('progress-close'),
+  tabLibrary: el('tab-library'),
+  tabSettings: el('tab-settings'),
+  viewLibrary: el('view-library'),
+  viewSettings: el('view-settings'),
 };
 
 const state = {
@@ -1074,6 +1078,17 @@ function describePlan(plan) {
     parts.push(note);
   }
 
+  /* The library has no limit, but the calculator does: its list of what it
+   * holds has to fit in one 16 KB index. */
+  if (plan.full && plan.full.length) {
+    const warning = document.createElement('p');
+    warning.className = 'warn';
+    warning.textContent = `The calculator is full: ${plan.full.length} selected strip(s) `
+      + 'will not fit in its list of strips and are being left behind. Read and remove '
+      + 'some first.';
+    parts.push(warning);
+  }
+
   if (plan.skipped.length) {
     const warning = document.createElement('p');
     warning.className = 'warn';
@@ -1116,6 +1131,18 @@ function describePlan(plan) {
 }
 
 /*
+ * What a title costs in the calculator's index, remembered: the planner asks
+ * for every candidate on every sync, and rendering and compressing is the slow
+ * part. Keyed on text and width, which is all a title depends on.
+ */
+const titleCosts = new Map();
+function titleBytes(text, width) {
+  const key = `${width} ${text}`;
+  if (!titleCosts.has(key)) titleCosts.set(key, libraryStore.titleEntryBytes(text, width));
+  return titleCosts.get(key);
+}
+
+/*
  * The largest strip the attached calculator can open, in chunks.
  *
  * HELLO has always carried this and the page has always ignored it, which is
@@ -1150,6 +1177,7 @@ async function runSync() {
     indexStale: indexIsStale(),
     maxChunks: deviceMaxChunks(),
     wallpaper: wallpaperPlan(),
+    titleBytes,
   });
   describePlan(plan);
 
@@ -1331,6 +1359,7 @@ async function resetCalculator() {
     /* Nothing is on it now, so nothing should claim to be. */
     for (const book of Object.values(state.meta.books)) {
       for (const strip of Object.values(book.strips)) {
+        strip.id = null;
         strip.onCalc = false;
         strip.chunkCount = 0;
         strip.deviceBytes = 0;
@@ -1395,6 +1424,36 @@ function bindSettings() {
 
 }
 
+/*
+ * The strips page or the settings page. Kept in the URL's hash, so a reload
+ * comes back to the same one.
+ */
+function showView(name) {
+  const settings = name === 'settings';
+  ui.viewLibrary.hidden = settings;
+  ui.viewSettings.hidden = !settings;
+  ui.tabLibrary.setAttribute('aria-selected', String(!settings));
+  ui.tabSettings.setAttribute('aria-selected', String(settings));
+
+  const hash = settings ? '#settings' : '';
+  if (location.hash !== hash) {
+    /* replaceState, so switching tabs does not fill the back button -- but a
+     * page opened straight off disk may not be allowed it. */
+    try {
+      history.replaceState(null, '', `${location.pathname}${location.search}${hash}`);
+    } catch {
+      location.hash = hash;
+    }
+  }
+}
+
+function bindViews() {
+  ui.tabLibrary.addEventListener('click', () => showView('library'));
+  ui.tabSettings.addEventListener('click', () => showView('settings'));
+  window.addEventListener('hashchange', () => showView(location.hash.slice(1)));
+  showView(location.hash.slice(1));
+}
+
 /* Dropping on the tree background rather than on a book: only whole folders
  * make sense there, since loose files would have no book to go into. */
 function bindTreeDrop() {
@@ -1420,6 +1479,8 @@ function bindTreeDrop() {
 }
 
 async function start() {
+  bindViews();
+
   if (!fs.isSupported() || !linkSupported()) {
     ui.unsupported.hidden = false;
     ui.chooseFolder.disabled = true;

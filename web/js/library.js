@@ -23,8 +23,48 @@ export const HEADER_SIZE = 92;
 export const DEVICE_OFFSET = 28;
 export const DEVICE_SIZE = 64;
 export const LIBRARY_ID_SIZE = 16;
-const BOOK_SIZE = 6;
-const STRIP_SIZE = 17;
+export const BOOK_SIZE = 6;
+export const STRIP_SIZE = 17;
+
+/*
+ * The largest CSLIB the calculator will take.
+ *
+ * INDEX_PUT arrives in the same buffer as a chunk plus its arguments, and the
+ * calculator refuses anything longer outright (usb.c). A calculator's worth of
+ * strips has to fit in it -- which, unlike the library, is a real ceiling.
+ */
+export const MAX_INDEX_BYTES = 16384 + 8;
+
+/*
+ * The most strips the calculator can hold at once.
+ *
+ * LIST answers with a two-byte count and fifteen bytes a strip, all in one
+ * 16 KB reply, and fails outright past this -- which would leave a calculator
+ * nothing could sync with again.
+ */
+export const MAX_RESIDENT = Math.floor((16384 - 2) / 15);
+
+/**
+ * One title as it is stored in the index: a five-byte header and the
+ * compressed bitmap.
+ */
+function titleEntry(text, maxWidth, render) {
+  const { width, height, packed } = render(text, maxWidth);
+  const payload = compress(packed);
+  const entry = new Uint8Array(5 + payload.length);
+  const view = new DataView(entry.buffer);
+  view.setUint16(0, width, true);
+  view.setUint8(2, height);
+  view.setUint16(3, payload.length, true);
+  entry.set(payload, 5);
+  return entry;
+}
+
+/** How many bytes a title adds to the index. The planner uses it to see the
+ *  index coming before it is too big to send. */
+export function titleEntryBytes(text, maxWidth, render = renderTitle) {
+  return titleEntry(text, maxWidth, render).length;
+}
 
 export const FLAG_READ = 0x01;
 
@@ -57,15 +97,7 @@ export function buildIndex(books, { render = renderTitle, libraryId = null } = {
     const key = `${maxWidth} ${text}`;
     if (offsets.has(key)) return offsets.get(key);
 
-    const { width, height, packed } = render(text, maxWidth);
-    const payload = compress(packed);
-    const entry = new Uint8Array(5 + payload.length);
-    const view = new DataView(entry.buffer);
-    view.setUint16(0, width, true);
-    view.setUint8(2, height);
-    view.setUint16(3, payload.length, true);
-    entry.set(payload, 5);
-
+    const entry = titleEntry(text, maxWidth, render);
     const offset = titleBase + blobLength;
     offsets.set(key, offset);
     blob.push(entry);

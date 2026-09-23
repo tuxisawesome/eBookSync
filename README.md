@@ -51,8 +51,10 @@ around 50 KB of free RAM. That drives everything:
 - **One strip cannot exceed 1024 KB** once converted. Past that the reader
   cannot open it at all, so the page refuses it and says which detail level
   would fit. A very long episode at `fit+2x` can reach it.
-- Your *library* is not bounded by that. It can hold up to 65535 strips; the
-  calculator just carries a few dozen of them at a time.
+- Your *library* is not bounded at all. Only the calculator is: it carries a
+  few dozen strips at a time, and at most as many as its 16 KB index can list
+  (several hundred). A sync that would pass that says so and leaves the rest on
+  the computer.
 - Titles are usually Chinese and the calculator has no CJK font, so the browser
   renders them to small bitmaps and the calculator just blits pixels.
 
@@ -106,6 +108,10 @@ drag comics into the page instead.
 
 Open `web/index.html` in Chrome — straight off disk is fine, there is nothing to
 build or serve. Choose your comics folder, tick what you want, and press Sync.
+
+The page has two tabs. **Library** is your strips, with the calculator's status
+and the Sync button beside them. **Settings** has the detail level, which strips
+to send and remove, the space budget, and the lock screen wallpaper.
 
 ## Arranging the library
 
