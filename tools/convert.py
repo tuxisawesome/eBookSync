@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Convert comic JPEGs into .csx containers and TI-84 Plus CE appvars.
+"""Convert comics into .csx containers and TI-84 Plus CE appvars.
+
+A source is an image, or a folder of images stitched into one strip in natural
+order (0-9, then A-Z) -- the same thing a folder inside a book is to the page.
 
 Examples:
 
@@ -28,8 +31,9 @@ def human(n):
 
 
 def cmd_measure(args):
-    src = image.load(args.source)
-    print(f"{args.source}: {src.width}x{src.height}")
+    for path in image.part_paths(args.source):
+        src = image.load(path)
+        print(f"{path}: {src.width}x{src.height}")
     print(f"{'preset':10} {'layers':16} {'raw':>10} {'packed':>10} {'ratio':>7} "
           f"{'chunks':>7} {'/3MB':>5}")
     for preset in image.LAYER_PRESETS:
@@ -56,6 +60,9 @@ def cmd_convert(args):
 
     layers = ", ".join(f"{l.width}x{l.height}" for l in result.layers)
     print(f"{args.source}: {layers}")
+    if result.parts:
+        print(f"  {len(result.parts)} images, starting on rows "
+              + ", ".join(str(tops[0]) for tops in result.parts) + " of the fit layer")
     print(f"  {human(result.raw_bytes)} raw -> {human(result.total_bytes)} in "
           f"{len(result.chunks)} chunks ({result.ratio:.2f}x) in {elapsed:.1f}s")
 
@@ -85,7 +92,7 @@ def cmd_convert(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("source", help="comic JPEG to convert")
+    parser.add_argument("source", help="comic image, or a folder of images, to convert")
     parser.add_argument("-o", "--out", help="directory to write .8xv appvars into")
     parser.add_argument("--slot", type=int, default=0,
                         help="strip slot 0-255, decides the appvar names (default 0)")

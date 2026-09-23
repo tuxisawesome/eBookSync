@@ -20,6 +20,7 @@
 #include <graphx.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/power.h>
 #include <time.h>
 #include <tice.h>
 
@@ -263,8 +264,124 @@ static void draw_scrollbar(const menu_list_t *list) {
     gfx_FillRectangle_NoClip(GFX_LCD_WIDTH - 4, track_top + offset, 3, thumb);
 }
 
-ui_result_t ui_book_menu(uint16_t *selection) {
-    menu_list_t list = { lib_book_count(), *selection, 0 };
+/*
+ * Battery and free space, for the book list's header.
+ *
+ * Read once when the list is entered rather than every frame: os_ArcChk()
+ * walks the archive, and neither number moves while somebody is choosing a
+ * book. The lists come back through here after every strip read and every
+ * sync, which is exactly when either could have changed.
+ */
+typedef struct {
+    uint8_t battery;        /* 0 (nearly flat) to 4 (full) */
+    bool charging;
+    char free_text[16];     /* "1.2M free" */
+} status_t;
+
+static void read_status(status_t *status) {
+    status->battery = boot_GetBatteryStatus();
+    if (status->battery > 4)
+        status->battery = 4;
+    status->charging = boot_BatteryCharging() != 0;
+
+    os_ArcChk();
+    uint24_t free = os_TempFreeArc;
+    if (free >= 1024UL * 1024) {
+        unsigned tenths = (unsigned)(free / (1024UL * 1024 / 10));
+        sprintf(status->free_text, "%u.%uM free", tenths / 10, tenths % 10);
+    } else {
+        sprintf(status->free_text, "%uK free", (unsigned)(free / 1024));
+    }
+}
+
+/* Right-aligned in the header bar: free space, then a battery gauge. */
+static void draw_status(const status_t *status) {
+    int battery_x = GFX_LCD_WIDTH - 26;
+    int text_x = battery_x - 8 - (int)strlen(status->free_text) * 8;
+
+    gfx_SetTextFGColor(UI_BG);
+    gfx_SetTextBGColor(UI_ACCENT);
+    gfx_PrintStringXY(status->free_text, text_x, 5);
+
+    /* Body, terminal, and one block per level. Dim blocks when it is nearly
+     * flat, so the gauge says "charge me" before the OS has to. */
+    gfx_SetColor(UI_BG);
+    gfx_Rectangle_NoClip(battery_x, 4, 18, 10);
+    gfx_FillRectangle_NoClip(battery_x + 18, 7, 2, 4);
+    gfx_SetColor(status->battery <= 1 && !status->charging ? UI_DIM : UI_BG);
+    for (uint8_t i = 0; i < status->battery; i++)
+        gfx_FillRectangle_NoClip(battery_x + 2 + i * 4, 6, 3, 6);
+
+    /* On charge: a bar under the gauge, the one thing the font cannot say in a
+     * character. */
+    if (status->charging) {
+        gfx_SetColor(UI_BG);
+        gfx_FillRectangle_NoClip(battery_x, 15, 18, 1);
+    }
+}
+
+void ui_draw_bookmark(int x, int y) {
+    gfx_SetColor(UI_ACCENT);
+    gfx_FillRectangle_NoClip(x, y, 7, 10);
+    /* The notch in the tail. */
+    gfx_SetColor(UI_BG);
+    gfx_FillRectangle_NoClip(x + 3, y + 8, 1, 2);
+    gfx_FillRectangle_NoClip(x + 2, y + 9, 3, 1);
+}
+
+void ui_draw_down_arrow(int x, int y) {
+    gfx_SetColor(UI_ACCENT);
+    gfx_FillRectangle_NoClip(x + 3, y, 3, 3);
+    for (int row = 0; row < 4; row++)
+        gfx_FillRectangle_NoClip(x + row, y + 3 + row, 9 - 2 * row, 1);
+}
+
+/* Pinned rows above the books, in the order they are drawn. */
+typedef struct {
+    uint16_t last;          /* the strip last read, or LIB_NONE */
+    uint16_t bookmarks;     /* how many strips are bookmarked */
+    uint16_t count;         /* how many pinned rows there are */
+} pinned_t;
+
+static void read_pinned(pinned_t *pinned) {
+    pinned->last = lib_last_strip();
+    pinned->bookmarks = lib_bookmark_count();
+    pinned->count = (pinned->last != LIB_NONE) + (pinned->bookmarks != 0);
+}
+
+static bool row_is_continue(const pinned_t *pinned, uint16_t row) {
+    return pinned->last != LIB_NONE && row == 0;
+}
+
+static bool row_is_bookmarks(const pinned_t *pinned, uint16_t row) {
+    return pinned->bookmarks && row == pinned->count - 1;
+}
+
+static void draw_pinned_row(const pinned_t *pinned, uint16_t row, int y, bool selected) {
+    gfx_SetTextFGColor(UI_ACCENT);
+    gfx_SetTextBGColor(selected ? UI_SELECT_BG : UI_BG);
+
+    if (row_is_continue(pinned, row)) {
+        gfx_PrintStringXY(">", LIST_X - 6, y + 6);
+        gfx_PrintStringXY("Continue", LIST_X + 4, y + 6);
+        lib_strip_t strip;
+        lib_get_strip(pinned->last, &strip);
+        ui_draw_title(strip.title, LIST_X + 80, y + TITLE_INSET, selected);
+    } else {
+        char line[24];
+        ui_draw_bookmark(LIST_X - 6, y + 5);
+        sprintf(line, "Bookmarks (%u)", pinned->bookmarks);
+        gfx_PrintStringXY(line, LIST_X + 4, y + 6);
+    }
+}
+
+ui_result_t ui_book_menu(uint16_t *row, uint16_t *chosen) {
+    pinned_t pinned;
+    read_pinned(&pinned);
+    status_t status;
+    read_status(&status);
+
+    menu_list_t list = { pinned.count + lib_book_count(), *row, 0 };
     list_move(&list, 0);
 
     char line[24];
@@ -275,37 +392,48 @@ ui_result_t ui_book_menu(uint16_t *selection) {
         if (dirty) {
             gfx_FillScreen(UI_BG);
             ui_header("Books");
+            draw_status(&status);
 
-            if (!list.count) {
+            if (!lib_book_count()) {
                 gfx_SetTextFGColor(UI_DIM);
                 gfx_SetTextBGColor(UI_BG);
                 gfx_PrintStringXY("No comics yet.", 10, 90);
                 gfx_PrintStringXY("Press mode, then Sync, to fill it.", 10, 108);
             }
 
-            for (uint16_t row = 0; row < UI_LIST_ROWS; row++) {
-                uint16_t index = list.first + row;
+            for (uint16_t screen_row = 0; screen_row < UI_LIST_ROWS; screen_row++) {
+                uint16_t index = list.first + screen_row;
                 if (index >= list.count)
                     break;
 
-                draw_row_background(&list, row);
+                draw_row_background(&list, screen_row);
+                int y = UI_LIST_TOP + screen_row * UI_ROW_HEIGHT;
+                bool selected = index == list.selected;
+
+                if (index < pinned.count) {
+                    draw_pinned_row(&pinned, index, y, selected);
+                    /* A rule under the last pinned row, so they read as
+                     * shortcuts rather than as two more books. */
+                    if (index + 1 == pinned.count) {
+                        gfx_SetColor(UI_DIM);
+                        gfx_FillRectangle_NoClip(0, y + UI_ROW_HEIGHT - 1, GFX_LCD_WIDTH, 1);
+                    }
+                    continue;
+                }
 
                 lib_book_t book;
-                lib_get_book(index, &book);
-
-                int y = UI_LIST_TOP + row * UI_ROW_HEIGHT;
-                ui_draw_title(book.title, LIST_X, y + TITLE_INSET,
-                              index == list.selected);
+                lib_get_book(index - pinned.count, &book);
+                ui_draw_title(book.title, LIST_X, y + TITLE_INSET, selected);
 
                 sprintf(line, "%u/%u", lib_book_read_count(&book), book.strip_count);
                 gfx_SetTextFGColor(UI_DIM);
-                gfx_SetTextBGColor(index == list.selected ? UI_SELECT_BG : UI_BG);
+                gfx_SetTextBGColor(selected ? UI_SELECT_BG : UI_BG);
                 gfx_PrintStringXY(line, GFX_LCD_WIDTH - 8 - (int)strlen(line) * 8,
                                   y + 6);
             }
 
             draw_scrollbar(&list);
-            ui_footer("enter open  2nd lock  del read  mode setup");
+            ui_footer("enter open  2nd lock  del read  mode set");
             dirty = false;
             drew = true;
         }
@@ -326,18 +454,26 @@ ui_result_t ui_book_menu(uint16_t *selection) {
         if (list_navigate(&list))
             dirty = true;
         if (input_pressed(kb_KeyEnter) && list.count) {
-            *selection = list.selected;
+            *row = list.selected;
+            if (row_is_continue(&pinned, list.selected)) {
+                *chosen = pinned.last;
+                return UI_CONTINUE;
+            }
+            if (row_is_bookmarks(&pinned, list.selected))
+                return UI_BOOKMARKS;
+            *chosen = list.selected - pinned.count;
             return UI_CHOSE;
         }
         if (input_pressed(kb_KeyMode)) {
-            *selection = list.selected;
+            *row = list.selected;
             return UI_SETUP;
         }
 
         /* Mark the whole book read, or unread if it already is. */
-        if (input_pressed(kb_KeyDel) && list.count) {
+        if (input_pressed(kb_KeyDel) && list.selected >= pinned.count
+            && list.count > pinned.count) {
             lib_book_t book;
-            lib_get_book(list.selected, &book);
+            lib_get_book(list.selected - pinned.count, &book);
             if (book.strip_count) {
                 lib_set_book_read(&book, lib_book_read_count(&book) != book.strip_count);
                 dirty = true;
@@ -348,12 +484,49 @@ ui_result_t ui_book_menu(uint16_t *selection) {
     }
 }
 
+/* One strip's row: read marker, title, bookmark ribbon and size. Shared by a
+ * book's list and the bookmarks list. */
+static void draw_strip_row(uint16_t strip_index, int y, bool selected) {
+    lib_strip_t strip;
+    lib_get_strip(strip_index, &strip);
+
+    char line[12];
+    gfx_SetTextBGColor(selected ? UI_SELECT_BG : UI_BG);
+    if (strip.flags & LIB_FLAG_READ) {
+        gfx_SetTextFGColor(UI_ACCENT);
+        gfx_PrintStringXY("*", 2, y + 6);
+    }
+
+    ui_draw_title(strip.title, LIST_X + 8, y + TITLE_INSET, selected);
+
+    sprintf(line, "%uK", (unsigned)(strip.bytes / 1024));
+    int size_x = GFX_LCD_WIDTH - 8 - (int)strlen(line) * 8;
+    if (strip.flags & LIB_FLAG_BOOKMARK) {
+        /* Over the end of a long title: the title is ellipsised well short of
+         * the size column anyway, but the ribbon must not be lost under it. */
+        gfx_SetColor(selected ? UI_SELECT_BG : UI_BG);
+        gfx_FillRectangle_NoClip(size_x - 16, y + 1, 14, UI_ROW_HEIGHT - 2);
+        ui_draw_bookmark(size_x - 12, y + 5);
+    }
+    gfx_SetTextFGColor(UI_DIM);
+    gfx_PrintStringXY(line, size_x, y + 6);
+}
+
+static void toggle_bookmark(uint16_t strip_index) {
+    lib_strip_t strip;
+    lib_get_strip(strip_index, &strip);
+    strip.flags ^= LIB_FLAG_BOOKMARK;
+    lib_save_strip(strip_index, &strip);
+}
+
 ui_result_t ui_strip_menu(uint16_t book_index, uint16_t *selection) {
     lib_book_t book;
     lib_get_book(book_index, &book);
 
-    menu_list_t list = { book.strip_count, 0, 0 };
-    char line[24];
+    /* Open on the first strip not yet read: that is almost always the one
+     * wanted, and in a long book it is the one furthest from the top. */
+    menu_list_t list = { book.strip_count, lib_first_unread(&book), 0 };
+    list_move(&list, 0);
     bool dirty = true;
     bool drew = false;
 
@@ -368,29 +541,12 @@ ui_result_t ui_strip_menu(uint16_t book_index, uint16_t *selection) {
                     break;
 
                 draw_row_background(&list, row);
-
-                lib_strip_t strip;
-                lib_get_strip(book.strip_first + index, &strip);
-
-                int y = UI_LIST_TOP + row * UI_ROW_HEIGHT;
-                bool selected = index == list.selected;
-                gfx_SetTextBGColor(selected ? UI_SELECT_BG : UI_BG);
-
-                if (strip.flags & LIB_FLAG_READ) {
-                    gfx_SetTextFGColor(UI_ACCENT);
-                    gfx_PrintStringXY("*", 2, y + 6);
-                }
-
-                ui_draw_title(strip.title, LIST_X + 8, y + TITLE_INSET, selected);
-
-                sprintf(line, "%uK", (unsigned)(strip.bytes / 1024));
-                gfx_SetTextFGColor(UI_DIM);
-                gfx_PrintStringXY(line, GFX_LCD_WIDTH - 8 - (int)strlen(line) * 8,
-                                  y + 6);
+                draw_strip_row(book.strip_first + index,
+                               UI_LIST_TOP + row * UI_ROW_HEIGHT, index == list.selected);
             }
 
             draw_scrollbar(&list);
-            ui_footer("enter read   del mark   clear back");
+            ui_footer("enter read  del read  alpha bookmark");
             dirty = false;
             drew = true;
         }
@@ -423,6 +579,74 @@ ui_result_t ui_strip_menu(uint16_t book_index, uint16_t *selection) {
                 strip.read_at = lib_now();
             lib_save_strip(index, &strip);
             lib_get_book(book_index, &book);
+            dirty = true;
+        }
+        if (input_pressed(kb_KeyAlpha) && list.count) {
+            toggle_bookmark(book.strip_first + list.selected);
+            lib_get_book(book_index, &book);
+            dirty = true;
+        }
+        if (input_pressed(kb_KeyClear))
+            return UI_BACK;
+    }
+}
+
+ui_result_t ui_bookmark_menu(uint16_t *selection) {
+    menu_list_t list = { lib_bookmark_count(), 0, 0 };
+    bool dirty = true;
+    bool drew = false;
+
+    /* Where the previous visit left off, if that strip is still bookmarked. */
+    for (uint16_t i = 0; i < list.count; i++) {
+        if (lib_bookmark_at(i) == *selection) {
+            list.selected = i;
+            break;
+        }
+    }
+    list_move(&list, 0);
+
+    for (;;) {
+        if (!list.count)
+            return UI_BACK;
+
+        if (dirty) {
+            gfx_FillScreen(UI_BG);
+            ui_header("Bookmarks");
+
+            for (uint16_t row = 0; row < UI_LIST_ROWS; row++) {
+                uint16_t index = list.first + row;
+                if (index >= list.count)
+                    break;
+
+                draw_row_background(&list, row);
+                draw_strip_row(lib_bookmark_at(index),
+                               UI_LIST_TOP + row * UI_ROW_HEIGHT, index == list.selected);
+            }
+
+            draw_scrollbar(&list);
+            ui_footer("enter read  alpha unmark  clear back");
+            dirty = false;
+            drew = true;
+        }
+
+        ui_present(drew);
+        drew = false;
+        input_scan();
+
+        if (lock_poll()) {
+            dirty = true;
+            continue;
+        }
+        if (list_navigate(&list))
+            dirty = true;
+        if (input_pressed(kb_KeyEnter)) {
+            *selection = lib_bookmark_at(list.selected);
+            return UI_CHOSE;
+        }
+        if (input_pressed(kb_KeyAlpha)) {
+            toggle_bookmark(lib_bookmark_at(list.selected));
+            list.count = lib_bookmark_count();
+            list_move(&list, 0);
             dirty = true;
         }
         if (input_pressed(kb_KeyClear))

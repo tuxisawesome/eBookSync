@@ -18,6 +18,7 @@ tools/vendor/zx0/zx0.dll
 tools/hosttest/render_probe
 tools/hosttest/lib_probe
 tools/hosttest/ui_probe
+tools/hosttest/viewer_probe
 tools/hosttest/usb_probe
 tools/hosttest/update_probe
 

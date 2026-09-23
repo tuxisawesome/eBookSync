@@ -1,4 +1,4 @@
-"""Turning a comic JPEG into packed 4bpp bands.
+"""Turning a comic image -- or a folder of them -- into packed 4bpp bands.
 
 The pipeline, in order:
 
@@ -18,9 +18,15 @@ the container stores the palette explicitly, so web/js may pick colours
 differently without breaking anything.
 """
 
+import re
+from pathlib import Path
+
 from PIL import Image, ImageChops, ImageFilter
 
 from . import format as fmt
+
+# What counts as a comic image. Matches IMAGE_PATTERN in web/js/fs.js.
+IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif"}
 
 # Named zoom ladders offered by the sync UI. Values are layer widths in pixels;
 # the first entry is always the fit-width reading view.
@@ -46,6 +52,54 @@ def load(path):
     return Image.open(path).convert("RGB")
 
 
+def natural_key(name):
+    """Numeric-aware, case-blind: 0-9, then A-Z, and 10 after 9.
+
+    The same order as the page's Intl.Collator({ numeric: true, sensitivity:
+    'base' }), so a folder strip's images are stitched in the order the page
+    would stitch them.
+    """
+    return [(0, int(piece), "") if piece.isdigit() else (1, 0, piece.casefold())
+            for piece in re.split(r"(\d+)", name) if piece]
+
+
+def part_paths(source):
+    """The images a strip is made of, in reading order.
+
+    A file is a strip of one image. A folder is a strip of every image directly
+    inside it, which is how a chapter that arrives as many slices is kept.
+    """
+    source = Path(source)
+    if not source.is_dir():
+        return [source]
+    paths = [p for p in source.iterdir()
+             if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES]
+    if not paths:
+        raise ValueError(f"{source} has no images in it")
+    return sorted(paths, key=lambda p: natural_key(p.name))
+
+
+def stack_layer(parts, width):
+    """Scale every part to `width` on its own and stack them top to bottom.
+
+    Returns the stacked image and the row each part starts on. Each part keeps
+    its own aspect ratio, so images of different shapes line up at the edges
+    and simply differ in height.
+    """
+    scaled = [resize_layer(part, width) for part in parts]
+    tops, height = [], 0
+    for image in scaled:
+        tops.append(height)
+        height += image.height
+    if len(scaled) == 1:
+        return scaled[0], tops
+
+    out = Image.new("RGB", (width, height))
+    for image, top in zip(scaled, tops):
+        out.paste(image, (0, top))
+    return out, tops
+
+
 def resize_layer(img, width):
     """Downscale to `width`, halving repeatedly first for a cleaner result."""
     height = max(1, round(img.height * width / img.width))
@@ -69,12 +123,20 @@ def despeckle(img, threshold=DEFAULT_DESPECKLE):
 
 
 def build_layers(img, widths, colors=16, denoise=DEFAULT_DESPECKLE, dither=False):
-    """Render every zoom layer as an indexed image sharing one palette."""
+    """Render every zoom layer as an indexed image sharing one palette.
+
+    `img` is one image or a list of them. Returns (palette, indexed, parts),
+    where parts[p][l] is the row part p starts on in layer l -- empty for a
+    single image.
+    """
     dither_mode = Image.Dither.FLOYDSTEINBERG if dither else Image.Dither.NONE
+    images = img if isinstance(img, list) else [img]
 
     rendered = []
+    tops_by_layer = []
     for width in widths:
-        layer = resize_layer(img, width)
+        layer, tops = stack_layer(images, width)
+        tops_by_layer.append(tops)
         if denoise:
             layer = despeckle(layer, denoise)
         rendered.append(layer)
@@ -86,7 +148,8 @@ def build_layers(img, widths, colors=16, denoise=DEFAULT_DESPECKLE, dither=False
 
     raw = base.getpalette()[: colors * 3]
     palette = [fmt.rgb_to_1555(*raw[i * 3:i * 3 + 3]) for i in range(colors)]
-    return palette, indexed
+    parts = [list(tops) for tops in zip(*tops_by_layer)] if len(images) > 1 else []
+    return palette, indexed, parts
 
 
 def pack_band(indexed, layer, col, band):

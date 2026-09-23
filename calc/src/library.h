@@ -24,7 +24,18 @@
 
 /* Identifies which library on the computer these comics came from. */
 #define LIB_ID_SIZE     16
-#define LIB_FLAG_READ   0x01
+#define LIB_FLAG_READ     0x01
+
+/*
+ * A bookmark: the strip is listed under Bookmarks on the book list, and the
+ * page will not take it off when it clears read strips to make room. It is set
+ * and cleared here, on the calculator, and the page carries it back in every
+ * index it sends -- the calculator is authoritative for it, as for read state.
+ */
+#define LIB_FLAG_BOOKMARK 0x02
+
+/* "No such strip", from the lookups below. */
+#define LIB_NONE          0xFFFF
 
 /*
  * The largest slot a strip can be given.
@@ -210,13 +221,40 @@ void lib_get_strip(uint16_t index, lib_strip_t *strip);
 uint16_t lib_book_read_count(const lib_book_t *book);
 
 /*
- * Persist one strip's read flag, scroll position and zoom layer.
+ * Persist one strip's flags, scroll position and zoom layer.
  *
  * This rewrites the index appvar, which means unarchiving and re-archiving it,
  * so it is called when leaving a strip and never mid-scroll. Returns false if
  * the write failed, in which case the in-flash copy is unchanged.
  */
 bool lib_save_strip(uint16_t index, const lib_strip_t *strip);
+
+/*
+ * The same, and remember this as the strip last read -- in the same rewrite,
+ * so Continue costs no extra flash write. What the viewer calls on the way out.
+ *
+ * It is kept by slot, in the device block, which INDEX_PUT carries across a
+ * sync; a strip that has since gone simply has no Continue row.
+ */
+bool lib_save_strip_as_last(uint16_t index, const lib_strip_t *strip);
+
+/* The strip last read, or LIB_NONE if it is not on the calculator any more. */
+uint16_t lib_last_strip(void);
+
+/* The strip in `slot`, or LIB_NONE. */
+uint16_t lib_find_slot(uint16_t slot);
+
+/* The book a strip belongs to. */
+uint16_t lib_book_of(uint16_t strip_index);
+
+/* A book's first unread strip, as an offset into the book; 0 if all are read. */
+uint16_t lib_first_unread(const lib_book_t *book);
+
+/* How many strips are bookmarked, across every book. */
+uint16_t lib_bookmark_count(void);
+
+/* The `n`th bookmarked strip in library order, or LIB_NONE. */
+uint16_t lib_bookmark_at(uint16_t n);
 
 /*
  * Expand a title bitmap into the shared scratch buffer.

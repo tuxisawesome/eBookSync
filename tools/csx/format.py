@@ -29,6 +29,13 @@ LAYER_SIZE = struct.calcsize(LAYER_FMT)
 BAND_FMT = "<BHH"                    # 5 bytes
 BAND_SIZE = struct.calcsize(BAND_FMT)
 
+# One u24 per part per layer: the row that part starts on in that layer.
+PART_TOP_SIZE = 3
+
+# More images than this in one strip is almost certainly a mistake, and the
+# count has to fit the header byte that holds it.
+MAX_PARTS = 255
+
 assert HEADER_SIZE == 16 and LAYER_SIZE == 12 and BAND_SIZE == 5
 
 
@@ -63,20 +70,43 @@ def rgb_to_1555(r, g, b):
     return ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3)
 
 
-def pack_chunks(layers, palette, bands):
+def check_parts(layers, parts):
+    """Validate a part table: `parts[p][l]` is part p's top row in layer l.
+
+    One part, or none, means an ordinary single-image strip and no table is
+    written at all -- every container from before parts existed looks exactly
+    like that.
+    """
+    if not parts or len(parts) == 1:
+        return []
+    if len(parts) > MAX_PARTS:
+        raise ValueError(f"{len(parts)} images in one strip; the limit is {MAX_PARTS}")
+    for li, layer in enumerate(layers):
+        tops = [part[li] for part in parts]
+        if tops[0] != 0:
+            raise ValueError(f"layer {li}: the first part must start at row 0")
+        if any(b <= a for a, b in zip(tops, tops[1:])) or tops[-1] >= layer.height:
+            raise ValueError(f"layer {li}: part tops {tops} are not increasing within the layer")
+    return parts
+
+
+def pack_chunks(layers, palette, bands, parts=None):
     """Lay a strip out into fixed-size chunks.
 
     `bands` is a flat list of compressed band payloads in band-index order
     (layer, then column, then band). Bands are bin-packed with first-fit
     decreasing so that no band straddles a chunk boundary -- that is what lets
     the calculator decompress straight from a flash pointer with no staging
-    copy. Chunk 0 starts with the header, palette, layer table and band table.
+    copy. Chunk 0 starts with the header, palette, layer table and band table,
+    then the part table when the strip was made from several images.
 
     Returns (chunks, band_entries) where chunks is a list of bytearrays and
     band_entries is a list of (chunk, offset, length).
     """
+    parts = check_parts(layers, parts)
     table_size = (HEADER_SIZE + len(palette) * 2
-                  + len(layers) * LAYER_SIZE + len(bands) * BAND_SIZE)
+                  + len(layers) * LAYER_SIZE + len(bands) * BAND_SIZE
+                  + len(parts) * len(layers) * PART_TOP_SIZE)
     if table_size > CHUNK_SIZE:
         raise ValueError(
             f"band table needs {table_size} bytes but a chunk holds {CHUNK_SIZE}; "
@@ -111,7 +141,7 @@ def pack_chunks(layers, palette, bands):
 
     header = struct.pack(
         HEADER_FMT, MAGIC, len(layers), BAND_HEIGHT, COL_WIDTH,
-        len(palette), len(bands), len(chunks), 0, 0, 0,
+        len(palette), len(bands), len(chunks), len(parts), 0, 0,
     )
     table = bytearray(header)
     for colour in palette:
@@ -123,6 +153,9 @@ def pack_chunks(layers, palette, bands):
         )
     for chunk, offset, size in entries:
         table += struct.pack(BAND_FMT, chunk, offset, size)
+    for part in parts:
+        for top in part:
+            table += struct.pack("<HB", top & 0xFFFF, top >> 16)
     assert len(table) == table_size, (len(table), table_size)
     chunks[0][0:table_size] = table
 
@@ -136,7 +169,7 @@ class Strip:
         self.chunks = chunks
         blob = chunks[0]
         (magic, layer_count, band_height, col_width,
-         palette_size, band_count, chunk_count, _, _, _) = struct.unpack_from(HEADER_FMT, blob, 0)
+         palette_size, band_count, chunk_count, part_count, _, _) = struct.unpack_from(HEADER_FMT, blob, 0)
         if magic != MAGIC:
             raise ValueError(f"not a .csx container (magic {magic!r})")
         self.band_height = band_height
@@ -153,6 +186,18 @@ class Strip:
             self.layers.append(layer)
         self.bands = [struct.unpack_from(BAND_FMT, blob, pos + i * BAND_SIZE)
                       for i in range(band_count)]
+        pos += band_count * BAND_SIZE
+        # parts[p][l]: the row part p starts on in layer l. Empty for a strip
+        # made from one image.
+        self.parts = []
+        if part_count > 1:
+            for _ in range(part_count):
+                tops = []
+                for _ in range(layer_count):
+                    lo, hi = struct.unpack_from("<HB", blob, pos)
+                    tops.append(lo | (hi << 16))
+                    pos += PART_TOP_SIZE
+                self.parts.append(tops)
 
     def band_index(self, layer_index, col, band):
         base = sum(l.band_count for l in self.layers[:layer_index])

@@ -19,6 +19,33 @@ export const PALETTE_SIZE = 16;
 const HEADER_SIZE = 16;
 const LAYER_SIZE = 12;
 const BAND_SIZE = 5;
+const PART_TOP_SIZE = 3;
+
+/* The part count lives in one header byte. */
+export const MAX_PARTS = 255;
+
+/**
+ * Validate a part table: `parts[p][l]` is the row part p starts on in layer l.
+ *
+ * One part, or none, is an ordinary single-image strip and writes no table at
+ * all -- which is exactly what every container from before parts looks like.
+ * Mirrors check_parts() in tools/csx/format.py.
+ */
+export function checkParts(layers, parts) {
+  if (!parts || parts.length <= 1) return [];
+  if (parts.length > MAX_PARTS) {
+    throw new Error(`${parts.length} images in one strip; the limit is ${MAX_PARTS}`);
+  }
+  layers.forEach((layer, l) => {
+    const tops = parts.map((part) => part[l]);
+    if (tops[0] !== 0) throw new Error(`layer ${l}: the first part must start at row 0`);
+    const increasing = tops.every((top, i) => i === 0 || top > tops[i - 1]);
+    if (!increasing || tops[tops.length - 1] >= layer.height) {
+      throw new Error(`layer ${l}: part tops ${tops} are not increasing within the layer`);
+    }
+  });
+  return parts;
+}
 
 /**
  * The appvar one chunk of a strip lives in: `CS<slot><chunk>`, the slot in four
@@ -95,12 +122,14 @@ export function packBand(indices, layer, col, band) {
  *
  * First-fit decreasing, and no band is ever allowed to straddle a chunk: that
  * is what lets the calculator hand zx0_Decompress a pointer straight into flash
- * with no staging copy. Chunk 0 is pre-charged with the header so the packer
- * cannot place a band on top of it.
+ * with no staging copy. Chunk 0 is pre-charged with the header -- and the part
+ * table, for a strip made of several images -- so the packer cannot place a
+ * band on top of it.
  */
-function packChunks(layers, palette, bands) {
+function packChunks(layers, palette, bands, parts = []) {
   const tableSize = HEADER_SIZE + palette.length * 2
-    + layers.length * LAYER_SIZE + bands.length * BAND_SIZE;
+    + layers.length * LAYER_SIZE + bands.length * BAND_SIZE
+    + parts.length * layers.length * PART_TOP_SIZE;
   if (tableSize > CHUNK_SIZE) {
     throw new Error(`band table needs ${tableSize} bytes but a chunk holds ${CHUNK_SIZE}`);
   }
@@ -136,7 +165,8 @@ function packChunks(layers, palette, bands) {
   table.setUint16(pos, palette.length, true); pos += 2;
   table.setUint16(pos, bands.length, true); pos += 2;
   table.setUint8(pos++, chunks.length);
-  pos += 3;   /* reserved */
+  table.setUint8(pos++, parts.length);
+  pos += 2;   /* reserved */
 
   for (const colour of palette) { table.setUint16(pos, colour, true); pos += 2; }
 
@@ -156,6 +186,13 @@ function packChunks(layers, palette, bands) {
     table.setUint16(pos, entry.length, true); pos += 2;
   }
 
+  for (const part of parts) {
+    for (const top of part) {
+      table.setUint16(pos, top & 0xffff, true); pos += 2;
+      table.setUint8(pos++, top >>> 16);
+    }
+  }
+
   if (pos !== tableSize) throw new Error(`header wrote ${pos} bytes, expected ${tableSize}`);
   return { chunks, entries };
 }
@@ -164,16 +201,19 @@ function packChunks(layers, palette, bands) {
  * Build a container.
  *
  * `layers` is an array of { width, height, indices }, largest zoom last, all
- * sharing `palette` (16 RGB1555 values). `onProgress` is called with a fraction
- * as bands are compressed.
+ * sharing `palette` (16 RGB1555 values). `parts`, for a strip stitched from
+ * several images, gives the row each image starts on in each layer:
+ * `parts[p][l]`. `onProgress` is called with a fraction as bands are
+ * compressed.
  */
-export function buildContainer({ layers, palette, offsetLimit = DEFAULT_OFFSET_LIMIT,
+export function buildContainer({ layers, palette, parts = [], offsetLimit = DEFAULT_OFFSET_LIMIT,
                                  onProgress = null }) {
   if (palette.length !== PALETTE_SIZE) {
     throw new Error(`expected ${PALETTE_SIZE} palette entries, got ${palette.length}`);
   }
 
   const geometry = layers.map((layer) => layerGeometry(layer.width, layer.height));
+  const partTable = checkParts(geometry, parts);
   const raw = [];
   geometry.forEach((layer, index) => {
     for (let col = 0; col < layer.cols; col++) {
@@ -189,10 +229,11 @@ export function buildContainer({ layers, palette, offsetLimit = DEFAULT_OFFSET_L
   });
   if (onProgress) onProgress(1);
 
-  const { chunks } = packChunks(geometry, palette, compressed);
+  const { chunks } = packChunks(geometry, palette, compressed, partTable);
   return {
     chunks,
     layers: geometry,
+    parts: partTable,
     palette,
     rawBytes: raw.reduce((sum, b) => sum + b.length, 0),
     totalBytes: chunks.reduce((sum, c) => sum + c.length, 0),

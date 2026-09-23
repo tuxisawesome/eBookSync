@@ -48,6 +48,10 @@ STRIP_SIZE = struct.calcsize(STRIP_FMT)
 assert (HEADER_SIZE, BOOK_SIZE, STRIP_SIZE) == (92, 6, 17)
 
 FLAG_READ = 0x01
+FLAG_BOOKMARK = 0x02
+
+# Where the reader keeps the strip last read: slot + 1, 0 for none.
+LAST_SLOT = 59
 
 # Biggest title bitmap the reader has to expand: the widest book row, 2bpp.
 TITLE_MAX = ((titles_mod.BOOK_WIDTH + 3) // 4) * titles_mod.TITLE_HEIGHT
@@ -55,8 +59,9 @@ TITLE_MAX = ((titles_mod.BOOK_WIDTH + 3) // 4) * titles_mod.TITLE_HEIGHT
 
 class Strip:
     def __init__(self, title, slot, chunk_count, size, read=False, read_at=0,
-                 pos=0, layer=0):
+                 pos=0, layer=0, bookmarked=False):
         self.title = title
+        self.bookmarked = bookmarked
         self.slot = slot
         self.chunk_count = chunk_count
         self.size = size
@@ -115,7 +120,7 @@ def build(books, renderer=None, library_id=b"\0" * 16):
             strip.slot,
             strip.chunk_count,
             strip.size & 0xFFFF, strip.size >> 16,
-            FLAG_READ if strip.read else 0,
+            (FLAG_READ if strip.read else 0) | (FLAG_BOOKMARK if strip.bookmarked else 0),
             strip.read_at,
             strip.pos & 0xFFFF, strip.pos >> 16,
             strip.layer,
@@ -152,7 +157,7 @@ def parse(data):
             STRIP_FMT, data, strip_base + i * STRIP_SIZE)
         strip = Strip("", slot, chunks, size_lo | (size_hi << 16),
                       bool(flags & FLAG_READ), read_at,
-                      pos_lo | (pos_hi << 16), layer)
+                      pos_lo | (pos_hi << 16), layer, bool(flags & FLAG_BOOKMARK))
         strip.title_bitmap = title_at(title_ofs)
         strips.append(strip)
 
@@ -196,3 +201,21 @@ def set_password(index, password, salt=b"\x01" * SALT_SIZE, failures=0):
 def device_block(index):
     """The device block of an index, for checking what the reader wrote back."""
     return bytes(index[DEVICE_OFFSET:DEVICE_OFFSET + DEVICE_SIZE])
+
+
+def set_last_slot(index, slot):
+    """Record `slot` as the strip last read, as the reader does on leaving it.
+
+    Kept in the device block as slot + 1, so the zeros of an index that has never
+    recorded one read as "none" rather than slot 0. None clears it.
+    """
+    out = bytearray(index)
+    stored = 0 if slot is None else slot + 1
+    struct.pack_into("<H", out, DEVICE_OFFSET + LAST_SLOT, stored)
+    return bytes(out)
+
+
+def last_slot(index):
+    """The slot the reader recorded as last read, or None."""
+    stored, = struct.unpack_from("<H", index, DEVICE_OFFSET + LAST_SLOT)
+    return stored - 1 if stored else None

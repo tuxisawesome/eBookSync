@@ -21,6 +21,21 @@
 #include <graphx.h>
 #include <tice.h>
 
+/*
+ * Read from `strip`, and keep going: pressing on past the end of a strip opens
+ * the next one in its book, for as long as the reader keeps doing that. The
+ * viewer only offers it while there is a next strip in the same book.
+ */
+static void read_from(uint16_t strip) {
+    for (;;) {
+        view_result_t result = viewer_run(strip);
+        ui_set_chrome_palette();
+        if (result != VIEW_NEXT)
+            return;
+        strip++;
+    }
+}
+
 int main(void) {
     gfx_Begin();
     gfx_SetDrawBuffer();
@@ -95,15 +110,17 @@ int main(void) {
         ui_message(line, "Quit and run prgmCSUP.");
     }
 
-    uint16_t book = 0;
+    uint16_t row = 0;
+    uint16_t bookmark = LIB_NONE;
     for (;;) {
-        ui_result_t result = ui_book_menu(&book);
+        uint16_t chosen = 0;
+        ui_result_t result = ui_book_menu(&row, &chosen);
         if (result == UI_BACK)
             break;
         if (result == UI_SETUP) {
             result = ui_setup_screen();
             lib_open();
-            book = 0;
+            row = 0;
             if (result != UI_SYNC)
                 continue;
         }
@@ -118,16 +135,26 @@ int main(void) {
                 ui_message("Not enough free memory.", "Archive or delete some files.");
                 break;
             }
-            book = 0;
+            row = 0;
+            continue;
+        }
+
+        if (result == UI_CONTINUE) {
+            read_from(chosen);
+            continue;
+        }
+
+        if (result == UI_BOOKMARKS) {
+            while (ui_bookmark_menu(&bookmark) == UI_CHOSE)
+                read_from(bookmark);
             continue;
         }
 
         for (;;) {
             uint16_t strip;
-            if (ui_strip_menu(book, &strip) != UI_CHOSE)
+            if (ui_strip_menu(chosen, &strip) != UI_CHOSE)
                 break;
-            viewer_run(strip);
-            ui_set_chrome_palette();
+            read_from(strip);
         }
     }
 

@@ -30,6 +30,15 @@ ${CC:-cc} $flags -o "$dir/ui_probe" \
     "$dir/reader_main.o"
 rm -f "$dir/reader_main.o"
 
+# The strip viewer, over real strips: paging, images, bookmarks, what it saves.
+${CC:-cc} $flags -o "$dir/viewer_probe" \
+    "$dir/viewer_probe.c" $common \
+    "$root/calc/src/viewer.c" "$root/calc/src/ui.c" "$root/calc/src/input.c" \
+    "$root/calc/src/library.c" "$root/calc/src/render.c" "$root/calc/src/csx.c" \
+    "$root/calc/src/keyin.c" "$root/calc/src/lock.c" "$root/calc/src/wall.c" \
+    "$root/calc/src/scratch.c" "$root/calc/src/update.c" "$root/calc/src/crc32.c" \
+    "$root/calc/src/sha256.c"
+
 # usb.c against the wire model, driven over a pipe by the real web/js/usb.js.
 ${CC:-cc} $flags -o "$dir/usb_probe" \
     "$dir/usb_probe.c" $common "$dir/shim/usbwire.c" \
@@ -42,4 +51,4 @@ ${CC:-cc} $flags -o "$dir/usb_probe" \
 ${CC:-cc} $flags -o "$dir/update_probe" \
     "$dir/update_probe.c" $common "$root/calc/src/update.c" "$root/calc/src/crc32.c"
 
-echo "built $dir/render_probe, $dir/lib_probe, $dir/ui_probe, $dir/usb_probe and $dir/update_probe"
+echo "built $dir/render_probe, $dir/lib_probe, $dir/ui_probe, $dir/viewer_probe, $dir/usb_probe and $dir/update_probe"

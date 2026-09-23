@@ -42,6 +42,10 @@ echo "== reader menus: which keys do what =="
 python3 "$dir/check_ui.py"
 
 echo
+echo "== the strip viewer: paging, images within a strip, bookmarks =="
+python3 "$dir/check_viewer.py"
+
+echo
 echo "== library editing, and order reaching the calculator =="
 "$node" "$dir/check_library_edit.mjs"
 

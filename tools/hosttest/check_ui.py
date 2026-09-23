@@ -13,6 +13,7 @@ closed" is observable without a calculator.
     tools/hosttest/check_ui.py
 """
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -49,19 +50,20 @@ def library_with_content(directory):
     (directory / f"{lib.NAME}.8xv").write_bytes(tifile.write(lib.NAME, index))
 
 
-def run(keys, directory=None):
+def run(keys, directory=None, env=None):
     command = [str(HERE / "ui_probe")]
     if directory:
         command += ["--lib", str(directory)]
     command += keys
-    result = subprocess.run(command, capture_output=True, text=True)
+    result = subprocess.run(command, capture_output=True, text=True,
+                            env=dict(os.environ, **(env or {})))
     return result.returncode, result.stdout
 
 
-def check(label, keys, expect_status, expect_output=None, directory=None):
+def check(label, keys, expect_status, expect_output=None, directory=None, env=None):
     global checks
     checks += 1
-    status, output = run(keys, directory)
+    status, output = run(keys, directory, env)
 
     problems = []
     if status != expect_status:
@@ -131,6 +133,85 @@ with tempfile.TemporaryDirectory() as tmp:
           LEAD + press("mode") + press("enter"), RUNNING, expect_output="sync",
           directory=directory)
 
+
+
+# --- continue, bookmarks, and where a book opens ---------------------------
+def reading_library(directory, strips, last_slot=None):
+    """One book of `strips`, each (read, bookmarked), in slots 0, 1, 2..."""
+    books = [lib.Book("第一本书", [
+        lib.Strip(f"{i + 1:03} - 标题", i, 9, 140_000, read=read, bookmarked=marked)
+        for i, (read, marked) in enumerate(strips)
+    ]), lib.Book("Another Book", [lib.Strip("01", len(strips), 9, 90_000)])]
+    index = lib.build(books, renderer=StubRenderer())
+    if last_slot is not None:
+        index = lib.set_last_slot(index, last_slot)
+    (directory / f"{lib.NAME}.8xv").write_bytes(tifile.write(lib.NAME, index))
+
+
+TEXT = {"SHIM_TEXT": "1"}
+
+with tempfile.TemporaryDirectory() as tmp:
+    directory = Path(tmp)
+
+    reading_library(directory, [(True, False), (True, False), (False, False)])
+    check("a book opens on its first unread strip",
+          LEAD + press("enter") + press("enter"), RUNNING,
+          expect_output="viewer 2", directory=directory)
+
+    reading_library(directory, [(False, False)] * 3)
+    check("with no Continue or Bookmarks, the first row is still the first book",
+          LEAD + press("enter") + press("enter"), RUNNING,
+          expect_output="viewer 0", directory=directory)
+
+    check("pressing on past the end of a strip opens the next one",
+          LEAD + press("enter") + press("enter"), RUNNING,
+          expect_output="viewer 0\nviewer 1\nviewer 2", directory=directory,
+          env={"PROBE_VIEW_NEXT": "2"})
+
+    reading_library(directory, [(False, False)] * 3, last_slot=1)
+    check("Continue is the first row and opens the strip last read",
+          LEAD + press("enter"), RUNNING, expect_output="viewer 1", directory=directory)
+    check("Continue is labelled", LEAD, RUNNING, expect_output="Continue",
+          directory=directory, env=TEXT)
+    check("and the books follow it",
+          LEAD + press("down") + press("enter") + press("enter"), RUNNING,
+          expect_output="viewer 0", directory=directory)
+
+    reading_library(directory, [(False, False)] * 3, last_slot=40)
+    status, output = run(LEAD, directory, TEXT)
+    checks += 1
+    if "Continue" in output:
+        failures.append("a last-read slot that is not on the calculator still offered Continue")
+
+    reading_library(directory, [(False, False), (False, True), (False, True)])
+    check("Bookmarks is listed with its count",
+          LEAD, RUNNING, expect_output="Bookmarks (2)", directory=directory, env=TEXT)
+    check("Bookmarks lists the bookmarked strips",
+          LEAD + press("enter") + press("down") + press("enter"), RUNNING,
+          expect_output="viewer 2", directory=directory)
+
+    # Once the list closes, Bookmarks is gone from the book list, so the row
+    # the user was on is now the first book.
+    check("alpha in Bookmarks takes one off, and the list closes when empty",
+          LEAD + press("enter") + press("alpha") + press("alpha")
+          + press("enter") + press("enter"),
+          RUNNING, expect_output="viewer 0", directory=directory)
+
+    reading_library(directory, [(False, False)] * 3)
+    check("alpha on a strip bookmarks it, and Bookmarks appears",
+          LEAD + press("enter") + press("down") + press("alpha") + press("clear")
+          + press("enter") + press("enter"),
+          RUNNING, expect_output="viewer 1", directory=directory)
+
+    reading_library(directory, [(False, True), (False, False), (False, False)])
+    check("marking a whole book read keeps its bookmarks",
+          LEAD + press("down") + press("del") + press("up") + press("enter")
+          + press("enter"),
+          RUNNING, expect_output="viewer 0", directory=directory)
+
+    # The header: battery gauge and free archive, from the shim's archive.
+    check("the book list shows the free archive", LEAD, RUNNING,
+          expect_output="M free", directory=directory, env=TEXT)
 
 
 # --- the lock screen -------------------------------------------------------

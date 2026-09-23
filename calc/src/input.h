@@ -23,6 +23,16 @@ bool input_pressed(kb_lkey_t key);
  * the initial delay. */
 bool input_repeat(kb_lkey_t key);
 
+/*
+ * Treat a press as spent: `key` will not repeat until it has been held past the
+ * initial delay, as if input_repeat() had already reported its first press.
+ *
+ * For a caller that acted on input_pressed() instead. Without this the next
+ * frame's input_repeat() sees a key it has not been asked about yet, reports it
+ * as a fresh press, and the one keypress acts twice.
+ */
+void input_claim(kb_lkey_t key);
+
 /* How many frames the current repeat key has been held, for callers that want
  * to accelerate. */
 unsigned input_held_frames(void);

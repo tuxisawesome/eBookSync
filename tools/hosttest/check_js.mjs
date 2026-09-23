@@ -34,7 +34,7 @@ for (const layer of layers) {
   }
 }
 
-const result = buildContainer({ layers, palette: spec.palette });
+const result = buildContainer({ layers, palette: spec.palette, parts: spec.parts || [] });
 console.error(`js: ${result.chunks.length} chunks, ${result.totalBytes} bytes, `
   + `ratio ${(result.rawBytes / result.totalBytes).toFixed(2)}x`);
 

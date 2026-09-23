@@ -6,7 +6,11 @@
  * palette indices to stdout. tools/hosttest/check.py compares those bytes with
  * what the Python decoder produces for the same viewport.
  *
- *   render_probe <chunk-dir> <slot> [layer,vx,vy ...]
+ *   render_probe <chunk-dir> <slot> [layer,vx,vy[,limit] ...]
+ *
+ * `limit` is the row render_view() stops drawing at; it defaults to the layer
+ * height. The part table, if the strip has one, is reported on stderr as
+ * "part P: top top ..." with one top per layer.
  */
 
 #include "csx.h"
@@ -74,6 +78,13 @@ int main(int argc, char **argv) {
         fprintf(stderr, "  layer %u: %ux%u cols=%u bands/col=%u base=%u\n", i,
                 strip.layer[i].width, strip.layer[i].height, strip.layer[i].cols,
                 strip.layer[i].bands_per_col, strip.layer[i].band_base);
+    fprintf(stderr, "parts=%u\n", strip.part_count);
+    for (uint8_t p = 0; p < strip.part_count && strip.part_count > 1; p++) {
+        fprintf(stderr, "part %u:", p);
+        for (uint8_t l = 0; l < strip.layer_count; l++)
+            fprintf(stderr, " %u", (unsigned)csx_part_top(&strip, l, p));
+        fprintf(stderr, "\n");
+    }
 
     if (!render_init()) {
         fprintf(stderr, "render_init failed\n");
@@ -81,12 +92,15 @@ int main(int argc, char **argv) {
     }
 
     for (int i = 3; i < argc; i++) {
-        unsigned layer, vx, vy;
-        if (sscanf(argv[i], "%u,%u,%u", &layer, &vx, &vy) != 3) {
+        unsigned layer, vx, vy, limit;
+        int fields = sscanf(argv[i], "%u,%u,%u,%u", &layer, &vx, &vy, &limit);
+        if (fields < 3 || layer >= strip.layer_count) {
             fprintf(stderr, "bad viewport %s\n", argv[i]);
             return 2;
         }
-        render_view(&strip, (uint8_t)layer, vx, vy);
+        if (fields < 4)
+            limit = strip.layer[layer].height;
+        render_view(&strip, (uint8_t)layer, vx, vy, limit);
         fwrite(shim_vbuffer, 1, sizeof shim_vbuffer, stdout);
     }
 

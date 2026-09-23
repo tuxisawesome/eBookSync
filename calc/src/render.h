@@ -27,9 +27,18 @@ void render_reset(void);
  * palette. */
 void render_set_palette(const csx_strip_t *strip);
 
-/* Draw the viewport of `layer` whose top-left corner is at (vx, vy) in layer
- * coordinates, into the current draw buffer. */
-void render_view(const csx_strip_t *strip, uint8_t layer, uint24_t vx, uint24_t vy);
+/*
+ * Draw the viewport of `layer` whose top-left corner is at (vx, vy) in layer
+ * coordinates, into the current draw buffer.
+ *
+ * Nothing at or below row `limit` is drawn; the screen shows the background
+ * there instead. That is how a strip made of several images keeps the next
+ * image out of sight while the reader is still on this one -- a short image
+ * leaves the rest of the screen empty rather than showing what comes after.
+ * Pass the layer height to draw everything.
+ */
+void render_view(const csx_strip_t *strip, uint8_t layer, uint24_t vx, uint24_t vy,
+                 uint24_t limit);
 
 /*
  * Draw a whole 320-wide layer 0 at 1:1, decompressing through `scratch` rather

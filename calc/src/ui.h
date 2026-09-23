@@ -49,6 +49,13 @@ void ui_footer(const char *text);
 /* Blit a pre-rendered 2bpp title through the normal or selected ramp. */
 void ui_draw_title(uint16_t title_offset, int x, int y, bool selected);
 
+/* A small ribbon, 7x10, marking a bookmarked strip. The font has no glyph for
+ * one, and a letter would read as part of the title beside it. */
+void ui_draw_bookmark(int x, int y);
+
+/* A 9x7 downward arrow: what the next press of down does. */
+void ui_draw_down_arrow(int x, int y);
+
 /* Centred one-line message on a blank screen, shown until a key is pressed. */
 void ui_message(const char *line1, const char *line2);
 
@@ -67,6 +74,8 @@ typedef enum {
     UI_BACK,      /* the user backed out */
     UI_SYNC,      /* the user asked for the sync screen */
     UI_SETUP,     /* the user asked for the settings screen */
+    UI_CONTINUE,  /* the user asked to go back to the strip last read */
+    UI_BOOKMARKS, /* the user asked for the bookmarks list */
 } ui_result_t;
 
 /*
@@ -96,7 +105,21 @@ bool ui_confirm(const char *line1, const char *line2);
 /* The sync screen: plain text on the homescreen, with graphx handed back. */
 void ui_sync_run(void);
 
-ui_result_t ui_book_menu(uint16_t *selection);
+/*
+ * The book list, with two rows pinned above the books when they apply:
+ * Continue, back to the strip last read, and Bookmarks. The header shows the
+ * battery and the free archive.
+ *
+ * `row` is the highlighted row, kept by the caller so coming back lands where
+ * the user left. `chosen` is the book for UI_CHOSE and the strip for
+ * UI_CONTINUE.
+ */
+ui_result_t ui_book_menu(uint16_t *row, uint16_t *chosen);
+
+/* A book's strips, opening on the first one not yet read. */
 ui_result_t ui_strip_menu(uint16_t book_index, uint16_t *selection);
+
+/* Every bookmarked strip in the library, in library order. */
+ui_result_t ui_bookmark_menu(uint16_t *selection);
 
 #endif /* UI_H */

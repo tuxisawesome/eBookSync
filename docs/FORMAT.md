@@ -120,8 +120,9 @@ chunk boundary**. That is what lets the reader hand `zx0_Decompress` a pointer
 straight into flash from `ti_GetDataPtr()` with no staging copy. Packing waste is
 under 1% in practice.
 
-Chunk 0 begins with the header, palette, layer table and band table; the packer
-reserves that space before placing any band.
+Chunk 0 begins with the header, palette, layer table and band table -- and the
+part table, for a strip made from several images; the packer reserves that
+space before placing any band.
 
 ## Byte layout
 
@@ -136,7 +137,8 @@ Header (16 bytes)
   8   2   palette_size    entries (16)
   10  2   band_count      total bands across all layers
   12  1   chunk_count
-  13  3   reserved
+  13  1   part_count      images stitched into this strip; 0 or 1 means one
+  14  2   reserved
 
 Palette (palette_size x 2 bytes)
   RGB1555, packed as gfx_RGBTo1555 does: 0RRRRRGGGGGBBBBB
@@ -154,6 +156,9 @@ Band table (band_count x 5 bytes)
   1   2   offset          byte offset within that chunk
   3   2   length          compressed length
 
+Part table (part_count x layer_count x 3 bytes, only when part_count > 1)
+  u24 per part per layer: the row that part starts on in that layer
+
 Band payloads
   ZX0 streams, placed by the bin packer.
 ```
@@ -163,6 +168,30 @@ Bands are indexed `base[layer] + col * bands_per_col[layer] + band`, where
 
 A decompressed band is `stride * rows` bytes, where `stride = (col_width + 1) / 2`
 and `rows` is 32 except in the final band of a column.
+
+### Strips made of several images
+
+A folder inside a book is one strip, made of the images directly inside it in
+natural order -- 0-9, then A-Z, case-blind, and 10 after 9. It is **stitched
+into one container**: each image is scaled to the layer width on its own, so
+images of different shapes line up at the edges and simply differ in height,
+and the results are stacked. Bands, columns, chunking, the 1 MB ceiling and the
+saved scroll position all work exactly as for a single image.
+
+What the stitching would lose is where one image ends, and the part table keeps
+it: the row each image starts on, in every layer. The reader confines the view
+to one image at a time and draws nothing below its end -- a short image leaves
+the rest of the screen empty rather than showing the next one underneath -- and
+at the bottom a bar says what comes next. A fresh press of down goes there; a
+held one stops, so holding the key to scroll cannot carry through into the next
+image unseen.
+
+The table sits after the band table, so the band table's offset does not move,
+and it is absent when `part_count` is 0 or 1. Every container from before parts
+existed is therefore a valid single-image container, and a reader from before
+them shows a multi-image strip as one continuous strip rather than failing.
+`csx_open()` refuses a table whose first top is not 0, whose tops do not
+increase, or that runs past its layer.
 
 ## `CSLIB`: the library index
 
@@ -190,7 +219,7 @@ Strip table (stripCount x 17 bytes)
   0   2   slot            names the CS<slot><chunk> appvars
   2   1   chunkCount
   3   3   bytes
-  6   1   flags           bit 0: read
+  6   1   flags           bit 0: read, bit 1: bookmarked
   7   4   readAt          unix seconds, 0 if never
   11  3   pos             saved scroll position, in the saved layer's rows
   14  1   layer           saved zoom layer
@@ -218,8 +247,15 @@ it again in the reply.
   50  4   clockOffset     added to time() to get unix seconds
   54  1   wallFlags       0 = no lock screen wallpaper
   55  4   wallCrc         CRC-32 of the wallpaper container, chunk by chunk
-  59  5   reserved
+  59  2   lastSlot        the strip last read, as slot + 1; 0 for none
+  61  3   reserved
 ```
+
+`lastSlot` is what the book list's Continue row opens. It is written in the same
+index rewrite that saves the strip's position on the way out of the viewer, so
+it costs no extra flash write, and it is kept by slot plus one so that the zeros
+of an index that has never recorded one mean "nothing read yet" rather than
+slot 0. A slot the index no longer lists simply has no Continue row.
 
 `wallCrc` is why the wallpaper is in here rather than standing on its own. The
 image itself is an ordinary `.csx` container in slot `0xFFFF` -- a 320x240

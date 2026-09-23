@@ -124,6 +124,7 @@ bool lib_ensure(void) {
 #define DEV_CLOCK_OFFSET  50
 #define DEV_WALL_FLAGS    54
 #define DEV_WALL_CRC      55
+#define DEV_LAST_SLOT     59
 
 #define DEV_WALL_SET      0x01
 
@@ -356,7 +357,7 @@ uint16_t lib_book_read_count(const lib_book_t *book) {
     return read;
 }
 
-bool lib_save_strip(uint16_t index, const lib_strip_t *strip) {
+static bool write_strip(uint16_t index, const lib_strip_t *strip, bool as_last) {
     /* "r+" pulls the index out of the archive into RAM so it can be written. */
     uint8_t handle = ti_Open(LIB_NAME, "r+");
     if (!handle)
@@ -381,6 +382,16 @@ bool lib_save_strip(uint16_t index, const lib_strip_t *strip) {
     record[8] = strip->layer;
 
     bool ok = ti_Write(record, sizeof record, 1, handle) == 1;
+
+    if (ok && as_last) {
+        /* Stored plus one, so the zeros an older index carries here mean
+         * "nothing read yet" rather than "slot 0". Slots stop at 0xFFFE. */
+        uint16_t stored = strip->slot + 1;
+        uint8_t slot[2] = { (uint8_t)stored, (uint8_t)(stored >> 8) };
+        ok = ti_Seek(HDR_DEVICE + DEV_LAST_SLOT, SEEK_SET, handle) != EOF
+             && ti_Write(slot, sizeof slot, 1, handle) == 1;
+    }
+
     /* Put it back in the archive; RAM is needed for the band cache. */
     ok = ti_SetArchiveStatus(true, handle) && ok;
     ti_Close(handle);
@@ -388,6 +399,66 @@ bool lib_save_strip(uint16_t index, const lib_strip_t *strip) {
     /* The variable moved, so every cached pointer into it is stale. */
     lib_open();
     return ok;
+}
+
+bool lib_save_strip(uint16_t index, const lib_strip_t *strip) {
+    return write_strip(index, strip, false);
+}
+
+bool lib_save_strip_as_last(uint16_t index, const lib_strip_t *strip) {
+    return write_strip(index, strip, true);
+}
+
+uint16_t lib_find_slot(uint16_t slot) {
+    for (uint16_t i = 0; i < strip_count; i++) {
+        if (read16(strip_entry(i)) == slot)
+            return i;
+    }
+    return LIB_NONE;
+}
+
+uint16_t lib_last_strip(void) {
+    const uint8_t *device = lib_device();
+    if (!device)
+        return LIB_NONE;
+
+    uint16_t stored = read16(device + DEV_LAST_SLOT);
+    return stored ? lib_find_slot(stored - 1) : LIB_NONE;
+}
+
+uint16_t lib_book_of(uint16_t strip_index) {
+    for (uint16_t i = 0; i < book_count; i++) {
+        const uint8_t *entry = book_entry(i);
+        uint16_t first = read16(entry + 2);
+        if (strip_index >= first && strip_index - first < read16(entry + 4))
+            return i;
+    }
+    return LIB_NONE;
+}
+
+uint16_t lib_first_unread(const lib_book_t *book) {
+    for (uint16_t i = 0; i < book->strip_count; i++) {
+        if (!(strip_entry(book->strip_first + i)[6] & LIB_FLAG_READ))
+            return i;
+    }
+    return 0;
+}
+
+uint16_t lib_bookmark_count(void) {
+    uint16_t count = 0;
+    for (uint16_t i = 0; i < strip_count; i++) {
+        if (strip_entry(i)[6] & LIB_FLAG_BOOKMARK)
+            count++;
+    }
+    return count;
+}
+
+uint16_t lib_bookmark_at(uint16_t n) {
+    for (uint16_t i = 0; i < strip_count; i++) {
+        if ((strip_entry(i)[6] & LIB_FLAG_BOOKMARK) && n-- == 0)
+            return i;
+    }
+    return LIB_NONE;
 }
 
 /*
@@ -408,13 +479,23 @@ bool lib_set_book_read(const lib_book_t *book, bool read) {
     for (uint16_t i = 0; i < book->strip_count && ok; i++) {
         uint24_t offset = HDR_SIZE + (uint24_t)book_count * BOOK_SIZE
                           + (uint24_t)(book->strip_first + i) * STRIP_SIZE;
-        if (ti_Seek(offset + 6, SEEK_SET, handle) == EOF) {
+
+        /*
+         * Only the read bit is this function's to change. The rest of the byte
+         * -- a bookmark -- is read back from the copy now open in RAM: the
+         * pointers into flash went stale the moment "r+" moved it.
+         */
+        uint8_t flags;
+        if (ti_Seek(offset + 6, SEEK_SET, handle) == EOF
+            || ti_Read(&flags, 1, 1, handle) != 1
+            || ti_Seek(offset + 6, SEEK_SET, handle) == EOF) {
             ok = false;
             break;
         }
 
         uint8_t record[5];
-        record[0] = read ? LIB_FLAG_READ : 0;
+        record[0] = read ? (uint8_t)(flags | LIB_FLAG_READ)
+                         : (uint8_t)(flags & ~LIB_FLAG_READ);
         record[1] = (uint8_t)when;
         record[2] = (uint8_t)(when >> 8);
         record[3] = (uint8_t)(when >> 16);

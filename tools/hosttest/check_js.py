@@ -24,7 +24,8 @@ sys.path.insert(0, str(HERE.parent))
 from csx import format as fmt, image, strip as strip_mod, tifile   # noqa: E402
 
 sys.path.insert(0, str(HERE))
-from common import compare_frames, viewports_for   # noqa: E402
+from common import compare_frames, part_viewports, viewports_for   # noqa: E402
+from check import make_folder_strip   # noqa: E402
 
 
 def main():
@@ -40,14 +41,22 @@ def main():
     if not args.node:
         sys.exit("node not found; pass --node /path/to/node")
 
-    widths = image.LAYER_PRESETS[args.preset]
-    print(f"rendering {args.source} at {widths}...")
-    src = image.load(args.source)
-    palette, indexed = image.build_layers(src, widths)
+    failures = check_source(args.source, args.preset, args.node)
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = make_folder_strip(Path(args.source), Path(tmp) / "episode")
+        failures += check_source(folder, args.preset, args.node)
+    return 1 if failures else 0
+
+
+def check_source(source, preset, node):
+    widths = image.LAYER_PRESETS[preset]
+    print(f"rendering {source} at {widths}...")
+    images = [image.load(path) for path in image.part_paths(source)]
+    palette, indexed, parts = image.build_layers(images, widths)
 
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
-        spec = {"palette": palette, "layers": []}
+        spec = {"palette": palette, "parts": parts, "layers": []}
         for layer in indexed:
             path = work / f"layer{layer.width}.idx"
             path.write_bytes(layer.tobytes())
@@ -56,7 +65,7 @@ def main():
         (work / "layers.json").write_text(json.dumps(spec))
 
         print("building the container with web/js/convert.js...")
-        run = subprocess.run([args.node, str(HERE / "check_js.mjs"),
+        run = subprocess.run([node, str(HERE / "check_js.mjs"),
                               str(work / "layers.json"), str(work)],
                              capture_output=True, text=True)
         if run.returncode != 0:
@@ -77,8 +86,8 @@ def main():
         print("  python decoded the js container: "
               + ", ".join(f"{l.width}x{l.height}" for l in layers))
 
-        viewports = viewports_for(layers)
-        return compare_frames(HERE, work, viewports, layers)
+        viewports = viewports_for(layers) + part_viewports(layers, parts)
+        return compare_frames(HERE, work, viewports, layers, parts=parts if parts else None)
 
 
 if __name__ == "__main__":

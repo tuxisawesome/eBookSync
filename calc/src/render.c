@@ -156,8 +156,13 @@ bool render_draw_full(const csx_strip_t *strip, uint8_t *scratch) {
     return true;
 }
 
-void render_view(const csx_strip_t *strip, uint8_t layer_index, uint24_t vx, uint24_t vy) {
+void render_view(const csx_strip_t *strip, uint8_t layer_index, uint24_t vx, uint24_t vy,
+                 uint24_t limit) {
     const csx_layer_t *layer = &strip->layer[layer_index];
+    if (limit > layer->height)
+        limit = layer->height;
+    if (limit <= vy)
+        limit = vy;
 
     /* A layer narrower than the screen is centred, and cannot pan sideways. */
     uint16_t x_off = 0;
@@ -173,8 +178,15 @@ void render_view(const csx_strip_t *strip, uint8_t layer_index, uint24_t vx, uin
     if (last_col >= layer->cols)
         last_col = layer->cols - 1;
 
+    /* Rows of the layer that may appear: the screen, stopping at the limit. */
+    uint24_t bottom = vy + GFX_LCD_HEIGHT;
+    if (bottom > limit)
+        bottom = limit;
+    if (bottom == vy)
+        return;
+
     uint16_t first_band = (uint16_t)(vy / CSX_BAND_HEIGHT);
-    uint16_t last_band = (uint16_t)((vy + GFX_LCD_HEIGHT - 1) / CSX_BAND_HEIGHT);
+    uint16_t last_band = (uint16_t)((bottom - 1) / CSX_BAND_HEIGHT);
     if (last_band >= layer->bands_per_col)
         last_band = layer->bands_per_col - 1;
 
@@ -202,6 +214,8 @@ void render_view(const csx_strip_t *strip, uint8_t layer_index, uint24_t vx, uin
             /* Vertical overlap between this band and the viewport. */
             uint24_t band_top = (uint24_t)band * CSX_BAND_HEIGHT;
             uint8_t rows = csx_band_rows(layer, band);
+            if (band_top + rows > bottom)
+                rows = (uint8_t)(bottom - band_top);
             uint8_t src_y = (uint8_t)(vy > band_top ? vy - band_top : 0);
             int24_t dst_y = (int24_t)band_top - (int24_t)vy;
             if (dst_y < 0)

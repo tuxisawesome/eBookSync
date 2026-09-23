@@ -11,10 +11,12 @@
 #define HDR_PALETTE_SIZE 8
 #define HDR_BAND_COUNT   10
 #define HDR_CHUNK_COUNT  12
+#define HDR_PART_COUNT   13
 #define HDR_SIZE         16
 
 #define LAYER_ENTRY_SIZE 12
 #define BAND_ENTRY_SIZE  5
+#define PART_TOP_SIZE    3
 
 static uint16_t read16(const uint8_t *p) {
     return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
@@ -107,6 +109,35 @@ bool csx_open(csx_strip_t *strip, uint16_t slot) {
 
     strip->band_table = pos;
 
+    /*
+     * The part table follows the band table, so a container without one -- any
+     * strip made from a single image, and every strip from before parts existed
+     * -- lays out exactly as it always did. 0 and 1 both mean one image.
+     *
+     * Checked here rather than trusted: the viewer confines scrolling to one
+     * part at a time, and a top past the end of its layer, or out of order,
+     * would pin it somewhere it could never get out of.
+     */
+    strip->part_count = 1;
+    strip->part_table = NULL;
+    if (head[HDR_PART_COUNT] > 1) {
+        strip->part_count = head[HDR_PART_COUNT];
+        strip->part_table = pos + (uint24_t)strip->band_count * BAND_ENTRY_SIZE;
+        if ((uint24_t)(strip->part_table - head)
+                + (uint24_t)strip->part_count * strip->layer_count * PART_TOP_SIZE
+                > CSX_CHUNK_SIZE)
+            return false;
+        for (uint8_t l = 0; l < strip->layer_count; l++) {
+            if (csx_part_top(strip, l, 0) != 0)
+                return false;
+            for (uint8_t p = 1; p < strip->part_count; p++) {
+                uint24_t top = csx_part_top(strip, l, p);
+                if (top <= csx_part_top(strip, l, p - 1) || top >= strip->layer[l].height)
+                    return false;
+            }
+        }
+    }
+
     strip->chunk[0] = head;
     for (uint8_t i = 1; i < strip->chunk_count; i++) {
         strip->chunk[i] = map_chunk(slot, i);
@@ -148,6 +179,26 @@ uint8_t csx_delete(uint16_t slot) {
 
     /* The reply carries this in one byte, and 256 would read as none. */
     return removed > 0xFF ? 0xFF : (uint8_t)removed;
+}
+
+uint24_t csx_part_top(const csx_strip_t *strip, uint8_t layer, uint8_t part) {
+    if (!strip->part_table)
+        return 0;
+    return read24(strip->part_table
+                  + ((uint24_t)part * strip->layer_count + layer) * PART_TOP_SIZE);
+}
+
+uint24_t csx_part_bottom(const csx_strip_t *strip, uint8_t layer, uint8_t part) {
+    if (part + 1 < strip->part_count)
+        return csx_part_top(strip, layer, part + 1);
+    return strip->layer[layer].height;
+}
+
+uint8_t csx_part_at(const csx_strip_t *strip, uint8_t layer, uint24_t row) {
+    uint8_t part = 0;
+    while (part + 1 < strip->part_count && csx_part_top(strip, layer, part + 1) <= row)
+        part++;
+    return part;
 }
 
 const uint8_t *csx_band(const csx_strip_t *strip, uint16_t index, uint16_t *length) {

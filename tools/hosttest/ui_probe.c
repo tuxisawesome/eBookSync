@@ -28,10 +28,28 @@ uint8_t *read_appvar(const char *path, char *name, size_t *size);
  * real entry point. */
 int reader_main(void);
 
-/* main.c reaches these; neither is what this probe is about. */
-bool viewer_run(uint16_t strip_index) {
+/*
+ * main.c reaches these; neither is what this probe is about.
+ *
+ * The viewer only reports which strip it was asked for. PROBE_VIEW_NEXT=n
+ * makes the first n strips opened end as if the reader pressed on past the
+ * end, which is how the chaining from one strip to the next is checked
+ * without drawing anything.
+ */
+#include "viewer.h"
+
+view_result_t viewer_run(uint16_t strip_index) {
+    static int next_left = -1;
+    if (next_left < 0) {
+        const char *env = getenv("PROBE_VIEW_NEXT");
+        next_left = env ? atoi(env) : 0;
+    }
     printf("viewer %u\n", strip_index);
-    return true;
+    if (next_left > 0) {
+        next_left--;
+        return VIEW_NEXT;
+    }
+    return VIEW_BACK;
 }
 
 typedef bool (*proto_progress_t)(const char *, uint8_t, uint8_t, uint8_t);

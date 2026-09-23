@@ -110,6 +110,11 @@ bool input_repeat(kb_lkey_t key) {
     return ((repeat_frames - REPEAT_DELAY) % REPEAT_RATE) == 0;
 }
 
+void input_claim(kb_lkey_t key) {
+    repeat_key = key;
+    repeat_frames = 0;
+}
+
 unsigned input_held_frames(void) {
     return repeat_frames;
 }

@@ -168,6 +168,24 @@ size_t ti_Write(const void *data, size_t size, size_t count, uint8_t handle) {
     return count;
 }
 
+size_t ti_Read(void *data, size_t size, size_t count, uint8_t handle) {
+    COUNT_OS_CALL();
+    shim_var_t *var = &vars[open_handle_var[handle]];
+    size_t at = open_handle_pos[handle];
+    size_t bytes = size * count;
+
+    /* Like fread: only whole items, and nothing past the end. */
+    if (!size || at >= var->size)
+        return 0;
+    size_t items = (var->size - at) / size;
+    if (items > count)
+        items = count;
+    memcpy(data, var->data + at, items * size);
+    open_handle_pos[handle] = at + items * size;
+    (void)bytes;
+    return items;
+}
+
 static void (*gc_before_hook)(void);
 static void (*gc_after_hook)(void);
 static bool gc_pending;
@@ -234,7 +252,19 @@ void gfx_Rectangle_NoClip(uint24_t x, uint24_t y, uint24_t w, uint24_t h) {
 
 uint8_t gfx_SetTextFGColor(uint8_t color) { (void)color; return 0; }
 uint8_t gfx_SetTextBGColor(uint8_t color) { (void)color; return 0; }
-void gfx_PrintStringXY(const char *s, int x, int y) { (void)s; (void)x; (void)y; }
+/*
+ * Text is not rasterised, but with SHIM_TEXT set every string drawn is logged
+ * as "text <x>,<y> <string>" -- so a test can ask what a screen says (the
+ * battery and free space in a header, the bar at the end of an image) rather
+ * than only whether the program is still running.
+ */
+void gfx_PrintStringXY(const char *s, int x, int y) {
+    static int log_text = -1;
+    if (log_text < 0)
+        log_text = getenv("SHIM_TEXT") != NULL;
+    if (log_text)
+        printf("text %d,%d %s\n", x, y, s);
+}
 void gfx_SwapDraw(void) {}
 void gfx_Wait(void) {}
 void gfx_Blit(uint8_t src) { (void)src; }
@@ -405,6 +435,11 @@ uint8_t shim_apd_timer;
 
 void boot_Set6MHzMode(void) { }
 void boot_Set48MHzMode(void) { }
+
+uint8_t shim_battery = 4;
+uint8_t shim_charging;
+uint8_t boot_GetBatteryStatus(void) { return shim_battery; }
+uint8_t boot_BatteryCharging(void) { return shim_charging; }
 
 /*
  * On hardware the power-down is a suspend: the OS sleeps and resumes this

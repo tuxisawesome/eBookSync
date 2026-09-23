@@ -1,4 +1,4 @@
-"""End-to-end strip conversion: JPEG in, .csx chunks out."""
+"""End-to-end strip conversion: an image or a folder of images in, .csx chunks out."""
 
 import os
 from concurrent.futures import ProcessPoolExecutor
@@ -9,11 +9,12 @@ from . import format as fmt, image, zx0
 class Converted:
     """The result of converting one strip."""
 
-    def __init__(self, chunks, layers, palette, raw_bytes):
+    def __init__(self, chunks, layers, palette, raw_bytes, parts=()):
         self.chunks = chunks
         self.layers = layers
         self.palette = palette
         self.raw_bytes = raw_bytes
+        self.parts = list(parts)
 
     @property
     def total_bytes(self):
@@ -33,11 +34,15 @@ def convert(path, preset=image.DEFAULT_PRESET, colors=16,
             denoise=image.DEFAULT_DESPECKLE,
             dither=False, offset_limit=zx0.DEFAULT_OFFSET_LIMIT, jobs=None,
             progress=None):
-    """Convert a comic JPEG into the chunk list the calculator stores."""
+    """Convert a comic into the chunk list the calculator stores.
+
+    `path` is an image, or a folder whose images are stitched into one strip in
+    natural order -- see image.part_paths().
+    """
     widths = image.LAYER_PRESETS[preset]
-    img = image.load(path)
-    palette, indexed = image.build_layers(
-        img, widths, colors=colors, denoise=denoise, dither=dither
+    images = [image.load(p) for p in image.part_paths(path)]
+    palette, indexed, parts = image.build_layers(
+        images, widths, colors=colors, denoise=denoise, dither=dither
     )
 
     layers = [fmt.Layer(i.width, i.height) for i in indexed]
@@ -59,8 +64,8 @@ def convert(path, preset=image.DEFAULT_PRESET, colors=16,
     if progress:
         progress("compress", sum(map(len, compressed)))
 
-    chunks, _ = fmt.pack_chunks(layers, palette, compressed)
-    return Converted(chunks, layers, palette, sum(map(len, raw)))
+    chunks, _ = fmt.pack_chunks(layers, palette, compressed, parts)
+    return Converted(chunks, layers, palette, sum(map(len, raw)), parts)
 
 
 def decode(chunks):

@@ -6,7 +6,8 @@
  * is every character an appvar name has -- and it is why a slot is 16 bits: the
  * name is the constraint, and this spends all of it.
  * Concatenated they form one container: a header, palette, layer table and band
- * table, followed by ZX0-compressed bands. Bands never straddle a chunk, so
+ * table -- and a part table, for a strip stitched from several images --
+ * followed by ZX0-compressed bands. Bands never straddle a chunk, so
  * every band can be handed to zx0_Decompress as a pointer straight into flash.
  *
  * See docs/FORMAT.md for the byte layout and the reasoning behind it.
@@ -26,6 +27,14 @@
 
 #define CSX_MAX_CHUNKS     64
 #define CSX_MAX_LAYERS     4
+
+/*
+ * A strip made from a folder of images is stitched into one container, and
+ * the part table says which row each image starts on in each layer. The reader
+ * stops at the bottom of each one and waits for a press to go on -- images
+ * that were drawn separately should not run into each other on screen.
+ */
+#define CSX_MAX_PARTS      255
 
 /*
  * The slot the lock screen wallpaper lives in.
@@ -55,6 +64,8 @@ typedef struct {
     uint16_t band_count;
     const uint8_t *chunk[CSX_MAX_CHUNKS];
     const uint8_t *band_table;          /* 5 bytes per band, inside chunk 0 */
+    uint8_t part_count;                 /* 1 for a strip of one image */
+    const uint8_t *part_table;          /* part_count x layer_count u24s, or NULL */
     csx_layer_t layer[CSX_MAX_LAYERS];
     uint16_t palette[CSX_PALETTE_SIZE];
 } csx_strip_t;
@@ -72,6 +83,15 @@ uint8_t csx_delete(uint16_t slot);
 
 /* Locate one band's compressed payload. */
 const uint8_t *csx_band(const csx_strip_t *strip, uint16_t index, uint16_t *length);
+
+/* The row part `part` starts on in `layer`. */
+uint24_t csx_part_top(const csx_strip_t *strip, uint8_t layer, uint8_t part);
+
+/* The row after the last one of `part`: the next part's top, or the height. */
+uint24_t csx_part_bottom(const csx_strip_t *strip, uint8_t layer, uint8_t part);
+
+/* Which part holds `row` of `layer`. */
+uint8_t csx_part_at(const csx_strip_t *strip, uint8_t layer, uint24_t row);
 
 /* Band index for a (layer, column, band) triple. */
 static inline uint16_t csx_band_index(const csx_strip_t *strip, uint8_t layer,
