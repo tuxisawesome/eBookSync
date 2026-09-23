@@ -14,13 +14,29 @@ KEYS
     2nd     lock the calculator
     mode    settings
     clear   quit
+  Continue, at the top, opens the strip
+  you last read where you left it, and
+  Bookmarks lists every bookmarked one.
+
+  Strip list
+    enter   read (opens on first unread)
+    del     mark read
+    alpha   bookmark
 
   Reading
     arrows  pan, hold to speed up
+    2 enter page down
+    8       page up
     + -     zoom
     mode    fit width / full zoom
     del     mark read
+    alpha   bookmark
     clear   back
+
+  A strip of several images stops at
+  the end of each one. Press down again
+  for the next image -- or, after the
+  last, for the next strip of the book.
 
   Anywhere
     2nd     lock the calculator

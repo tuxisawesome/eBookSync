@@ -22,9 +22,11 @@ library that has already been synced is still recognised as the same one.
 
 ## What it does
 
-The calculator lists your comics grouped by book, opens one, and lets you pan
-around and zoom in. It remembers where you got to and marks a strip read when
-you reach the end.
+The calculator lists your comics grouped by book, opens one, and lets you pan,
+page and zoom. It remembers where you got to, marks a strip read when you reach
+the end, and goes straight on to the next strip if you keep pressing down. The
+book list has a **Continue** row back to whatever you were last reading, and a
+**Bookmarks** list of the strips you have marked, across every book.
 
 The sync page reads a folder of comics off your disk — one folder per book —
 lets you arrange the library and tick which books and strips you want, converts
@@ -92,14 +94,29 @@ the reader itself, so this is the only time you need TI Connect.
 comics/
   第一本书/
     001 - 标题.jpg
-    002 - 标题.jpg
+    002 - 标题.png
+    第3话/
+      1.jpg
+      2.jpg
+      A.webp
   Another Book/
     01.jpg
 ```
 
-Folders are books, JPEGs are strips, and the filename is the title. A library
-with no metadata yet starts out in natural order, so `10` comes after `9`; after
-that the order is whatever you arrange in the page.
+Folders are books and the images in them are strips, titled by filename. JPEG,
+PNG, WebP, GIF, BMP and AVIF all work.
+
+A **folder inside a book is one strip** made of the images in it, read in
+alphanumeric order: `0`–`9`, then `A`–`Z`, ignoring case, with `10` after `9`.
+That is the shape a chapter usually downloads in — dozens of slices, often not
+all the same width — and it stays that way on disk. The images are only joined
+up in memory on the way to the calculator, each scaled to the screen width on
+its own, and the calculator reads them one at a time: at the bottom of each it
+stops and shows what comes next, and a press of down goes on. In the library it
+is a single strip.
+
+A library with no metadata yet starts out in natural order, so `10` comes after
+`9`; after that the order is whatever you arrange in the page.
 
 You do not have to lay it out by hand — you can start from an empty folder and
 drag comics into the page instead.
@@ -120,7 +137,8 @@ Everything below happens on your actual files, in the folder you chose:
 | | |
 |---|---|
 | add strips | drop images onto a book |
-| add a book | drop a folder onto the list, or press **New book** |
+| add a strip of several images | drop a folder of them onto a book |
+| add a book | drop a folder onto the list, or press **New book** — folders inside it become strips of several images |
 | reorder | drag a row, or use the ↑ ↓ buttons on it |
 | move between books | drag a strip onto another book |
 | rename | the ✎ button on a book or strip |
@@ -129,6 +147,20 @@ Everything below happens on your actual files, in the folder you chose:
 Renaming and reordering keep a strip's identity, so they cost a quick index
 update on the next sync rather than re-sending the comic. Deleting a strip that
 is on the calculator removes it from the calculator too, on the next sync.
+
+Each book row has its own **detail level** beside its progress bar. **Default**
+follows the setting on the Settings tab; choosing another sends that book's
+strips at that level instead, so a text-heavy book can have 2× zoom while the
+rest of the library stays small. Like the library setting, it applies to strips
+sent from then on.
+
+The **👁** button on a strip shows it exactly as the calculator will: converted
+the way a sync would convert it, then drawn at 320×240 in its 16 colours, with
+the reader's keys — arrows, `2`/`8` to page, `+`/`-` to zoom — and the stop at
+the end of each image. The preview has its own detail picker, so you can see
+what a level costs and how it looks before choosing it. Converting for a preview
+fills the same cache a sync uses, so a strip you have looked at sends without
+converting again.
 
 **4. Connect the calculator.**
 
@@ -147,16 +179,35 @@ memory bus, and USB loses whenever graphx has the LCD in its 8bpp mode.
 | key | |
 |---|---|
 | arrows | pan; hold to speed up |
+| `2` / `enter` | page down a screen (a band of the last one stays in view) |
+| `8` | page up |
 | `+` / `-` | zoom in and out |
 | `mode` | jump between fit-width and full zoom |
 | `del` | mark read or unread by hand |
+| `alpha` | bookmark the strip, or take the bookmark off |
 | `clear` | back |
 | `2nd` | lock the calculator |
 
 Reaching the last 5% of a strip marks it read on its own.
 
+A strip made of several images stops at the end of each one, with a bar saying
+what is next. Press down — a fresh press; holding the key only scrolls to the
+end — to go on to the next image, or up at the top of an image to go back to the
+one before. After the last image the bar names the next strip in the book, and
+pressing down opens it.
+
+The book list starts with up to two extra rows. **Continue** opens the strip
+you last read, where you left it. **Bookmarks** lists every bookmarked strip in
+the library. The header shows the battery and how much archive is free.
+
 On the book list: `del` marks a whole book read or unread, `2nd` locks the
-calculator, `mode` opens settings. On the strip list, `del` marks one strip.
+calculator, `mode` opens settings. A book opens on its first unread strip. On
+the strip list, `del` marks one strip and `alpha` bookmarks it; in Bookmarks,
+`alpha` takes a bookmark off.
+
+A bookmark also keeps a strip on the calculator: **Remove read strips** never
+clears a bookmarked one, and it does not use up one of the "keep the most
+recent" places either. Unticking it on the page still removes it.
 
 Settings (`mode` from the book list) has four entries:
 
@@ -309,6 +360,7 @@ sh tools/build.sh                                    # build the ZX0 library fir
 tools/convert.py assets/strip1.jpg --measure         # size at every detail level
 tools/convert.py assets/strip1.jpg --preview /tmp/p.png
 tools/convert.py assets/strip1.jpg -o out/ --slot 0  # .8xv appvars for CEmu
+tools/convert.py comics/第一本书/第3话 --measure       # a folder is one strip too
 ```
 
 ## Tests
