@@ -524,13 +524,13 @@ function describe(image, build) {
     check('and it says which build', result.after.armedBuild, 41);
     check('the reader was not replaced', existsSync(join(directory, 'COMICS.bin')), false);
 
-    const manifest = readFileSync(join(directory, 'CSUPD.bin'));
+    const manifest = readFileSync(join(directory, 'CSUPD0.bin'));
     check('a manifest was written', manifest.length, 20);
     check('the manifest names the build', manifest[6] | (manifest[7] << 8), 41);
     check('the manifest names the target', manifest[5], UPDATE_TARGET.READER);
 
     const stored = Buffer.concat(reader.chunks.map((_, i) =>
-      readFileSync(join(directory, `CSU0${i}.bin`))));
+      readFileSync(join(directory, `CSU00${i}.bin`))));
     check('every chunk landed, in order', Array.from(stored), Array.from(reader.body));
     check('update session: link used correctly', status, 0);
   }
@@ -551,7 +551,7 @@ function describe(image, build) {
     check('nothing was armed for it', result.hello.updateArmed, false);
     check('prgmCSUP was written', Array.from(readFileSync(join(directory, 'CSUP.bin'))),
           Array.from(updater.body));
-    check('the chunks were cleared up', existsSync(join(directory, 'CSU00.bin')), false);
+    check('the chunks were cleared up', existsSync(join(directory, 'CSU100.bin')), false);
   }
 
   /* --- a damaged image is refused, and takes nothing with it --- */
@@ -579,8 +579,8 @@ function describe(image, build) {
     check('and says so in words', STATUS[result.status], 'payload ended early');
     check('nothing was armed', result.hello.updateArmed, false);
     check('the damaged chunks were discarded',
-          existsSync(join(directory, 'CSU00.bin')), false);
-    check('no manifest was left behind', existsSync(join(directory, 'CSUPD.bin')), false);
+          existsSync(join(directory, 'CSU000.bin')), false);
+    check('no manifest was left behind', existsSync(join(directory, 'CSUPD0.bin')), false);
   }
 
   /* --- chunks outside a begun update are refused --- */

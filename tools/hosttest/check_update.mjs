@@ -53,8 +53,14 @@ function manifestBytes({ target, build, bytes, chunks, crc }) {
   return out;
 }
 
-function chunkName(index) {
-  return `CSU${index.toString(16).toUpperCase().padStart(2, '0')}`;
+/* One manifest and one set of chunks per target -- see calc/src/update.h. */
+function manifestName(target) {
+  return `CSUPD${target.toString(16).toUpperCase()}`;
+}
+
+function chunkName(target, index) {
+  return `CSU${target.toString(16).toUpperCase()}`
+    + index.toString(16).toUpperCase().padStart(2, '0');
 }
 
 /**
@@ -71,13 +77,15 @@ function runUpdater(body, { build = 7, target = 0, damage = false, omitChunk = -
   const manifest = manifestBytes({
     target, build, bytes: body.length, chunks: chunks.length, crc: update.crc32(body),
   });
-  writeFileSync(join(directory, 'CSUPD.8xv'), writeAppvar('CSUPD', manifest));
+  writeFileSync(join(directory, `${manifestName(target)}.8xv`),
+                writeAppvar(manifestName(target), manifest));
 
   chunks.forEach((chunk, i) => {
     if (i === omitChunk) return;
     const stored = Uint8Array.from(chunk);
     if (damage && i === 0) stored[0] ^= 0xff;
-    writeFileSync(join(directory, `${chunkName(i)}.8xv`), writeAppvar(chunkName(i), stored));
+    writeFileSync(join(directory, `${chunkName(target, i)}.8xv`),
+                  writeAppvar(chunkName(target, i), stored));
   });
 
   let status = 0;
@@ -93,8 +101,8 @@ function runUpdater(body, { build = 7, target = 0, damage = false, omitChunk = -
     status,
     said: stdout.trim().split('\n').pop(),
     installed: existsSync(join(out, 'COMICS.bin')) ? readFileSync(join(out, 'COMICS.bin')) : null,
-    manifestLeft: existsSync(join(out, 'CSUPD.bin')),
-    chunksLeft: chunks.some((_, i) => existsSync(join(out, `${chunkName(i)}.bin`))),
+    manifestLeft: existsSync(join(out, `${manifestName(target)}.bin`)),
+    chunksLeft: chunks.some((_, i) => existsSync(join(out, `${chunkName(target, i)}.bin`))),
   };
 }
 
@@ -136,11 +144,13 @@ function sample(bytes) {
   check('and nothing is installed', result.installed, null);
 }
 
-/* --- an updater update is not this program's business ---------------------- */
+/* --- an updater update is not the reader's business ------------------------ */
+/* The reader's run sees only the reader's manifest, so another target's is
+ * invisible to it rather than refused. */
 {
   const result = runUpdater(sample(7000), { target: 1 });
 
-  check('an updater update is left alone', result.said, 'not for the reader');
+  check('an updater update is left alone', result.said, 'nothing pending');
   check('nothing is installed', result.installed, null);
   check('and the manifest is left where the reader will find it', result.manifestLeft, true);
 }
