@@ -15,6 +15,15 @@
     document.documentElement.dataset.theme = 'dark';
   }
 </script>
+<!-- three.js, vendored next to the page, for the glass (js/glass.js). -->
+<script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three/three.module.min.js",
+      "three/addons/": "./vendor/three/addons/"
+    }
+  }
+</script>
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -29,7 +38,7 @@
   close, and this must not be dismissable.
 -->
 <div id="splash" class="splash" role="dialog" aria-modal="true" aria-labelledby="splash-title">
-  <div class="splash-card">
+  <div class="splash-card" data-glass="card">
     <h1 id="splash-title"><span class="brand-mark" aria-hidden="true"></span>eBookSync</h1>
     <p class="splash-lede">Read your comics on a TI-84 Plus CE.</p>
 
@@ -50,7 +59,7 @@
           You only do this once: later versions arrive over the cable.
         </p>
         <p class="splash-actions">
-          <a id="splash-download" class="button" href="comics/COMICS.8xp"
+          <a id="splash-download" class="button" data-glass="button" href="comics/COMICS.8xp"
              download="COMICS.8xp">Download COMICS.8xp</a>
           <span id="splash-build" class="splash-note"></span>
         </p>
@@ -70,7 +79,7 @@
       <li>
         <h2>Connect</h2>
         <p class="splash-actions">
-          <button id="splash-connect" type="button" class="primary">Connect calculator</button>
+          <button id="splash-connect" type="button" class="primary" data-glass="button">Connect calculator</button>
         </p>
         <p class="splash-note">Then pick the calculator from the browser's list of serial ports.</p>
         <p id="splash-status" class="splash-status" role="status" aria-live="polite"></p>
@@ -79,9 +88,9 @@
   </div>
 </div>
 
-<header class="bar" inert>
+<header class="bar" data-glass="bar" inert>
   <h1><span class="brand-mark" aria-hidden="true"></span>eBookSync <span id="page-build" class="chip" title="The build this page was served from"></span></h1>
-  <nav class="tabs" role="tablist" aria-label="Pages">
+  <nav class="tabs" role="tablist" aria-label="Pages" data-glass="pill">
     <button id="tab-library" type="button" role="tab" aria-controls="view-library"
             aria-selected="true">Library</button>
     <button id="tab-settings" type="button" role="tab" aria-controls="view-settings"
@@ -106,7 +115,7 @@
 -->
 <main id="view-library" class="view library-view" role="tabpanel" aria-labelledby="tab-library"
       inert>
-  <section class="panel" id="library-panel">
+  <section class="panel" id="library-panel" data-glass="panel">
     <div class="panel-head">
       <h2>Library</h2>
       <button id="new-book" type="button" disabled>New book</button>
@@ -125,7 +134,7 @@
     <div id="tree" class="tree" role="tree" aria-label="Books and strips"></div>
   </section>
 
-  <aside class="panel" id="calculator-panel">
+  <aside class="panel" id="calculator-panel" data-glass="panel">
     <h2>Calculator</h2>
     <dl class="stats">
       <dt>Status</dt><dd id="device-status">Not connected</dd>
@@ -136,7 +145,7 @@
       <dt>Reader build</dt><dd id="device-build">—</dd>
     </dl>
 
-    <button id="sync" type="button" class="primary sync-button" disabled>Sync…</button>
+    <button id="sync" type="button" class="primary sync-button" data-glass="button" disabled>Sync…</button>
 
     <p id="update-notice" class="notice" hidden></p>
     <button id="update" type="button" hidden>Update the calculator…</button>
@@ -155,7 +164,7 @@
 
 <main id="view-settings" class="view settings-view" role="tabpanel"
       aria-labelledby="tab-settings" inert hidden>
-  <section class="panel">
+  <section class="panel" data-glass="panel">
     <h2>Strips</h2>
 
     <label class="field">
@@ -192,7 +201,7 @@
     </label>
   </section>
 
-  <section class="panel">
+  <section class="panel" data-glass="panel">
     <h2>Lock screen</h2>
 
     <label class="field">
@@ -214,7 +223,7 @@
   </section>
 </main>
 
-<footer class="bar footer" inert>
+<footer class="bar footer" data-glass="bar" inert>
   <div id="selection-summary">Nothing selected</div>
   <div class="meter"><div id="meter-fill" class="meter-fill"></div></div>
 </footer>

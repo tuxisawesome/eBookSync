@@ -133,7 +133,14 @@ splash comes back if the connection is lost.
 
 The page wears the calculator's colours: purple, Dark or Light as set under
 **Theme** on the calculator. It is Dark until a calculator has connected, then
-follows whatever the last one reported, and remembers it for next time. Once connected, choose your comics
+follows whatever the last one reported, and remembers it for next time.
+
+Behind the page is a small 3D room rendered with [three.js](https://threejs.org)
+(vendored in `web/vendor/three`, so nothing is fetched): a purple wall, a few
+glass and glossy forms, and a slab of real refracting glass under every panel.
+A light follows the pointer, lighting the wall, catching every slab and casting
+the panels' shadows. It pauses while a sync is busy and stays still for
+reduced motion. Where WebGL2 is not available the page is simply flat. Once connected, choose your comics
 folder, tick what you want, and press Sync.
 
 The page has two tabs. **Library** is your strips, with the calculator's status

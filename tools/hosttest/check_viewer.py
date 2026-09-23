@@ -176,8 +176,10 @@ def main():
         check_text("and offers the next strip", got, "Next:")
 
         got = run(directory, 0, through + press("down"))
+        # Finished, so read -- and so nothing to Continue from until the next
+        # strip is opened and records itself.
         check("pressing on past the last image opens the next strip", got,
-              result="next", read=1, pos=0, last=0)
+              result="next", read=1, pos=0, last=None)
 
         got = run(directory, 1, ["down:1000", "idle:3"] + press("down"))
         check("the last strip of a book has nowhere to go", got, result="back", read=1)
