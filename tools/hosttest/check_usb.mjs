@@ -156,7 +156,7 @@ async function session(libraryDir, body, extra = [], { handshake = true } = {}) 
       { title: '001', slot: 3, chunkCount: 25, size: 401927,
         read: true, readAt: 1756000001, pos: 1234, layer: 1 },
       { title: '002', slot: 4, chunkCount: 9, size: 140000,
-        read: false, readAt: 0, pos: 0, layer: 0 },
+        read: false, bookmarked: true, readAt: 0, pos: 0, layer: 0 },
     ],
   }], { render: fakeRender });
 
@@ -169,10 +169,12 @@ async function session(libraryDir, body, extra = [], { handshake = true } = {}) 
 
   check('list: two strips', result.list.length, 2);
   check('list: first record', result.list[0],
-        { slot: 3, chunkCount: 25, bytes: 401927, read: true,
+        { slot: 3, chunkCount: 25, bytes: 401927, read: true, bookmarked: false,
           readAt: 1756000001, pos: 1234, layer: 1 });
-  check('list: second record', result.list[1],
-        { slot: 4, chunkCount: 9, bytes: 140000, read: false,
+  /* A bookmark is set on the calculator and has to reach the page through
+   * LIST, or the next clean-up would take the strip off regardless. */
+  check('list: second record, bookmarked', result.list[1],
+        { slot: 4, chunkCount: 9, bytes: 140000, read: false, bookmarked: true,
           readAt: 0, pos: 0, layer: 0 });
   check('index: comes back byte for byte',
         Array.from(result.index), Array.from(index));

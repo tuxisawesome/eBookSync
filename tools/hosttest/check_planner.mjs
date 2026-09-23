@@ -9,10 +9,12 @@
  *   node tools/hosttest/check_planner.mjs
  */
 
-import { execute, plan } from '../../web/js/sync.js';
+import { buildIndexFor, estimateBytes, execute, plan } from '../../web/js/sync.js';
 import {
-  defaultMeta, mergeFromCalculator, reconcile, slotAllocator,
+  defaultMeta, effectiveSettings, flatten, mergeFromCalculator, reconcile, setBookDetail,
+  slotAllocator,
 } from '../../web/js/meta.js';
+import { parseIndex } from '../../web/js/library.js';
 import { MAX_INDEX_BYTES, MAX_RESIDENT } from '../../web/js/library.js';
 
 let failures = 0;
@@ -121,6 +123,119 @@ function slotOf(meta, book, file) {
   /* The two oldest reads go; 004 (newest) and 002 (next newest) stay. */
   check('keepRead: deletes the oldest two',
         result.deletes.map((s) => s.file).sort(), ['001.jpg', '003.jpg']);
+}
+
+/* --- a bookmarked strip survives clean-up, and takes no keepRead place --- */
+{
+  const { meta, books } = setup((m) => {
+    m.settings.keepRead = 1;
+    const a = m.books['Book A'].strips;
+    a['001.jpg'].read = true; a['001.jpg'].readAt = '2026-08-01T00:00:00Z';
+    a['002.jpg'].read = true; a['002.jpg'].readAt = '2026-08-03T00:00:00Z';
+    a['003.jpg'].read = true; a['003.jpg'].readAt = '2026-08-02T00:00:00Z';
+  });
+  /* 002 is the newest read, and bookmarked on the calculator. The bookmark
+   * arrives the way it really does: in the LIST reply. */
+  const resident = ['001.jpg', '002.jpg', '003.jpg'].map((file) => ({
+    slot: slotOf(meta, 'Book A', file), chunkCount: 25, bytes: 100_000,
+    read: true, bookmarked: file === '002.jpg', readAt: 0, pos: 0, layer: 0,
+  }));
+  mergeFromCalculator(meta, resident);
+  check('bookmark: carried in from the calculator',
+        meta.books['Book A'].strips['002.jpg'].bookmarked, true);
+
+  const result = plan(meta, books, resident);
+  /* 002 stays for its bookmark; the one keepRead place goes to 003, the newest
+   * of the rest, so only 001 comes off. */
+  check('bookmark: kept through clean-up, and keepRead still keeps one more',
+        result.deletes.map((s) => s.file), ['001.jpg']);
+
+  /* Unticking it is still asking for it to go, by name. */
+  meta.books['Book A'].strips['002.jpg'].selected = false;
+  check('bookmark: an untick still removes it',
+        plan(meta, books, resident).deletes.map((s) => s.file).includes('002.jpg'), true);
+
+  /* And a bookmark cleared on the calculator is cleared here. */
+  mergeFromCalculator(meta, resident.map((r) => ({ ...r, bookmarked: false })));
+  check('bookmark: cleared when the calculator clears it',
+        meta.books['Book A'].strips['002.jpg'].bookmarked, false);
+}
+
+/* --- the bookmark goes back out in every index sent ------------------------ */
+{
+  const { meta, books } = setup();
+  const strip = meta.books['Book A'].strips['001.jpg'];
+  strip.id = 0;
+  strip.onCalc = true;
+  strip.chunkCount = 1;
+  strip.bookmarked = true;
+  const fakeRender = (text, maxWidth) => ({
+    width: Math.min(maxWidth, 8), height: 16, packed: new Uint8Array(2 * 16),
+  });
+  const parsed = parseIndex(buildIndexFor(meta, books, { render: fakeRender }));
+  check('bookmark: written into the index', parsed.strips[0].bookmarked, true);
+}
+
+/* --- a book's own detail level is what its strips are estimated at -------- */
+{
+  const { meta, books } = setup((m) => {
+    m.settings.detail = 'fit+2x';
+    for (const book of Object.values(m.books)) {
+      for (const each of Object.values(book.strips)) each.deviceBytes = 0;
+    }
+  });
+  setBookDetail(meta, 'Book B', 'fit');
+  check('book detail: stored', meta.books['Book B'].detail, 'fit');
+  check('book detail: the book gets its own', effectiveSettings(meta, 'Book B').detail, 'fit');
+  check('book detail: other books keep the library\'s',
+        effectiveSettings(meta, 'Book A').detail, 'fit+2x');
+
+  const [a] = flatten(meta, books).filter((s) => s.book === 'Book A');
+  const [b] = flatten(meta, books).filter((s) => s.book === 'Book B');
+  check('book detail: estimates follow it',
+        estimateBytes(b, effectiveSettings(meta, 'Book B'))
+          < estimateBytes(a, effectiveSettings(meta, 'Book A')), true);
+
+  /* And the planner uses it: with room for only the small estimates, Book B's
+   * strips fit and Book A's do not. */
+  meta.settings.maxDeviceBytes = 2 * estimateBytes(b, effectiveSettings(meta, 'Book B'));
+  meta.settings.selection = 'auto';
+  const result = plan(meta, books, []);
+  check('book detail: the planner budgets with it',
+        result.pushes.map((s) => s.book), ['Book B', 'Book B']);
+
+  setBookDetail(meta, 'Book B', 'nonsense');
+  check('book detail: an unknown level falls back to the library\'s',
+        meta.books['Book B'].detail, null);
+
+  /* It survives a rescan. */
+  setBookDetail(meta, 'Book B', 'fit+1.5x');
+  reconcile(meta, books);
+  check('book detail: kept through a rescan', meta.books['Book B'].detail, 'fit+1.5x');
+}
+
+/* --- a changed file forgets its hash, so no stale conversion is used ------ */
+{
+  const books = [{ name: 'Book', strips: [
+    { kind: 'file', name: '01.jpg', size: 10, stamp: '10:1' },
+    { kind: 'folder', name: '第2话', size: 30, stamp: '0.jpg:10:1|1.jpg:20:1' },
+  ] }];
+  const meta = reconcile(defaultMeta(), books);
+  meta.books.Book.strips['01.jpg'].srcHash = 'a';
+  meta.books.Book.strips['第2话'].srcHash = 'b';
+
+  reconcile(meta, books);
+  check('stamp: unchanged files keep their hash',
+        [meta.books.Book.strips['01.jpg'].srcHash, meta.books.Book.strips['第2话'].srcHash],
+        ['a', 'b']);
+
+  books[0].strips[1] = { ...books[0].strips[1], size: 45,
+                         stamp: '0.jpg:10:1|1.jpg:20:1|2.jpg:15:1' };
+  reconcile(meta, books);
+  check('stamp: an image added to a folder strip drops its hash',
+        meta.books.Book.strips['第2话'].srcHash, null);
+  check('stamp: and leaves the other strip alone',
+        meta.books.Book.strips['01.jpg'].srcHash, 'a');
 }
 
 /* --- auto-delete off deletes nothing ------------------------------------- */

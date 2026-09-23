@@ -3,9 +3,10 @@
  * and when we last synced.
  *
  * It lives in the root of the library directory so the state travels with the
- * comics. The calculator is authoritative for read flags and scroll positions
- * -- that is where reading happens -- and this file is authoritative for
- * everything else, including the order books and strips appear in.
+ * comics. The calculator is authoritative for read flags, bookmarks and scroll
+ * positions -- that is where reading happens -- and this file is authoritative
+ * for everything else, including the order books and strips appear in and the
+ * detail level a book is converted at.
  *
  * Order is stored here rather than inferred from filenames because the point of
  * the library editor is to let you arrange a library that does not happen to
@@ -249,6 +250,16 @@ export function reconcile(meta, books) {
 
     for (const strip of book.strips) {
       const before = (previous.strips || {})[strip.name] || {};
+
+      /*
+       * A remembered hash is only good while the files it was taken from are
+       * the same files. The stamp is their sizes and times -- and for a folder
+       * strip, which images it holds -- so replacing an image, or adding one to
+       * a folder, makes the next conversion start from the files rather than
+       * from a cached copy of what used to be there.
+       */
+      const unchanged = (before.srcStamp ?? null) === (strip.stamp ?? null)
+        && before.srcSize === strip.size;
       strips[strip.name] = {
         id: Number.isInteger(before.id) ? before.id : null,
         order: hasOrder(before) ? before.order : stripOrder++,
@@ -257,8 +268,10 @@ export function reconcile(meta, books) {
         readAt: before.readAt || null,
         pos: before.pos || 0,
         layer: before.layer || 0,
-        srcHash: before.srcHash || null,
+        bookmarked: before.bookmarked === true,
+        srcHash: unchanged ? before.srcHash || null : null,
         srcSize: strip.size,
+        srcStamp: strip.stamp || null,
         onCalc: before.onCalc === true,
         chunkCount: before.chunkCount || 0,
         deviceBytes: before.deviceBytes || 0,
@@ -269,6 +282,7 @@ export function reconcile(meta, books) {
      * later, and deleting it is an explicit action. */
     merged[book.name] = {
       order: hasOrder(previous) ? previous.order : bookOrder++,
+      detail: previous.detail in LAYER_PRESETS ? previous.detail : null,
       strips,
     };
   }
@@ -366,8 +380,31 @@ export function moveStripKey(meta, fromBook, toBook, file) {
 
 export function addBookKey(meta, name) {
   if (meta.books[name]) throw new Error(`a book called "${name}" already exists`);
-  meta.books[name] = { order: nextOrder(Object.values(meta.books)), strips: {} };
+  meta.books[name] = { order: nextOrder(Object.values(meta.books)), detail: null, strips: {} };
   return meta;
+}
+
+/*
+ * A book's own detail level, or null to follow the library's.
+ *
+ * Like the library setting, it decides how strips are converted when they are
+ * sent -- a strip already on the calculator stays as it was sent until it is
+ * sent again.
+ */
+export function setBookDetail(meta, bookName, detail) {
+  const book = meta.books[bookName];
+  if (!book) return meta;
+  book.detail = detail in LAYER_PRESETS ? detail : null;
+  return meta;
+}
+
+/** The settings a book's strips are converted with: the library's, with the
+ *  book's own detail level if it has one. Everything that converts or
+ *  estimates a strip goes through here, so the two can never disagree. */
+export function effectiveSettings(meta, bookName) {
+  const book = meta.books[bookName];
+  const detail = book && book.detail in LAYER_PRESETS ? book.detail : meta.settings.detail;
+  return { ...meta.settings, detail };
 }
 
 export function removeBookKey(meta, name) {
@@ -390,9 +427,9 @@ export function removeStripKey(meta, bookName, file) {
  * supplies the file handles. This is the order that reaches the calculator.
  */
 export function flatten(meta, books) {
-  const handles = new Map();
+  const scanned = new Map();
   for (const book of books) {
-    for (const strip of book.strips) handles.set(`${book.name}/${strip.name}`, strip.handle);
+    for (const strip of book.strips) scanned.set(`${book.name}/${strip.name}`, strip);
   }
 
   const out = [];
@@ -402,7 +439,10 @@ export function flatten(meta, books) {
         book: bookName,
         file,
         title: titleFromFilename(file),
-        handle: handles.get(`${bookName}/${file}`) || null,
+        /* What the scan found on disk: an image, or a folder strip with its
+         * images in order. fs.stripFiles() reads either. */
+        source: scanned.get(`${bookName}/${file}`) || null,
+        handle: (scanned.get(`${bookName}/${file}`) || {}).handle || null,
         state: meta.books[bookName].strips[file],
       });
     }
@@ -413,8 +453,8 @@ export function flatten(meta, books) {
 /**
  * Fold the calculator's own state back in.
  *
- * The calculator wins on `read`, `readAt`, `pos` and `layer`: those changed
- * because somebody read the comic. Everything else stays as the computer has
+ * The calculator wins on `read`, `readAt`, `pos`, `layer` and `bookmarked`:
+ * those changed because somebody read the comic. Everything else stays as the computer has
  * it. `onCalc` is rebuilt from what the calculator actually reports rather than
  * what we believe, so an interrupted sync self-corrects -- and a strip that is
  * not there gives its slot back.
@@ -447,6 +487,9 @@ export function mergeFromCalculator(meta, resident) {
       state.deviceBytes = live.bytes;
       state.pos = live.pos;
       state.layer = live.layer;
+      /* Both ways: a bookmark is set and cleared on the calculator, and this
+       * only ever carries it back in the next index. */
+      state.bookmarked = live.bookmarked === true;
       if (live.read && !state.read) {
         state.read = true;
         state.readAt = live.readAt

@@ -16,6 +16,7 @@ import * as crop from './crop.js';
 import * as fs from './fs.js';
 import * as libraryStore from './library.js';
 import * as metaStore from './meta.js';
+import { Preview } from './preview.js';
 import * as syncEngine from './sync.js';
 import * as updater from './update.js';
 import { PAGE_BUILD } from './version.js';
@@ -75,6 +76,17 @@ const ui = {
   progressLog: el('progress-log'),
   progressStop: el('progress-stop'),
   progressClose: el('progress-close'),
+  libraryProgress: el('library-progress'),
+  libraryProgressFill: el('library-progress-fill'),
+  previewDialog: el('preview-dialog'),
+  previewCanvas: el('preview-canvas'),
+  previewInfo: el('preview-info'),
+  previewDetail: el('preview-detail'),
+  previewUp: el('preview-up'),
+  previewDown: el('preview-down'),
+  previewIn: el('preview-in'),
+  previewOut: el('preview-out'),
+  previewClose: el('preview-close'),
   tabLibrary: el('tab-library'),
   tabSettings: el('tab-settings'),
   viewLibrary: el('view-library'),
@@ -140,14 +152,32 @@ function matchesFilter(text) {
   return !state.filter || text.toLowerCase().includes(state.filter);
 }
 
-/** Strips of one book, in stored order, as { file, title, state }. */
+/** What the scan found on disk for one strip: an image, or a folder strip
+ *  with its images in order. Null if it has gone since the last scan. */
+function scannedStrip(bookName, file) {
+  const book = state.books.find((each) => each.name === bookName);
+  return (book && book.strips.find((each) => each.name === file)) || null;
+}
+
+/** Strips of one book, in stored order, as { book, file, title, source, state }. */
 function stripsOf(bookName) {
   return metaStore.stripNames(state.meta, bookName).map((file) => ({
+    book: bookName,
     file,
     title: fs.titleFromFilename(file),
+    source: scannedStrip(bookName, file),
     state: state.meta.books[bookName].strips[file],
   }));
 }
+
+/** What a strip will cost on the calculator: measured if it has been
+ *  converted, otherwise estimated at its book's detail level. */
+function stripBytes(strip) {
+  return strip.state.deviceBytes
+    || syncEngine.estimateBytes(strip, metaStore.effectiveSettings(state.meta, strip.book));
+}
+
+const DETAIL_NAMES = { fit: 'Fit', 'fit+1.5x': '1.5×', 'fit+2x': '2×' };
 
 /* ---------------------------------------------------------------- rendering */
 
@@ -176,12 +206,65 @@ function actionButton(label, title, handler) {
 function stripChips(strip) {
   const chips = document.createElement('div');
   chips.className = 'chips';
+  if (strip.state.bookmarked) {
+    const mark = chip('★', 'bookmark');
+    mark.title = 'Bookmarked on the calculator: kept when read strips are cleared';
+    chips.append(mark);
+  }
+  if (strip.source && strip.source.kind === 'folder') {
+    chips.append(chip(`${strip.source.parts.length} images`, 'images'));
+  }
   if (strip.state.onCalc) chips.append(chip('on calc', 'on-calc'));
   if (strip.state.read) chips.append(chip('read', 'read'));
+  else if (strip.state.pos > 0) chips.append(chip('reading', 'reading'));
   if (strip.state.selected && !strip.state.onCalc) chips.append(chip('queued', 'queued'));
-  const size = strip.state.deviceBytes || syncEngine.estimateBytes(strip, state.meta.settings);
-  chips.append(chip(kb(size), 'size'));
+  chips.append(chip(kb(stripBytes(strip)), 'size'));
   return chips;
+}
+
+/* How far through something you are: a slim bar and "12 / 40". */
+function progressBar(read, total) {
+  const wrap = document.createElement('span');
+  wrap.className = 'progress';
+  wrap.title = `${read} of ${total} read`;
+  const track = document.createElement('span');
+  track.className = 'progress-track';
+  const fill = document.createElement('span');
+  fill.className = 'progress-fill';
+  fill.style.width = `${total ? (read / total) * 100 : 0}%`;
+  track.append(fill);
+  const text = document.createElement('span');
+  text.className = 'progress-text';
+  text.textContent = `${read} / ${total}`;
+  wrap.append(track, text);
+  return wrap;
+}
+
+/* A book's own detail level, or the library's. Stops clicks reaching the row,
+ * which would otherwise start a drag or toggle the tick. */
+function detailSelect(bookName) {
+  const select = document.createElement('select');
+  select.className = 'book-detail';
+  select.title = 'Detail level for this book. Applies to strips sent from now on.';
+  const current = state.meta.books[bookName].detail || '';
+  const library = DETAIL_NAMES[state.meta.settings.detail];
+  const options = [['', `Default (${library})`],
+    ...Object.entries(DETAIL_NAMES)];
+  for (const [value, label] of options) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    option.selected = value === current;
+    select.append(option);
+  }
+  select.addEventListener('click', (event) => event.stopPropagation());
+  select.addEventListener('mousedown', (event) => event.stopPropagation());
+  select.addEventListener('change', () => {
+    metaStore.setBookDetail(state.meta, bookName, select.value || null);
+    renderTree();
+    refreshSelection();
+  });
+  return select;
 }
 
 /*
@@ -323,7 +406,7 @@ function renderBookRow(bookName, index, strips, open) {
   const chips = document.createElement('div');
   chips.className = 'chips';
   const read = strips.filter((strip) => strip.state.read).length;
-  chips.append(chip(`${read}/${strips.length} read`, 'read'));
+  chips.append(detailSelect(bookName), progressBar(read, strips.length));
 
   row.append(twisty, label, chips, actions);
   makeDraggable(row, { kind: 'book', book: bookName, index });
@@ -360,6 +443,8 @@ function renderStripRow(bookName, strip, index, siblings) {
   const actions = document.createElement('div');
   actions.className = 'actions';
   actions.append(
+    actionButton('👁', 'Preview this strip as the calculator will show it',
+                 () => opPreview(bookName, strip, siblings[index + 1])),
     actionButton('↑', 'Move this strip up', () => opReorderStrip(bookName, strip.file, index - 1)),
     actionButton('↓', 'Move this strip down', () => opReorderStrip(bookName, strip.file, index + 2)),
     actionButton('✎', 'Rename this strip', () => opRenameStrip(bookName, strip.file)),
@@ -432,10 +517,14 @@ function refreshSelection() {
   const residentBytes = strips
     .filter((strip) => strip.state.onCalc)
     .reduce((sum, strip) => sum + (strip.state.deviceBytes || 0), 0);
-  const pendingBytes = pending.reduce(
-    (sum, strip) => sum + (strip.state.deviceBytes
-      || syncEngine.estimateBytes(strip, state.meta.settings)), 0,
-  );
+  const pendingBytes = pending.reduce((sum, strip) => sum + stripBytes(strip), 0);
+
+  const read = strips.filter((strip) => strip.state.read).length;
+  ui.libraryProgress.textContent = strips.length
+    ? `${read.toLocaleString()} of ${strips.length.toLocaleString()} read · `
+      + `${Math.round((read / strips.length) * 100)}%`
+    : '';
+  ui.libraryProgressFill.style.width = `${strips.length ? (read / strips.length) * 100 : 0}%`;
 
   const budget = state.meta.settings.maxDeviceBytes;
   const total = residentBytes + pendingBytes;
@@ -767,6 +856,43 @@ function opDeleteBook(bookName) {
   });
 }
 
+/*
+ * The strip as the calculator will show it. Converted at its book's detail
+ * level through the same cache a sync uses -- so looking first costs nothing
+ * later -- and never written anywhere near the library folder.
+ */
+let preview = null;
+
+function opPreview(bookName, strip, next) {
+  if (!strip.source) {
+    setStatus(`"${strip.title}" is not on disk any more. Rescan the library.`, 'error');
+    return;
+  }
+  state.pool = state.pool || new syncEngine.ConversionPool();
+  preview = preview || new Preview({
+    dialog: ui.previewDialog,
+    canvas: ui.previewCanvas,
+    info: ui.previewInfo,
+    detail: ui.previewDetail,
+    buttons: { up: ui.previewUp, down: ui.previewDown, in: ui.previewIn, out: ui.previewOut },
+  });
+
+  const settings = metaStore.effectiveSettings(state.meta, bookName);
+  preview.open({
+    title: strip.title,
+    nextTitle: next ? next.title : null,
+    detail: settings.detail,
+    maxBytes: deviceMaxChunks() * 16384,
+    load: async (detail) => {
+      const container = await syncEngine.convertStrip(
+        strip, { ...settings, detail }, state.pool,
+      );
+      saveMetaSoon();   /* the source hash may be new */
+      return container;
+    },
+  });
+}
+
 function opRenameStrip(bookName, file) {
   const name = window.prompt('Rename this strip', fs.titleFromFilename(file));
   if (name === null) return;
@@ -781,7 +907,11 @@ function opDeleteStrip(bookName, file) {
   const warning = strip && strip.onCalc
     ? '\n\nIt is on the calculator and will be removed on the next sync.'
     : '';
-  if (!window.confirm(`Delete "${file}" from disk?${warning}\n\nThis cannot be undone.`)) return;
+  const source = scannedStrip(bookName, file);
+  const what = source && source.kind === 'folder'
+    ? `the folder "${file}" and its ${source.parts.length} images`
+    : `"${file}"`;
+  if (!window.confirm(`Delete ${what} from disk?${warning}\n\nThis cannot be undone.`)) return;
 
   runOp(`Deleting "${file}"…`, async () => {
     await fs.deleteStrip(state.root, bookName, file);
@@ -801,8 +931,10 @@ function opMoveStripToBook(fromBook, file, toBook) {
 /**
  * Files dropped from outside.
  *
- * Loose images go into `bookName`; a dropped folder becomes a book of its own,
- * which is the shape a downloaded chapter usually arrives in.
+ * Loose images go into `bookName`. A folder dropped on a book becomes one strip
+ * of that book, made of its images -- the shape a chapter of slices arrives in.
+ * A folder dropped anywhere else becomes a book of its own: its images are its
+ * strips, and each folder inside it is a strip made of that folder's images.
  *
  * `pending` is the promise fs.readDrop returned. It has to be started inside
  * the drop event itself -- a DataTransfer is dead the moment the handler
@@ -812,28 +944,49 @@ function importDrop(pending, bookName) {
   runOp('Importing…', async () => {
     const { loose, folders } = await pending;
     if (!loose.length && !folders.size) {
-      throw new Error('Nothing to import — drop JPEG files or a folder of them.');
+      throw new Error('Nothing to import — drop images, or a folder of them.');
     }
+    const progress = ({ index, total, name }) => {
+      setStatus(`Importing ${index + 1}/${total}: ${name}`, 'busy');
+    };
 
     if (loose.length) {
       if (!bookName) throw new Error('Drop loose images onto a book, or drop a whole folder.');
       setStatus(`Importing ${loose.length} file(s) into "${bookName}"…`, 'busy');
-      await fs.importFiles(state.root, bookName, loose, ({ index, total, name }) => {
-        setStatus(`Importing ${index + 1}/${total}: ${name}`, 'busy');
-      });
+      await fs.importFiles(state.root, bookName, loose, progress);
       state.expanded.add(bookName);
     }
 
-    for (const [folder, files] of folders) {
+    if (bookName) {
+      /* Onto a book: each folder is one strip. A folder holding only folders
+       * is a set of chapters, and each of those is a strip instead. */
+      for (const [folder, { files, subfolders }] of folders) {
+        if (files.length) {
+          setStatus(`Adding "${folder}" to "${bookName}" as one strip…`, 'busy');
+          await fs.importFolderStrip(state.root, bookName, folder, files, progress);
+        }
+        for (const [inner, innerFiles] of subfolders) {
+          if (files.length) continue;
+          setStatus(`Adding "${inner}" to "${bookName}" as one strip…`, 'busy');
+          await fs.importFolderStrip(state.root, bookName, inner, innerFiles, progress);
+        }
+      }
+      state.expanded.add(bookName);
+      return;
+    }
+
+    for (const [folder, { files, subfolders }] of folders) {
       const created = state.meta.books[folder]
         ? folder
         : await fs.createBook(state.root, folder).catch(() => folder);
       if (!state.meta.books[created]) metaStore.addBookKey(state.meta, created);
 
       setStatus(`Importing ${files.length} file(s) into "${created}"…`, 'busy');
-      await fs.importFiles(state.root, created, files, ({ index, total, name }) => {
-        setStatus(`Importing ${index + 1}/${total}: ${name}`, 'busy');
-      });
+      await fs.importFiles(state.root, created, files, progress);
+      for (const [inner, innerFiles] of subfolders) {
+        setStatus(`Adding "${inner}" to "${created}" as one strip…`, 'busy');
+        await fs.importFolderStrip(state.root, created, inner, innerFiles, progress);
+      }
       state.expanded.add(created);
     }
   });
@@ -1448,6 +1601,7 @@ function showView(name) {
 }
 
 function bindViews() {
+  ui.previewClose.addEventListener('click', () => ui.previewDialog.close());
   ui.tabLibrary.addEventListener('click', () => showView('library'));
   ui.tabSettings.addEventListener('click', () => showView('settings'));
   window.addEventListener('hashchange', () => showView(location.hash.slice(1)));

@@ -405,6 +405,7 @@ export class Calculator {
         chunkCount: view.getUint8(at + 2),
         bytes: view.getUint8(at + 3) | (view.getUint8(at + 4) << 8) | (view.getUint8(at + 5) << 16),
         read: (view.getUint8(at + 6) & 1) !== 0,
+        bookmarked: (view.getUint8(at + 6) & 2) !== 0,
         readAt: view.getUint32(at + 7, true),
         pos: view.getUint8(at + 11) | (view.getUint8(at + 12) << 8) | (view.getUint8(at + 13) << 16),
         layer: view.getUint8(at + 14),

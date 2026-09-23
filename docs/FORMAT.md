@@ -328,18 +328,32 @@ The claim that ties it to the index is in the device block, above.
 
 ## The library on disk, and `ebooksync.json`
 
-Books are folders, strips are the JPEGs inside them, and a strip's title is its
-filename without the extension:
+Books are folders. Inside a book, a strip is either one image -- JPEG, PNG,
+WebP, GIF (its first frame), BMP or AVIF -- or a folder of images, which is one
+strip read image by image in natural order: 0-9, then A-Z, case-blind, and 10
+after 9. A strip's title is its filename without the extension, or the folder's
+name:
 
 ```
 comics/
   ebooksync.json
   第一本书/
     001 - 标题.jpg
-    002 - 标题.jpg
+    002 - 标题.png
+    第3话/            <- one strip, three images
+      1.jpg
+      2.jpg
+      A.webp
   Another Book/
     01.jpg
 ```
+
+Nothing is ever merged or rewritten on disk. A folder strip stays a folder of
+the images it arrived as; they are stitched together only in memory, while
+converting, and the container exists only on the calculator and in the
+browser's conversion cache (IndexedDB) -- never in the library folder. A folder
+with no images in it is not a strip, and folders inside a folder strip are not
+looked into.
 
 **Display order is metadata, not filenames.** `ebooksync.json` carries an
 explicit `order` on every book and every strip, and that is what the sync page
@@ -363,11 +377,13 @@ have had anyway.
   "books": {
     "第一本书": {
       "order": 0,
+      "detail": null,
       "strips": {
         "001 - 标题.jpg": {
           "id": 17, "order": 0, "selected": true,
           "read": true, "readAt": "2026-08-24T20:11:00Z", "pos": 3120, "layer": 1,
-          "srcHash": "…", "srcSize": 1962500,
+          "bookmarked": false,
+          "srcHash": "…", "srcSize": 1962500, "srcStamp": "1962500:1756000000000",
           "onCalc": true, "chunkCount": 25, "deviceBytes": 401927
         }
       }
@@ -375,6 +391,18 @@ have had anyway.
   }
 }
 ```
+
+A book's `detail` is its own detail level, or `null` to use the library's.
+Like the library setting it decides how strips are converted when they are
+sent; a strip already on the calculator stays as it was sent until it is sent
+again.
+
+`srcHash` is what the conversion cache is keyed on: the image's contents, or for
+a folder strip its images' names and contents in order. `srcStamp` is the sizes
+and modification times of the files it was taken from, and a scan that finds a
+different stamp drops the hash -- so replacing an image, or adding one to a
+folder strip, is converted afresh rather than served a cached copy of what used
+to be there.
 
 `id` is the slot the strip occupies on the calculator, from 0 to 65534, or `null`
 when it is not there. It is what names the `CS<slot><chunk>` appvars: it is taken
@@ -390,8 +418,11 @@ inside directories, so nothing there can be mistaken for a comic. It survives re
 books, so renaming or reordering costs a fresh index on the next sync rather
 than re-sending half a megabyte of chunks.
 
-The calculator is authoritative for `read`, `readAt`, `pos` and `layer` -- that
-is where reading happens -- and this file is authoritative for everything else.
+The calculator is authoritative for `read`, `readAt`, `pos`, `layer` and
+`bookmarked` -- that is where reading happens -- and this file is authoritative
+for everything else. A bookmark is set and cleared only on the calculator; the
+page reads it back on every connection and writes it into every index it sends,
+and clearing read strips to make room never takes a bookmarked one.
 `onCalc` is rebuilt from what the calculator reports rather than from what the
 page believes, so an interrupted sync corrects itself.
 
@@ -411,6 +442,7 @@ tools/build.sh                                   # build the ZX0 shared library 
 tools/convert.py assets/strip1.jpg --measure     # size at every preset
 tools/convert.py assets/strip1.jpg -o out/ --slot 0 --verify
 tools/convert.py assets/strip1.jpg --preview /tmp/p.png   # see what the calculator shows
+tools/convert.py comics/第一本书/第3话 --measure          # a folder strip works the same way
 ```
 
 `--verify` decodes the container back through the pure-Python ZX0 decoder and

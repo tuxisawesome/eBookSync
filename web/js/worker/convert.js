@@ -6,6 +6,11 @@
  * The ZX0 parse is the expensive part -- tens of seconds for a long strip -- so
  * this has to be somewhere that is not the UI thread.
  *
+ * A strip made of several images arrives as several blobs. Each is scaled to
+ * the layer width on its own and they are stacked, so images of different
+ * shapes line up at the edges; the row each starts on goes into the
+ * container's part table, which is how the reader knows where one ends.
+ *
  * Results are cached by the caller against the source file's hash, so this runs
  * once per strip per settings change and never again.
  */
@@ -60,6 +65,31 @@ async function scaleTo(blob, width) {
   });
 }
 
+/*
+ * Every image scaled to `width` and stacked top to bottom, with the row each
+ * one starts on. One image is simply that image.
+ */
+async function stackTo(blobs, width) {
+  const images = [];
+  for (const blob of blobs) {
+    const bitmap = await scaleTo(blob, width);
+    images.push(readPixels(bitmap));
+    bitmap.close();
+  }
+  if (images.length === 1) return { image: images[0], tops: [0] };
+
+  const height = images.reduce((sum, image) => sum + image.height, 0);
+  const rgba = new Uint8ClampedArray(width * height * 4);
+  const tops = [];
+  let top = 0;
+  for (const image of images) {
+    tops.push(top);
+    rgba.set(image.rgba, top * width * 4);
+    top += image.height;
+  }
+  return { image: { width, height, rgba }, tops };
+}
+
 function readPixels(bitmap) {
   const { width, height } = bitmap;
   const canvas = new OffscreenCanvas(width, Math.min(height, SLICE_ROWS));
@@ -76,14 +106,15 @@ function readPixels(bitmap) {
   return { width, height, rgba: out };
 }
 
-async function convert(blob, settings, report) {
+async function convert(blobs, settings, report) {
   const threshold = settings.despeckle ?? DEFAULT_DESPECKLE;
   const rendered = [];
+  const topsByLayer = [];
 
   if (settings.wallpaper) {
     /* One layer, screen-sized. No zoom ladder: there is nothing to zoom into. */
     report({ stage: 'scaling', width: SCREEN_W });
-    const image = await coverScreen(blob);
+    const image = await coverScreen(blobs[0]);
 
     report({ stage: 'denoising', width: SCREEN_W });
     image.rgba = despeckle(image.rgba, image.width, image.height, threshold);
@@ -92,9 +123,8 @@ async function convert(blob, settings, report) {
     const widths = LAYER_PRESETS[settings.detail] || LAYER_PRESETS['fit+1.5x'];
     for (const width of widths) {
       report({ stage: 'scaling', width });
-      const bitmap = await scaleTo(blob, width);
-      const image = readPixels(bitmap);
-      bitmap.close();
+      const { image, tops } = await stackTo(blobs, width);
+      topsByLayer.push(tops);
 
       report({ stage: 'denoising', width });
       image.rgba = despeckle(image.rgba, image.width, image.height, threshold);
@@ -117,8 +147,14 @@ async function convert(blob, settings, report) {
     };
   });
 
+  /* parts[p][l]: where image p starts in layer l. None for a single image. */
+  const parts = blobs.length > 1 && !settings.wallpaper
+    ? blobs.map((_, p) => topsByLayer.map((tops) => tops[p]))
+    : [];
+
   const container = buildContainer({
     layers,
+    parts,
     palette: rgbPalette.map(([r, g, b]) => rgbTo1555(r, g, b)),
     onProgress: (fraction) => report({ stage: 'compressing', fraction }),
   });
@@ -128,15 +164,16 @@ async function convert(blob, settings, report) {
     totalBytes: container.totalBytes,
     rawBytes: container.rawBytes,
     layers: container.layers,
+    parts: container.parts,
   };
 }
 
 self.onmessage = async (event) => {
-  const { id, blob, settings } = event.data;
+  const { id, blobs, settings } = event.data;
   const report = (progress) => self.postMessage({ id, progress });
 
   try {
-    const result = await convert(blob, settings, report);
+    const result = await convert(blobs, settings, report);
     /* Transfer the chunks rather than copying them: a long strip is half a
      * megabyte and structured cloning it would double the peak memory. */
     self.postMessage({ id, result }, result.chunks.map((chunk) => chunk.buffer));

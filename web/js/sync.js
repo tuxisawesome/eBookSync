@@ -10,9 +10,9 @@ import * as cache from './cache.js';
 import * as library from './library.js';
 import { CHUNK_SIZE } from './convert.js';
 import { ProtocolError, STATUS_BAD_CRC, WALLPAPER_SLOT } from './link.js';
-import { flatten, libraryIdBytes, readOrder, slotAllocator } from './meta.js';
+import { effectiveSettings, flatten, libraryIdBytes, readOrder, slotAllocator } from './meta.js';
 import { BOOK_WIDTH, STRIP_WIDTH } from './titles.js';
-import { hashFile } from './fs.js';
+import { hashStrip, stripFiles } from './fs.js';
 
 /*
  * The most chunks a strip may have, matching CSX_MAX_CHUNKS in calc/src/csx.h.
@@ -87,13 +87,19 @@ export class ConversionPool {
       const worker = this.idle.pop() || this.#spawn();
       const job = this.queue.shift();
       this.pending.set(job.id, job);
-      worker.postMessage({ id: job.id, blob: job.blob, settings: job.settings });
+      worker.postMessage({ id: job.id, blobs: job.blobs, settings: job.settings });
     }
   }
 
-  convert(blob, settings, onProgress) {
+  /**
+   * Convert one strip. `blobs` is its images in reading order -- one for an
+   * image, several for a folder strip, which come back stitched into a single
+   * container with a part table.
+   */
+  convert(blobs, settings, onProgress) {
+    if (!Array.isArray(blobs)) blobs = [blobs];
     return new Promise((resolve, reject) => {
-      this.queue.push({ id: this.nextId++, blob, settings, onProgress, resolve, reject });
+      this.queue.push({ id: this.nextId++, blobs, settings, onProgress, resolve, reject });
       this.#drain();
     });
   }
@@ -135,10 +141,12 @@ export function plan(meta, books, resident,
   const onCalc = (strip) => Number.isInteger(strip.state.id) && bySlot.has(strip.state.id);
 
   /* Read strips are dropped oldest-read first, keeping the most recent few so
-   * you can still flip back to what you just finished. */
+   * you can still flip back to what you just finished. A bookmarked strip is
+   * never dropped this way, so it does not use up one of those few either. */
   const keep = new Set();
   if (autoDelete) {
-    for (const strip of readOrder(strips).slice(0, keepRead)) keep.add(strip.state.id);
+    const unmarked = readOrder(strips).filter((strip) => !strip.state.bookmarked);
+    for (const strip of unmarked.slice(0, keepRead)) keep.add(strip.state.id);
   }
 
   const deletes = [];
@@ -160,9 +168,14 @@ export function plan(meta, books, resident,
     }
   }
 
+  /*
+   * Clearing read strips to make room. Bookmarks are exempt: bookmarking is the
+   * one way to say "keep this even though I have read it". Unticking one is
+   * still honoured above -- that is asking for it to go, by name.
+   */
   if (autoDelete) {
     for (const strip of strips) {
-      if (strip.state.read && onCalc(strip)
+      if (strip.state.read && !strip.state.bookmarked && onCalc(strip)
           && !keep.has(strip.state.id) && !dropped.has(strip.state.id)) {
         deletes.push(strip);
       }
@@ -228,7 +241,8 @@ export function plan(meta, books, resident,
   for (const strip of candidates) {
     /* Before conversion the size is a guess from the last time this strip was
      * converted, or from the source file. It is refined once it is converted. */
-    const estimate = strip.state.deviceBytes || estimateBytes(strip, meta.settings);
+    const estimate = strip.state.deviceBytes
+      || estimateBytes(strip, effectiveSettings(meta, strip.book));
 
     /*
      * Only worth saying when we have a real measurement from a previous
@@ -359,17 +373,10 @@ export async function execute(calculator, meta, books, currentPlan, {
     index++;
 
     onStatus(`Converting ${strip.title} (${index}/${currentPlan.pushes.length})`);
-    const file = await strip.handle.getFile();
-    if (!strip.state.srcHash) strip.state.srcHash = await hashFile(file);
-
-    const key = cache.cacheKey(strip.state.srcHash, meta.settings);
-    let container = await cache.get(key);
-    if (!container) {
-      container = await pool.convert(file, meta.settings, (progress) => {
-        onProgress({ strip, phase: 'convert', ...progress });
-      });
-      await cache.put(key, container);
-    }
+    const settings = effectiveSettings(meta, strip.book);
+    const container = await convertStrip(strip, settings, pool, (progress) => {
+      onProgress({ strip, phase: 'convert', ...progress });
+    });
 
     /*
      * Refuse it here rather than let the calculator store a strip it can never
@@ -521,7 +528,7 @@ async function syncWallpaper(calculator, meta, wanted, { pool, onStatus }) {
   }
 
   onStatus('Converting the wallpaper');
-  const container = await pool.convert(wanted.file, { ...meta.settings, wallpaper: true });
+  const container = await pool.convert([wanted.file], { ...meta.settings, wallpaper: true });
 
   onStatus('Sending the wallpaper');
   try {
@@ -543,6 +550,28 @@ async function syncWallpaper(calculator, meta, wanted, { pool, onStatus }) {
 
   meta.wallpaper = { srcHash: wanted.srcHash, sentAt: new Date().toISOString() };
   return null;
+}
+
+/**
+ * A strip's container, from the conversion cache or made now.
+ *
+ * The cache lives in the browser (IndexedDB), keyed on the strip's files and
+ * the settings it is converted with -- never in the library folder, which only
+ * ever holds the comics as they were put there. The preview uses this too, so
+ * a strip looked at before a sync is not converted twice.
+ */
+export async function convertStrip(strip, settings, pool, onProgress = () => {}) {
+  const source = strip.source || { kind: 'file', handle: strip.handle };
+  const files = await stripFiles(source);
+  if (!strip.state.srcHash) strip.state.srcHash = await hashStrip(source, files);
+
+  const key = cache.cacheKey(strip.state.srcHash, settings);
+  let container = await cache.get(key);
+  if (!container) {
+    container = await pool.convert(files, settings, onProgress);
+    await cache.put(key, container);
+  }
+  return container;
 }
 
 /* Round KB, for messages. The page has its own; this file has no DOM. */
@@ -595,6 +624,7 @@ export function buildIndexFor(meta, books, { render = undefined } = {}) {
       chunkCount: strip.state.chunkCount,
       size: strip.state.deviceBytes,
       read: strip.state.read,
+      bookmarked: strip.state.bookmarked === true,
       readAt: strip.state.readAt ? Math.floor(Date.parse(strip.state.readAt) / 1000) : 0,
       pos: strip.state.pos,
       layer: strip.state.layer,

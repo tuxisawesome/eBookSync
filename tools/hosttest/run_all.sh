@@ -46,6 +46,14 @@ echo "== the strip viewer: paging, images within a strip, bookmarks =="
 python3 "$dir/check_viewer.py"
 
 echo
+echo "== the preview: the page draws what the calculator draws =="
+python3 "$dir/check_preview.py" --node "$node" "$@"
+
+echo
+echo "== library files: folder strips, and edits that keep their images =="
+"$node" "$dir/check_fs.mjs"
+
+echo
 echo "== library editing, and order reaching the calculator =="
 "$node" "$dir/check_library_edit.mjs"
 

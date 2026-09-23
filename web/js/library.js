@@ -68,11 +68,15 @@ export function titleEntryBytes(text, maxWidth, render = renderTitle) {
 
 export const FLAG_READ = 0x01;
 
+/* Set and cleared on the calculator, and carried back in every index sent so a
+ * sync never drops it. A bookmarked strip is kept through clean-up. */
+export const FLAG_BOOKMARK = 0x02;
+
 /**
  * Serialise the index.
  *
  * `books` is `[{ title, strips: [{ title, slot, chunkCount, size, read,
- * readAt, pos, layer }] }]` in reading order.
+ * bookmarked, readAt, pos, layer }] }]` in reading order.
  *
  * Titles are ZX0-compressed. Uncompressed they would push the index past the
  * 16 KB an appvar comfortably holds; compressed, a whole library's titles are a
@@ -125,7 +129,8 @@ export function buildIndex(books, { render = renderTitle, libraryId = null } = {
     stripView.setUint8(at + 2, strip.chunkCount);
     stripView.setUint16(at + 3, size & 0xffff, true);
     stripView.setUint8(at + 5, (size >>> 16) & 0xff);
-    stripView.setUint8(at + 6, strip.read ? FLAG_READ : 0);
+    stripView.setUint8(at + 6, (strip.read ? FLAG_READ : 0)
+      | (strip.bookmarked ? FLAG_BOOKMARK : 0));
     stripView.setUint32(at + 7, strip.readAt || 0, true);
     stripView.setUint16(at + 11, pos & 0xffff, true);
     stripView.setUint8(at + 13, (pos >>> 16) & 0xff);
@@ -178,6 +183,7 @@ export function parseIndex(data) {
       chunkCount: view.getUint8(at + 2),
       size: view.getUint16(at + 3, true) | (view.getUint8(at + 5) << 16),
       read: (view.getUint8(at + 6) & FLAG_READ) !== 0,
+      bookmarked: (view.getUint8(at + 6) & FLAG_BOOKMARK) !== 0,
       readAt: view.getUint32(at + 7, true),
       pos: view.getUint16(at + 11, true) | (view.getUint8(at + 13) << 16),
       layer: view.getUint8(at + 14),
