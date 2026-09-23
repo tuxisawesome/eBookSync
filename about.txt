@@ -15,8 +15,9 @@ KEYS
     mode    settings
     clear   quit
   Continue, at the top, opens the strip
-  you last read where you left it, and
-  Bookmarks lists every bookmarked one.
+  you last read where you left it (del
+  dismisses it), and Bookmarks lists
+  every bookmarked one.
 
   Strip list
     enter   read (opens on first unread)

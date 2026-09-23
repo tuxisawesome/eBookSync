@@ -208,7 +208,8 @@ one before. After the last image the bar names the next strip in the book, and
 pressing down opens it.
 
 The book list starts with up to two extra rows. **Continue** opens the strip
-you last read, where you left it. **Bookmarks** lists every bookmarked strip in
+you last read, where you left it. It goes away once that strip is read, and
+`del` on it dismisses it; it comes back the next time you open a strip. **Bookmarks** lists every bookmarked strip in
 the library. The header shows the battery and how much archive is free.
 
 On the book list: `del` marks a whole book read or unread, `2nd` locks the

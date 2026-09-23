@@ -614,6 +614,17 @@ ui_result_t ui_book_menu(uint16_t *row, uint16_t *chosen) {
             return UI_SETUP;
         }
 
+        /* del on Continue dismisses it. The rows below move up one, so the
+         * highlight stays on whatever row is now in its place. */
+        if (input_pressed(kb_KeyDel) && row_is_continue(&pinned, list.selected)) {
+            lib_clear_last();
+            read_pinned(&pinned);
+            list.count = pinned.count + lib_book_count();
+            list_move(&list, 0);
+            dirty = true;
+            continue;
+        }
+
         /* Mark the whole book read, or unread if it already is. */
         if (input_pressed(kb_KeyDel) && list.selected >= pinned.count
             && list.count > pinned.count) {

@@ -247,8 +247,12 @@ bool lib_save_strip(uint16_t index, const lib_strip_t *strip);
  */
 bool lib_save_strip_as_last(uint16_t index, const lib_strip_t *strip);
 
-/* The strip last read, or LIB_NONE if it is not on the calculator any more. */
+/* The strip last read, or LIB_NONE if it is not on the calculator any more or
+ * has since been read to the end. */
 uint16_t lib_last_strip(void);
+
+/* Forget it: what del on the Continue row does. */
+bool lib_clear_last(void);
 
 /* The strip in `slot`, or LIB_NONE. */
 uint16_t lib_find_slot(uint16_t slot);

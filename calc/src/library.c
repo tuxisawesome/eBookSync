@@ -439,7 +439,25 @@ uint16_t lib_last_strip(void) {
         return LIB_NONE;
 
     uint16_t stored = read16(device + DEV_LAST_SLOT);
-    return stored ? lib_find_slot(stored - 1) : LIB_NONE;
+    uint16_t index = stored ? lib_find_slot(stored - 1) : LIB_NONE;
+
+    /* Finished is finished: a strip that has been read is not somewhere to
+     * continue from. Whatever marked it -- reaching the end, del, the whole
+     * book -- the row goes, until another strip is opened. */
+    if (index != LIB_NONE && (strip_entry(index)[6] & LIB_FLAG_READ))
+        return LIB_NONE;
+    return index;
+}
+
+bool lib_clear_last(void) {
+    const uint8_t *device = lib_device();
+    if (!device || !read16(device + DEV_LAST_SLOT))
+        return true;   /* nothing recorded, and a clear is a flash write */
+
+    uint8_t block[LIB_DEVICE_SIZE];
+    device_copy(block);
+    block[DEV_LAST_SLOT] = block[DEV_LAST_SLOT + 1] = 0;
+    return lib_set_device(block);
 }
 
 uint16_t lib_book_of(uint16_t strip_index) {

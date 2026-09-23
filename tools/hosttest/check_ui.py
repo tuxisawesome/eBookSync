@@ -177,6 +177,23 @@ with tempfile.TemporaryDirectory() as tmp:
           LEAD + press("down") + press("enter") + press("enter"), RUNNING,
           expect_output="viewer 0", directory=directory)
 
+    # Finished is finished: once the last-read strip is read, no Continue.
+    reading_library(directory, [(False, False), (True, False), (False, False)], last_slot=1)
+    status, output = run(LEAD, directory, TEXT)
+    checks += 1
+    if "Continue" in output:
+        failures.append("a last-read strip that has been read still offered Continue")
+
+    # del on Continue dismisses it: the first row is the first book again.
+    reading_library(directory, [(False, False)] * 3, last_slot=1)
+    check("del on Continue dismisses it",
+          LEAD + press("del") + press("enter") + press("enter"), RUNNING,
+          expect_output="viewer 0", directory=directory)
+    status, output = run(LEAD + press("del") + press("clear") + ["idle:5"], directory, TEXT)
+    checks += 1
+    if output.count("Continue") != 1:
+        failures.append(f"Continue was drawn {output.count('Continue')} times; want once, before del")
+
     reading_library(directory, [(False, False)] * 3, last_slot=40)
     status, output = run(LEAD, directory, TEXT)
     checks += 1
