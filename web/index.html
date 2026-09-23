@@ -8,7 +8,67 @@
 </head>
 <body>
 
-<header class="bar">
+<!--
+  The way in. It covers the whole page until a calculator is connected, and
+  everything behind it is inert -- no clicks, no focus, no keyboard -- so the
+  library cannot be reached without one. It comes back if the connection is
+  lost. main.js keeps it in step with the connection: see refreshSplash().
+
+  Not a <dialog>: Escape closes a modal dialog even when the page cancels the
+  close, and this must not be dismissable.
+-->
+<div id="splash" class="splash" role="dialog" aria-modal="true" aria-labelledby="splash-title">
+  <div class="splash-card">
+    <h1 id="splash-title">eBookSync</h1>
+    <p class="splash-lede">Read your comics on a TI-84 Plus CE.</p>
+
+    <p id="splash-unsupported" class="splash-warning" hidden>
+      Connecting needs the Web Serial and File System Access APIs, which only
+      Chromium-based browsers have. Open this page in Chrome or Edge to connect.
+      The download below works in any browser.
+    </p>
+
+    <ol class="splash-steps">
+      <li>
+        <h2>Put the reader on your calculator</h2>
+        <p>
+          Send <code>COMICS.8xp</code> to the calculator with
+          <a href="https://education.ti.com/en/products/computer-software/ti-connect-ce-sw"
+             target="_blank" rel="noopener">TI Connect CE</a> or
+          <a href="https://ticalc.link" target="_blank" rel="noopener">ticalc.link</a>.
+          You only do this once: later versions arrive over the cable.
+        </p>
+        <p class="splash-actions">
+          <a id="splash-download" class="button" href="comics/COMICS.8xp"
+             download="COMICS.8xp">Download COMICS.8xp</a>
+          <span id="splash-build" class="splash-note"></span>
+        </p>
+        <p class="splash-note">
+          On OS 5.5 or later the calculator needs
+          <a href="https://yvantt.github.io/arTIfiCE/" target="_blank" rel="noopener">arTIfiCE</a>
+          before it will run it.
+        </p>
+      </li>
+      <li>
+        <h2>Open the sync screen</h2>
+        <p>
+          Run <strong>COMICS</strong>, press <kbd>mode</kbd>, choose
+          <strong>Sync with a computer</strong>, and plug in the cable.
+        </p>
+      </li>
+      <li>
+        <h2>Connect</h2>
+        <p class="splash-actions">
+          <button id="splash-connect" type="button" class="primary">Connect calculator</button>
+        </p>
+        <p class="splash-note">Then pick the calculator from the browser's list of serial ports.</p>
+        <p id="splash-status" class="splash-status" role="status" aria-live="polite"></p>
+      </li>
+    </ol>
+  </div>
+</div>
+
+<header class="bar" inert>
   <h1>eBookSync <span id="page-build" class="chip" title="The build this page was served from"></span></h1>
   <nav class="tabs" role="tablist" aria-label="Pages">
     <button id="tab-library" type="button" role="tab" aria-controls="view-library"
@@ -22,19 +82,20 @@
   </div>
 </header>
 
-<p id="unsupported" class="notice error" hidden>
+<p id="unsupported" class="notice error" inert hidden>
   This page needs the Web Serial and File System Access APIs, which only
   Chromium-based browsers have. Open it in Chrome or Edge.
 </p>
 
-<p id="status" class="notice" role="status">Choose the folder holding your comics to begin.</p>
+<p id="status" class="notice" role="status" inert>Choose the folder holding your comics to begin.</p>
 
 
 <!--
   Two pages, one of them shown at a time. The strips page never scrolls as a
   whole: the tree does, and the header, sidebar and footer stay where they are.
 -->
-<main id="view-library" class="view library-view" role="tabpanel" aria-labelledby="tab-library">
+<main id="view-library" class="view library-view" role="tabpanel" aria-labelledby="tab-library"
+      inert>
   <section class="panel" id="library-panel">
     <div class="panel-head">
       <h2>Library</h2>
@@ -88,7 +149,7 @@
 </main>
 
 <main id="view-settings" class="view settings-view" role="tabpanel"
-      aria-labelledby="tab-settings" hidden>
+      aria-labelledby="tab-settings" inert hidden>
   <section class="panel">
     <h2>Strips</h2>
 
@@ -148,7 +209,7 @@
   </section>
 </main>
 
-<footer class="bar footer">
+<footer class="bar footer" inert>
   <div id="selection-summary">Nothing selected</div>
   <div class="meter"><div id="meter-fill" class="meter-fill"></div></div>
 </footer>

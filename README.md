@@ -124,7 +124,13 @@ drag comics into the page instead.
 **3. Open the sync page.**
 
 Open `web/index.html` in Chrome — straight off disk is fine, there is nothing to
-build or serve. Choose your comics folder, tick what you want, and press Sync.
+build or serve.
+
+The page opens on a splash screen with the latest `COMICS.8xp` to download, the
+steps to get the calculator onto its sync screen, and a **Connect calculator**
+button. The library stays behind it until a calculator is connected, and the
+splash comes back if the connection is lost. Once connected, choose your comics
+folder, tick what you want, and press Sync.
 
 The page has two tabs. **Library** is your strips, with the calculator's status
 and the Sync button beside them. **Settings** has the detail level, which strips

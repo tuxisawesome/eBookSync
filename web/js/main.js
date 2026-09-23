@@ -28,6 +28,11 @@ import {
 const el = (id) => document.getElementById(id);
 
 const ui = {
+  splash: el('splash'),
+  splashConnect: el('splash-connect'),
+  splashStatus: el('splash-status'),
+  splashBuild: el('splash-build'),
+  splashUnsupported: el('splash-unsupported'),
   status: el('status'),
   unsupported: el('unsupported'),
   chooseFolder: el('choose-folder'),
@@ -125,6 +130,10 @@ const state = {
 
   /* The object URL behind the preview thumbnail, so it can be revoked. */
   wallpaperUrl: null,
+
+  /* Whether a calculator has been connected this session, so the splash can
+   * tell a first visit from a lost connection. */
+  everConnected: false,
 };
 
 /* What is currently being dragged inside the tree, if anything. dataTransfer
@@ -146,6 +155,47 @@ function kb(bytes) {
 function setStatus(text, kind = '') {
   ui.status.textContent = text;
   ui.status.className = `notice${kind ? ` ${kind}` : ''}`;
+
+  /* The status line is behind the splash while it is up, so say it there too:
+   * "no port chosen" and "it answered in a language we do not speak" are
+   * exactly what somebody on the splash needs to read. */
+  ui.splashStatus.textContent = text;
+  ui.splashStatus.className = `splash-status${kind ? ` ${kind}` : ''}`;
+}
+
+/*
+ * The splash, which is up exactly while no calculator is connected.
+ *
+ * Covering the page is not enough on its own: Tab would still walk into the
+ * library behind it. So everything else in the body -- except the dialogs, which
+ * a sync that is in progress still needs -- is made inert while it is up. It is
+ * driven from the connection alone, so a sync that loses the link brings it back
+ * without anything having to remember to.
+ */
+function refreshSplash() {
+  const open = !state.calculator;
+  const wasOpen = !ui.splash.hidden;
+  ui.splash.hidden = !open;
+
+  for (const part of document.body.children) {
+    if (part === ui.splash || part.tagName === 'DIALOG' || part.tagName === 'SCRIPT') continue;
+    part.inert = open;
+  }
+
+  if (open && !wasOpen && state.everConnected) {
+    setStatus('The connection to the calculator was lost. Open its sync screen '
+      + 'and connect again to carry on.', 'error');
+  }
+  if (open && !wasOpen) ui.splashConnect.focus();
+}
+
+async function connectFromSplash() {
+  ui.splashConnect.disabled = true;
+  try {
+    await connect();
+  } finally {
+    ui.splashConnect.disabled = false;
+  }
 }
 
 function matchesFilter(text) {
@@ -542,6 +592,8 @@ function refreshSelection() {
 }
 
 function refreshDevice() {
+  if (state.calculator) state.everConnected = true;
+  refreshSplash();
   ui.deviceStatus.textContent = state.calculator ? 'Connected' : 'Not connected';
   ui.deviceFree.textContent = kb(state.freeArchive);
   ui.deviceCount.textContent = state.calculator ? String(state.resident.length) : '—';
@@ -1635,8 +1687,16 @@ function bindTreeDrop() {
 async function start() {
   bindViews();
 
+  /* The download is a plain link, so it works whatever the browser; only
+   * connecting needs Chromium. */
+  ui.splashBuild.textContent = `build ${PAGE_BUILD}`;
+  ui.splashConnect.addEventListener('click', connectFromSplash);
+  refreshSplash();
+
   if (!fs.isSupported() || !linkSupported()) {
     ui.unsupported.hidden = false;
+    ui.splashUnsupported.hidden = false;
+    ui.splashConnect.disabled = true;
     ui.chooseFolder.disabled = true;
     return;
   }
@@ -1673,7 +1733,11 @@ async function start() {
   /* If we already have permission from last time, pick up where we left off. */
   const remembered = await fs.restoreDirectory();
   if (remembered) await loadLibrary(remembered);
-  else ui.chooseFolder.focus();
+
+  /* The splash is what is in front until a calculator answers, so that is
+   * where the keyboard starts. */
+  if (!ui.splash.hidden) ui.splashConnect.focus();
+  else if (!remembered) ui.chooseFolder.focus();
 
   window.addEventListener('beforeunload', () => {
     if (state.pool) state.pool.terminate();

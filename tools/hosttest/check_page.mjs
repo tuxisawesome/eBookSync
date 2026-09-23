@@ -126,6 +126,54 @@ function displayRulesFor(css, names) {
   check('and the page fills it in', /pageBuild\.textContent/.test(main), true);
 }
 
+/* --- the splash keeps the app out of reach until a calculator connects ---- */
+/*
+ * It has to be up from the first paint -- before any script has run -- and the
+ * app behind it has to be inert from the first paint too, or there is a moment
+ * where the library can be clicked into. Then main.js takes over, keyed on the
+ * connection and nothing else.
+ */
+{
+  const html = read('web', 'index.html');
+  const css = read('web', 'css', 'app.css');
+  const main = read('web', 'js', 'main.js');
+
+  const splash = /<div id="splash"[^>]*>/.exec(html);
+  check('there is a splash', Boolean(splash), true);
+  check('and it is showing before any script runs', /\bhidden\b/.test(splash[0]), false);
+  check('it is not a <dialog>, which Escape can close', /<dialog id="splash"/.test(html), false);
+
+  /* Everything outside the splash and the dialogs starts inert. */
+  const body = html.slice(html.indexOf('<body>'), html.indexOf('<script'));
+  const topLevel = [...body.matchAll(/^<(header|main|footer|p|div|section|aside)\b[^>]*>/gms)]
+    .map((m) => m[0])
+    .filter((tag) => !/id="splash"/.test(tag));
+  check('the app behind it starts inert',
+        topLevel.filter((tag) => !/\binert\b/.test(tag)), []);
+
+  check('it covers the whole window',
+        /\.splash\s*\{[^}]*position:\s*fixed[^}]*inset:\s*0/.test(withoutComments(css)), true);
+  check('and sets display, so it needs the hidden guard',
+        displayRulesFor(css, ['.splash']).length > 0 || /\.splash\s*\{[^}]*display/.test(css), true);
+
+  check('it offers the reader for download',
+        /id="splash-download"[^>]*href="comics\/COMICS\.8xp"|href="comics\/COMICS\.8xp"[^>]*id="splash-download"/.test(html),
+        true);
+  /* The link is relative to the page, so it is web/comics/COMICS.8xp: where
+   * stage_update.sh puts every build, and where the updater fetches from. */
+  const stage = read('tools', 'stage_update.sh');
+  check('and the file it offers is the one every build is staged to',
+        /out="\$root\/web\/comics"/.test(stage) && /"\$out\/COMICS\.8xp"/.test(stage), true);
+  check('and it is there to download', read('web', 'comics', 'COMICS.8xp').length > 0, true);
+
+  check('it is open exactly while no calculator is connected',
+        /const open = !state\.calculator;/.test(main), true);
+  check('and follows every change to the connection',
+        /function refreshDevice\(\) \{[^}]*refreshSplash\(\);/.test(main), true);
+  check('its connect button connects',
+        /splashConnect\.addEventListener\('click', connectFromSplash\)/.test(main), true);
+}
+
 /* --- and the guard actually does something -------------------------------- */
 /*
  * A stylesheet that never sets display on a toggled element would pass the
